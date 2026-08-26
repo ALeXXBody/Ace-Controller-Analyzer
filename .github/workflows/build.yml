@@ -1,0 +1,56 @@
+name: Build Windows .exe
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyinstaller customtkinter smbus2
+
+      - name: Build .exe
+        run: |
+          pyinstaller ^
+            --name "CD3217B12_Analyzer" ^
+            --windowed ^
+            --noconfirm ^
+            --clean ^
+            --hidden-import customtkinter ^
+            --hidden-import cd3217_analyzer ^
+            --hidden-import cd3217_analyzer.registers ^
+            --hidden-import cd3217_analyzer.analyzer ^
+            --hidden-import cd3217_analyzer.adapters ^
+            --hidden-import cd3217_analyzer.report ^
+            --hidden-import cd3217_analyzer.models ^
+            --hidden-import cd3217_analyzer.otp ^
+            --hidden-import cd3217_analyzer.spi_adapter ^
+            --hidden-import cd3217_analyzer.flash ^
+            --hidden-import cd3217_analyzer.cli ^
+            gui.py
+
+      - name: Create portable package
+        run: |
+          mkdir CD3217B12_Portable
+          copy dist\CD3217B12_Analyzer.exe CD3217B12_Portable\
+          echo @echo off > CD3217B12_Portable\Run.bat
+          echo cd /d "%%~dp0" >> CD3217B12_Portable\Run.bat
+          echo start CD3217B12_Analyzer.exe >> CD3217B12_Portable\Run.bat
+          Compress-Archive -Path CD3217B12_Portable -DestinationPath CD3217B12_Portable.zip
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: CD3217B12_Portable.zip
+          generate_release_notes: true
