@@ -20,32 +20,31 @@ jobs:
         run: pip install pyinstaller customtkinter smbus2
 
       - name: Build .exe
-        run: |
-          pyinstaller ^
-            --name "CD3217B12_Analyzer" ^
-            --windowed ^
-            --noconfirm ^
-            --clean ^
-            --hidden-import customtkinter ^
-            --hidden-import cd3217_analyzer ^
-            --hidden-import cd3217_analyzer.registers ^
-            --hidden-import cd3217_analyzer.analyzer ^
-            --hidden-import cd3217_analyzer.adapters ^
-            --hidden-import cd3217_analyzer.report ^
-            --hidden-import cd3217_analyzer.models ^
-            --hidden-import cd3217_analyzer.otp ^
-            --hidden-import cd3217_analyzer.spi_adapter ^
-            --hidden-import cd3217_analyzer.flash ^
-            --hidden-import cd3217_analyzer.cli ^
-            gui.py
+        run: >
+          pyinstaller
+          --name "CD3217B12_Analyzer"
+          --windowed
+          --noconfirm
+          --clean
+          --hidden-import customtkinter
+          --hidden-import cd3217_analyzer
+          --hidden-import cd3217_analyzer.registers
+          --hidden-import cd3217_analyzer.analyzer
+          --hidden-import cd3217_analyzer.adapters
+          --hidden-import cd3217_analyzer.report
+          --hidden-import cd3217_analyzer.models
+          --hidden-import cd3217_analyzer.otp
+          --hidden-import cd3217_analyzer.spi_adapter
+          --hidden-import cd3217_analyzer.flash
+          --hidden-import cd3217_analyzer.cli
+          gui.py
 
       - name: Create portable package
+        shell: pwsh
         run: |
           mkdir CD3217B12_Portable
-          copy dist\CD3217B12_Analyzer.exe CD3217B12_Portable\
-          echo @echo off > CD3217B12_Portable\Run.bat
-          echo cd /d "%%~dp0" >> CD3217B12_Portable\Run.bat
-          echo start CD3217B12_Analyzer.exe >> CD3217B12_Portable\Run.bat
+          Copy-Item dist\CD3217B12_Analyzer.exe CD3217B12_Portable\
+          "@echo off`ncd /d `"%~dp0`"`nstart CD3217B12_Analyzer.exe" | Out-File -Encoding ASCII CD3217B12_Portable\Run.bat
           Compress-Archive -Path CD3217B12_Portable -DestinationPath CD3217B12_Portable.zip
 
       - name: Upload to Release
