@@ -46,6 +46,17 @@ from cd3217_analyzer.adapters import (
     detect_adapter,
 )
 from cd3217_analyzer.report import save_json_report, save_csv_log
+from cd3217_analyzer.otp import (
+    OTPDump,
+    diff_dumps,
+    format_dump_table,
+    load_dump_binary,
+    load_dump_json,
+    save_diff_report,
+    save_dump_binary,
+    save_dump_json,
+    scan_otp,
+)
 
 
 # ─── Color Theme ──────────────────────────────────────────────────────────────
@@ -398,6 +409,9 @@ class Application(tk.Tk):
         # Tab 5: Log
         self._build_log_tab()
 
+        # Tab 6: OTP Scanner
+        self._build_otp_tab()
+
     def _build_overview_tab(self):
         """Build the device overview tab."""
         tab = ttk.Frame(self.notebook)
@@ -701,6 +715,107 @@ class Application(tk.Tk):
         self.log_text.tag_configure("warn", foreground=COLORS["warn"])
         self.log_text.tag_configure("err", foreground=COLORS["fail"])
         self.log_text.tag_configure("cmd", foreground=COLORS["orange"])
+
+    def _build_otp_tab(self):
+        """Build the OTP Scanner tab for reverse engineering OTP fuse maps."""
+        tab = ttk.Frame(self.notebook)
+        self.notebook.add(tab, text="  OTP Scanner  ")
+
+        ttk.Label(tab, text="OTP Memory Scanner & Diff Tool",
+                  style="Subtitle.TLabel").pack(padx=16, pady=(12, 4), anchor=tk.W)
+        ttk.Label(tab, text=(
+            "Read the full register space (0x00-0x7F) from a CD3217B12.\n"
+            "Compare vanilla vs OTP-ed chips to identify OTP-backed registers."
+        ), foreground=COLORS["text_dim"]).pack(padx=16, anchor=tk.W)
+
+        # Controls
+        ctrl = ttk.Frame(tab)
+        ctrl.pack(fill=tk.X, padx=16, pady=8)
+
+        ttk.Label(ctrl, text="Device:").pack(side=tk.LEFT, padx=(0, 4))
+        self.otp_addr_var = tk.StringVar(value="0x38")
+        ttk.Entry(ctrl, textvariable=self.otp_addr_var, width=8).pack(
+            side=tk.LEFT, padx=(0, 8))
+
+        self.otp_scan_btn = ttk.Button(ctrl, text="Scan OTP",
+                                        style="Green.TButton",
+                                        command=self._otp_scan_device)
+        self.otp_scan_btn.pack(side=tk.LEFT, padx=(0, 4))
+
+        ttk.Button(ctrl, text="Import Dump",
+                   style="Small.TButton",
+                   command=self._otp_import_file).pack(side=tk.LEFT, padx=(0, 4))
+
+        ttk.Button(ctrl, text="Diff Two Dumps",
+                   style="Small.TButton",
+                   command=self._otp_diff_dialog).pack(side=tk.LEFT, padx=(0, 4))
+
+        # Dump A / B selection
+        dump_frame = ttk.Frame(tab)
+        dump_frame.pack(fill=tk.X, padx=16, pady=(0, 4))
+
+        self.otp_dump_a_var = tk.StringVar(value="")
+        self.otp_dump_b_var = tk.StringVar(value="")
+
+        ttk.Label(dump_frame, text="Dump A (vanilla/empty):",
+                  foreground=COLORS["text_dim"]).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Entry(dump_frame, textvariable=self.otp_dump_a_var, width=30).pack(
+            side=tk.LEFT, padx=(0, 8))
+
+        ttk.Label(dump_frame, text="Dump B (OTP-ed):",
+                  foreground=COLORS["text_dim"]).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Entry(dump_frame, textvariable=self.otp_dump_b_var, width=30).pack(
+            side=tk.LEFT)
+
+        # Progress bar
+        self.otp_progress = ttk.Progressbar(
+            tab, style="Custom.Horizontal.TProgressbar",
+            mode="determinate")
+        self.otp_progress.pack(fill=tk.X, padx=16, pady=(0, 4))
+
+        self.otp_status_var = tk.StringVar(value="Ready")
+        ttk.Label(tab, textvariable=self.otp_status_var,
+                  foreground=COLORS["text_dim"]).pack(padx=16, anchor=tk.W)
+
+        # Split view: Dump A | Diff
+        paned = ttk.PanedWindow(tab, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True, padx=16, pady=(4, 8))
+
+        # Dump A view
+        left = ttk.Frame(paned)
+        paned.add(left, weight=1)
+        ttk.Label(left, text="Current Dump", style="Subtitle.TLabel").pack(
+            anchor=tk.W, pady=(4, 2))
+
+        self.otp_dump_text = scrolledtext.ScrolledText(
+            left, bg=COLORS["entry_bg"], fg=COLORS["text"],
+            font=("Consolas", 9), insertbackground=COLORS["text"],
+            borderwidth=0, state=tk.DISABLED)
+        self.otp_dump_text.pack(fill=tk.BOTH, expand=True)
+
+        # Diff result view
+        right = ttk.Frame(paned)
+        paned.add(right, weight=1)
+        ttk.Label(right, text="Diff Result", style="Subtitle.TLabel").pack(
+            anchor=tk.W, pady=(4, 2))
+
+        self.otp_diff_text = scrolledtext.ScrolledText(
+            right, bg=COLORS["entry_bg"], fg=COLORS["text"],
+            font=("Consolas", 9), insertbackground=COLORS["text"],
+            borderwidth=0, state=tk.DISABLED)
+        self.otp_diff_text.pack(fill=tk.BOTH, expand=True)
+
+        # Color tags for diff output
+        for widget in (self.otp_dump_text, self.otp_diff_text):
+            widget.tag_configure("pass", foreground=COLORS["pass"])
+            widget.tag_configure("warn", foreground=COLORS["warn"])
+            widget.tag_configure("fail", foreground=COLORS["fail"])
+            widget.tag_configure("info", foreground=COLORS["accent2"])
+            widget.tag_configure("bold", font=("Consolas", 9, "bold"))
+            widget.tag_configure("dim", foreground=COLORS["text_dim"])
+
+        # Store dumps
+        self.otp_current_dump: Optional[OTPDump] = None
 
     def _build_status_bar(self, parent):
         """Build the bottom status bar."""
@@ -1323,6 +1438,160 @@ class Application(tk.Tk):
     def _show_addr_calc(self):
         """Show address calculator dialog."""
         self._show_strap_decoder()
+
+    # ─── OTP Scanner ─────────────────────────────────────────────────────
+
+    def _otp_scan_device(self):
+        """Scan full OTP register space from connected device."""
+        if not self._check_connected():
+            return
+
+        addr_str = self.otp_addr_var.get().strip()
+        try:
+            addr = int(addr_str, 16) if addr_str.startswith("0x") else int(addr_str)
+        except ValueError:
+            messagebox.showerror("Invalid Address", f"Cannot parse address: {addr_str}")
+            return
+
+        self.log(f"OTP scan: 0x{addr:02X} (0x00-0x7F)...")
+        self.otp_status_var.set(f"Scanning 0x{addr:02X}...")
+        self.otp_scan_btn.configure(state=tk.DISABLED)
+        self.otp_progress["value"] = 0
+        self.otp_progress["maximum"] = 32  # 32 chunks of 4 bytes
+
+        def do_scan():
+            def progress(current, total):
+                self.after(0, self.otp_progress.configure, {"value": current})
+
+            try:
+                dump = scan_otp(self.adapter, addr, label=f"0x{addr:02X}",
+                               progress_cb=progress)
+                self.otp_current_dump = dump
+                self.after(0, self._show_otp_dump, dump)
+                self.after(0, self.otp_status_var.set,
+                           f"Scan complete: {dump.filled_count} registers, "
+                           f"{dump.error_count} errors")
+                self.after(0, self.log,
+                           f"OTP scan complete: 0x{addr:02X} — "
+                           f"{dump.filled_count} regs, {dump.error_count} errors", "ok")
+            except Exception as e:
+                self.after(0, self.log, f"OTP scan error: {e}", "err")
+                self.after(0, self.otp_status_var.set, f"Error: {e}")
+            finally:
+                self.after(0, self.otp_scan_btn.configure, {"state": "normal"})
+
+        threading.Thread(target=do_scan, daemon=True).start()
+
+    def _show_otp_dump(self, dump: OTPDump):
+        """Display an OTP dump in the text widget."""
+        text = format_dump_table(dump, show_zeros=True)
+
+        self.otp_dump_text.configure(state=tk.NORMAL)
+        self.otp_dump_text.delete("1.0", tk.END)
+        self.otp_dump_text.insert(tk.END, text)
+
+        # Highlight non-zero registers (likely OTP content)
+        for offset in sorted(dump.registers.keys()):
+            raw = dump.registers[offset]
+            val = int.from_bytes(raw, "little")
+            if val != 0:
+                line_start = self.otp_dump_text.search(
+                    f"0x{offset:02X}", "1.0", tk.END)
+                if line_start:
+                    line_end = f"{line_start}+1line"
+                    self.otp_dump_text.tag_add("warn", line_start, line_end)
+
+        self.otp_dump_text.configure(state=tk.DISABLED)
+
+        # Auto-fill dump A field
+        self.otp_dump_a_var.set(dump.label)
+
+    def _otp_import_file(self):
+        """Import an OTP dump from file."""
+        filepath = filedialog.askopenfilename(
+            filetypes=[("OTP dumps", "*.json *.otp.bin"), ("All files", "*.*")],
+            title="Import OTP Dump"
+        )
+        if not filepath:
+            return
+
+        dump = load_dump_json(filepath) or load_dump_binary(filepath)
+        if dump is None:
+            messagebox.showerror("Import Error", f"Could not load {filepath}")
+            return
+
+        self.otp_current_dump = dump
+        self._show_otp_dump(dump)
+        self.log(f"Imported OTP dump: {dump.label} ({dump.filled_count} registers)", "ok")
+
+    def _otp_diff_dialog(self):
+        """Show dialog to select two dumps and diff them."""
+        # Use the current dump as Dump A if available
+        if self.otp_current_dump:
+            self.otp_dump_a_var.set(self.otp_current_dump.label)
+
+        file_a = filedialog.askopenfilename(
+            initialdir=".",
+            filetypes=[("OTP dumps", "*.json *.otp.bin"), ("All files", "*.*")],
+            title="Select Dump A (vanilla/empty)"
+        )
+        if not file_a:
+            return
+
+        file_b = filedialog.askopenfilename(
+            initialdir=".",
+            filetypes=[("OTP dumps", "*.json *.otp.bin"), ("All files", "*.*")],
+            title="Select Dump B (OTP-ed)"
+        )
+        if not file_b:
+            return
+
+        dump_a = load_dump_json(file_a) or load_dump_binary(file_a)
+        dump_b = load_dump_json(file_b) or load_dump_binary(file_b)
+
+        if dump_a is None or dump_b is None:
+            messagebox.showerror("Load Error", "Could not load one or both dumps")
+            return
+
+        self.otp_dump_a_var.set(dump_a.label)
+        self.otp_dump_b_var.set(dump_b.label)
+
+        result = diff_dumps(dump_a, dump_b)
+
+        # Show diff result
+        self.otp_diff_text.configure(state=tk.NORMAL)
+        self.otp_diff_text.delete("1.0", tk.END)
+        self.otp_diff_text.insert(tk.END, result.summary())
+
+        # Highlight different registers
+        for offset in result.different:
+            line_start = self.otp_diff_text.search(
+                f"0x{offset:02X}", "1.0", tk.END)
+            if line_start:
+                line_end = f"{line_start}+1line"
+                self.otp_diff_text.tag_add("fail", line_start, line_end)
+
+        self.otp_diff_text.configure(state=tk.DISABLED)
+
+        self.log(f"OTP diff: {result.match_count} identical, "
+                 f"{result.diff_count} different", "info")
+
+        # Offer to save diff report
+        if result.diff_count > 0:
+            save = messagebox.askyesno(
+                "Save Diff Report",
+                f"Found {result.diff_count} different registers.\n"
+                "Save diff report to file?"
+            )
+            if save:
+                filepath = filedialog.asksaveasfilename(
+                    defaultextension=".txt",
+                    filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+                    title="Save Diff Report"
+                )
+                if filepath:
+                    save_diff_report(result, filepath)
+                    self.log(f"Diff report saved: {filepath}", "ok")
 
     # ─── File Operations ──────────────────────────────────────────────────
 

@@ -31,6 +31,16 @@ from .report import (
     save_json_report,
 )
 from .models import get_model, list_models, model_ids
+from .otp import (
+    diff_dumps,
+    format_dump_table,
+    load_dump_binary,
+    load_dump_json,
+    save_diff_report,
+    save_dump_binary,
+    save_dump_json,
+    scan_otp,
+)
 
 
 def create_adapter(args) -> I2CAdapter:
@@ -175,6 +185,102 @@ def cmd_batch(analyzer: CD3217Analyzer, count: int = 1,
         print("\n" + format_batch_summary(all_results))
 
 
+def cmd_otp_scan(analyzer: CD3217Analyzer, address: int,
+                 output: Optional[str] = None) -> None:
+    """Full OTP register scan of a CD3217B12 chip."""
+    from .otp import scan_otp, format_dump_table, save_dump_json, save_dump_binary
+
+    print(f"Scanning OTP registers at 0x{address:02X} (0x00-0x7F)...")
+    print("This reads 32 x 4-byte chunks. May take a few seconds.\n")
+
+    def progress(current, total):
+        pct = int(current / total * 100)
+        bar = "#" * (pct // 5) + "." * (20 - pct // 5)
+        print(f"\r  [{bar}] {pct:3d}%", end="", flush=True)
+
+    dump = scan_otp(analyzer.adapter, address, label=f"0x{address:02X}",
+                    progress_cb=progress)
+    print("\n")
+
+    print(format_dump_table(dump, show_zeros=True))
+    print(f"\nRead errors: {dump.error_count} register(s)")
+
+    if output:
+        if output.endswith(".json"):
+            save_dump_json(dump, output)
+        elif output.endswith(".otp.bin"):
+            save_dump_binary(dump, output)
+        else:
+            save_dump_json(dump, output)
+        print(f"Saved to: {output}")
+
+
+def cmd_otp_diff(file_a: str, file_b: str,
+                 output: Optional[str] = None) -> None:
+    """Compare two OTP dumps to find OTP-backed registers."""
+    from .otp import load_dump_binary, load_dump_json, save_diff_report
+
+    # Load dumps (try JSON first, then binary)
+    dump_a = load_dump_json(file_a) or load_dump_binary(file_a)
+    dump_b = load_dump_json(file_b) or load_dump_binary(file_b)
+
+    if dump_a is None:
+        print(f"ERROR: Could not load dump from {file_a}")
+        print("Supported formats: .json, .otp.bin")
+        return
+
+    if dump_b is None:
+        print(f"ERROR: Could not load dump from {file_b}")
+        print("Supported formats: .json, .otp.bin")
+        return
+
+    result = diff_dumps(dump_a, dump_b)
+    print(result.summary())
+
+    if output:
+        save_diff_report(result, output)
+        print(f"\nDiff report saved to: {output}")
+
+
+def cmd_otp_export(analyzer: CD3217Analyzer, address: int,
+                   filepath: str) -> None:
+    """Export OTP dump to file."""
+    from .otp import scan_otp, save_dump_json, save_dump_binary
+
+    print(f"Scanning OTP at 0x{address:02X}...")
+
+    def progress(current, total):
+        pct = int(current / total * 100)
+        bar = "#" * (pct // 5) + "." * (20 - pct // 5)
+        print(f"\r  [{bar}] {pct:3d}%", end="", flush=True)
+
+    dump = scan_otp(analyzer.adapter, address, label=f"0x{address:02X}",
+                    progress_cb=progress)
+    print("\n")
+
+    if filepath.endswith(".otp.bin"):
+        save_dump_binary(dump, filepath)
+    else:
+        save_dump_json(dump, filepath)
+
+    print(f"Saved: {filepath}")
+    print(f"Registers: {dump.filled_count} | Errors: {dump.error_count}")
+
+
+def cmd_otp_import(filepath: str) -> None:
+    """Import and display an OTP dump."""
+    from .otp import load_dump_binary, load_dump_json, format_dump_table
+
+    dump = load_dump_json(filepath) or load_dump_binary(filepath)
+
+    if dump is None:
+        print(f"ERROR: Could not load {filepath}")
+        print("Supported formats: .json, .otp.bin")
+        return
+
+    print(format_dump_table(dump, show_zeros=True))
+
+
 def cmd_interactive(analyzer: CD3217Analyzer) -> None:
     """Interactive mode with menu."""
     print("=" * 50)
@@ -264,6 +370,11 @@ Examples:
   %(prog)s --adapter ftdi           Use FTDI FT232H adapter
   %(prog)s --adapter smbus --bus 1  Use Linux SMBus bus 1
   %(prog)s --strap 0x38 0x2F        Decode strap config
+  %(prog)s --otp-scan 0x38          Full OTP scan (0x00-0x7F)
+  %(prog)s --otp-export 0x38 a.bin  Export OTP to binary file
+  %(prog)s --otp-diff a.json b.json Compare two OTP dumps
+  %(prog)s --otp-import dump.json   View a saved OTP dump
+  %(prog)s --model A2442 --scan     Use model-specific addresses
         """,
     )
 
@@ -294,6 +405,14 @@ Examples:
                        help="Batch test mode")
     group.add_argument("--strap", nargs=2, metavar=("ADDR1", "ADDR2"),
                        help="Decode I2C strap configuration from two addresses")
+    group.add_argument("--otp-scan", metavar="ADDR",
+                       help="Full OTP register scan of device at ADDR (0x00-0x7F)")
+    group.add_argument("--otp-diff", nargs=2, metavar=("FILE1", "FILE2"),
+                       help="Diff two OTP dumps (.json or .otp.bin)")
+    group.add_argument("--otp-export", nargs=2, metavar=("ADDR", "FILE"),
+                       help="Export OTP dump from device at ADDR to FILE (.json or .otp.bin)")
+    group.add_argument("--otp-import", metavar="FILE",
+                       help="Import and display an OTP dump from FILE")
     group.add_argument("--interactive", "-i", action="store_true",
                        help="Interactive mode (default if no command given)")
 
@@ -375,6 +494,18 @@ Examples:
                 print(f"ADDR bits: {info['addr_bits']} -> {info['addr_resistor']}")
                 print(f"CNTL1: {info['cntl1']} -> {info['cntl1_source']}")
                 print(f"CNTL2: {info['cntl2']} -> {info['cntl2_source']}")
+            elif args.otp_scan:
+                addr = int(args.otp_scan, 16) if args.otp_scan.startswith("0x") \
+                    else int(args.otp_scan)
+                cmd_otp_scan(analyzer, addr, args.output)
+            elif args.otp_diff:
+                cmd_otp_diff(args.otp_diff[0], args.otp_diff[1], args.output)
+            elif args.otp_export:
+                addr = int(args.otp_export[0], 16) if args.otp_export[0].startswith("0x") \
+                    else int(args.otp_export[0])
+                cmd_otp_export(analyzer, addr, args.otp_export[1])
+            elif args.otp_import:
+                cmd_otp_import(args.otp_import)
             else:
                 cmd_interactive(analyzer)
 

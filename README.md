@@ -312,6 +312,60 @@ python -m cd3217_analyzer --model A2337 --diagnose 0x70
 
 **GUI:** Select your MacBook model from the dropdown in the top bar. The Strap Decoder reference table and Batch Test addresses will update automatically.
 
+## OTP Reverse Engineering
+
+The OTP (One-Time Programmable) fuse map on CD3217B12 is undocumented. This tool provides scanner/diff capabilities to help reverse-engineer it.
+
+### How It Works
+
+1. **Scan a vanilla chip** (never programmed — all OTP fuses intact) → save as `vanilla.json`
+2. **Scan an OTP-ed chip** (pulled from a working/locked board) → save as `otp_ed.json`
+3. **Diff the two dumps** — registers that differ are likely OTP-backed
+4. **Correlate** — the OTP bits that changed should explain the I2C address, device ID, etc.
+
+### CLI Usage
+
+```bash
+# Scan full OTP register space (0x00-0x7F)
+python -m cd3217_analyzer --otp-scan 0x38
+
+# Export scan to file
+python -m cd3217_analyzer --otp-scan 0x38 -o vanilla.json
+python -m cd3217_analyzer --otp-scan 0x20 -o otp_ed.json
+
+# Compare two dumps
+python -m cd3217_analyzer --otp-diff vanilla.json otp_ed.json
+
+# Import and view a saved dump
+python -m cd3217_analyzer --otp-import dump.json
+```
+
+### GUI Usage
+
+Go to the **OTP Scanner** tab:
+1. Enter the I2C address and click **Scan OTP**
+2. The full register dump appears in the left panel
+3. Click **Import Dump** to load a previously saved dump
+4. Click **Diff Two Dumps** to select two files and compare them
+5. Different registers (likely OTP-backed) are highlighted in red
+
+### What to Expect
+
+| Register Range | Likely Purpose |
+|----------------|---------------|
+| 0x00-0x0F | Identification (VID, DID, Mode) — may be OTP-backed |
+| 0x10-0x1F | Configuration registers — some OTP-backed |
+| 0x20-0x3F | PD capabilities — likely OTP-backed |
+| 0x40-0x6F | OTP/fuse region — highest density of OTP content |
+| 0x70-0x7F | Extended/Apple-specific registers |
+
+### Tips
+
+- **Use iCloud-locked boards** as donors — they're already bricked
+- **Label your dumps** — e.g., "A2442_UB300_vanilla" vs "A2442_UB300_otp"
+- **Compare same-position chips** across boards — OTP for UB300 should be identical across A2442 boards
+- **Power cycle after diff** — some OTP registers only take effect after reboot
+
 ## References
 
 - [TPS65982 Datasheet](https://www.ti.com/lit/ds/symlink/tps65982.pdf) - Public TI reference
