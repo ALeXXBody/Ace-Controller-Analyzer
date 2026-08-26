@@ -41,6 +41,8 @@ from .otp import (
     save_dump_json,
     scan_otp,
 )
+from .spi_adapter import SPIAdapter
+from .flash import SPIFlash, FlashError
 
 
 def create_adapter(args) -> I2CAdapter:
@@ -281,6 +283,124 @@ def cmd_otp_import(filepath: str) -> None:
     print(format_dump_table(dump, show_zeros=True))
 
 
+def cmd_flash(args) -> None:
+    """Handle flash commands (detect, read, write, erase, restore)."""
+    from .spi_adapter import SPIAdapter
+    from .flash import SPIFlash
+
+    try:
+        spi = SPIAdapter()
+        spi.open()
+        flash = SPIFlash(spi)
+    except Exception as e:
+        print(f"ERROR: Could not connect to SPI adapter: {e}")
+        print("Make sure FTDI FT232H is connected and pyftdi is installed.")
+        sys.exit(1)
+
+    try:
+        if args.flash_detect:
+            cmd_flash_detect(flash)
+        elif args.flash_read:
+            cmd_flash_read(flash, args.flash_read)
+        elif args.flash_write:
+            cmd_flash_write(flash, args.flash_write)
+        elif args.flash_erase:
+            cmd_flash_erase(flash)
+        elif args.flash_restore:
+            cmd_flash_restore(flash, args.flash_restore)
+    finally:
+        spi.close()
+
+
+def cmd_flash_detect(flash: SPIFlash) -> None:
+    """Detect and display SPI flash info."""
+    try:
+        info = flash.detect()
+        print(f"Flash detected: {info.name}")
+        print(f"  JEDEC ID:  0x{info.jedec_id[0]:02X} 0x{info.jedec_id[1]:02X} 0x{info.jedec_id[2]:02X}")
+        print(f"  Size:      {info.size_mb:.1f} MB ({info.size_bytes:,} bytes)")
+        print(f"  Sectors:   {info.sector_count} x 4KB")
+        print(f"  Pages:     {info.size_bytes // 256} x 256 bytes")
+    except Exception as e:
+        print(f"Detection failed: {e}")
+
+
+def cmd_flash_read(flash: SPIFlash, filepath: str) -> None:
+    """Read entire flash to file."""
+    info = flash.detect()
+    print(f"Reading {info.name} ({info.size_mb:.1f}MB)...")
+    print(f"Saving to: {filepath}")
+
+    def progress(cur, total):
+        pct = int(cur / total * 100) if total else 0
+        bar = "#" * (pct // 5) + "." * (20 - pct // 5)
+        print(f"\r  [{bar}] {pct:3d}% ({cur:,}/{total:,})", end="", flush=True)
+
+    try:
+        size = flash.dump_to_file(filepath, progress_cb=progress)
+        print(f"\nDone: {size:,} bytes saved to {filepath}")
+    except Exception as e:
+        print(f"\nRead error: {e}")
+
+
+def cmd_flash_write(flash: SPIFlash, filepath: str) -> None:
+    """Erase and write flash from file."""
+    from pathlib import Path
+
+    data = Path(filepath).read_bytes()
+    info = flash.detect()
+
+    if len(data) > info.size_bytes:
+        print(f"ERROR: File too large ({len(data):,} > {info.size_bytes:,} bytes)")
+        return
+
+    print(f"File: {filepath} ({len(data):,} bytes)")
+    print(f"Flash: {info.name} ({info.size_mb:.1f}MB)")
+
+    # Erase
+    print("Erasing chip...", end=" ", flush=True)
+    flash.erase_chip()
+    print("done")
+
+    # Write
+    print("Writing...", end=" ", flush=True)
+
+    def progress(cur, total):
+        pct = int(cur / total * 100) if total else 0
+        bar = "#" * (pct // 5) + "." * (20 - pct // 5)
+        print(f"\r  [{bar}] {pct:3d}%", end="", flush=True)
+
+    flash.write(0, data, progress_cb=progress)
+    print("\nWriting done")
+
+    # Verify
+    print("Verifying...", end=" ", flush=True)
+    readback = flash.read(0, len(data))
+    if readback == data:
+        print(f"OK — {len(data):,} bytes verified")
+    else:
+        for i in range(len(data)):
+            if readback[i] != data[i]:
+                print(f"\nVERIFY FAILED at 0x{i:06X}: expected 0x{data[i]:02X}, got 0x{readback[i]:02X}")
+                break
+
+
+def cmd_flash_erase(flash: SPIFlash) -> None:
+    """Erase entire flash chip."""
+    info = flash.detect()
+    print(f"Erasing {info.name} ({info.size_mb:.1f}MB)...", end=" ", flush=True)
+    flash.erase_chip()
+    print("done")
+
+
+def cmd_flash_restore(flash: SPIFlash, filepath: str) -> None:
+    """Erase + write + verify flash from file."""
+    print("Step 1: Erase")
+    cmd_flash_erase(flash)
+    print("\nStep 2: Write")
+    cmd_flash_write(flash, filepath)
+
+
 def cmd_interactive(analyzer: CD3217Analyzer) -> None:
     """Interactive mode with menu."""
     print("=" * 50)
@@ -413,6 +533,16 @@ Examples:
                        help="Export OTP dump from device at ADDR to FILE (.json or .otp.bin)")
     group.add_argument("--otp-import", metavar="FILE",
                        help="Import and display an OTP dump from FILE")
+    group.add_argument("--flash-detect", action="store_true",
+                       help="Detect SPI flash chip (requires FTDI FT232H)")
+    group.add_argument("--flash-read", metavar="FILE",
+                       help="Dump SPI flash contents to FILE.bin")
+    group.add_argument("--flash-write", metavar="FILE",
+                       help="Write FILE.bin to SPI flash (erases first)")
+    group.add_argument("--flash-erase", action="store_true",
+                       help="Erase entire SPI flash chip")
+    group.add_argument("--flash-restore", metavar="FILE",
+                       help="Erase + write + verify FILE.bin to SPI flash")
     group.add_argument("--interactive", "-i", action="store_true",
                        help="Interactive mode (default if no command given)")
 
@@ -506,6 +636,10 @@ Examples:
                 cmd_otp_export(analyzer, addr, args.otp_export[1])
             elif args.otp_import:
                 cmd_otp_import(args.otp_import)
+            elif args.flash_detect or args.flash_read or args.flash_write \
+                    or args.flash_erase or args.flash_restore:
+                # Flash commands use SPI adapter (no I2C adapter needed)
+                cmd_flash(args)
             else:
                 cmd_interactive(analyzer)
 

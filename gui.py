@@ -30,6 +30,8 @@ from cd3217_analyzer.otp import (
     OTPDump, diff_dumps, format_dump_table, load_dump_binary, load_dump_json,
     save_diff_report, scan_otp,
 )
+from cd3217_analyzer.spi_adapter import SPIAdapter
+from cd3217_analyzer.flash import SPIFlash, FlashInfo, FlashError
 
 
 # ─── Theme Colors ─────────────────────────────────────────────────────────────
@@ -66,6 +68,9 @@ class Application(ctk.CTk):
         self.current_model = None
         self.batch_results: List[DeviceResult] = []
         self.otp_current_dump: Optional[OTPDump] = None
+        self.spi_adapter: Optional[SPIAdapter] = None
+        self.flash: Optional[SPIFlash] = None
+        self.flash_info: Optional[FlashInfo] = None
 
         self._build_ui()
         self.after(500, self._auto_detect)
@@ -191,6 +196,7 @@ class Application(ctk.CTk):
         self.tab_straps = self.tabs.add("  Straps  ")
         self.tab_log = self.tabs.add("  Log  ")
         self.tab_otp = self.tabs.add("  OTP  ")
+        self.tab_flash = self.tabs.add("  Flash  ")
 
         self._build_overview_tab()
         self._build_register_tab()
@@ -198,6 +204,7 @@ class Application(ctk.CTk):
         self._build_strap_tab()
         self._build_log_tab()
         self._build_otp_tab()
+        self._build_flash_tab()
 
     # ─── Overview Tab ──────────────────────────────────────────────────────
 
@@ -947,6 +954,273 @@ class Application(ctk.CTk):
                 if self.current_model.positions:
                     addrs = [f"0x{p.address:02X}" for p in self.current_model.positions]
                     self.batch_addr_var.set(",".join(addrs))
+
+    # ─── Flash Manager ─────────────────────────────────────────────────────
+
+    def _build_flash_tab(self):
+        tab = self.tab_flash
+
+        ctk.CTkLabel(tab, text="SPI Flash Manager",
+                     font=("Segoe UI", 14, "bold"), text_color=C["accent"]).pack(
+            anchor="w", padx=16, pady=(12, 2))
+        ctk.CTkLabel(tab, text="Read/write external SPI flash (firmware ROM)\n"
+                     "Requires FTDI FT232H connected to flash chip SPI pins.",
+                     text_color=C["dim"]).pack(anchor="w", padx=16)
+
+        # Connection
+        conn = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=8)
+        conn.pack(fill="x", padx=16, pady=8)
+
+        ctk.CTkButton(conn, text="Connect SPI", width=100, fg_color=C["green"],
+                      text_color="#000", command=self._flash_connect).pack(side="left", padx=10, pady=8)
+        self.flash_conn_status = ctk.CTkLabel(conn, text="Disconnected", text_color=C["red"])
+        self.flash_conn_status.pack(side="left", padx=8)
+
+        # Flash info
+        info = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=8)
+        info.pack(fill="x", padx=16, pady=5)
+
+        ctk.CTkButton(info, text="Detect Chip", width=90, fg_color=C["btn"],
+                      command=self._flash_detect).pack(side="left", padx=10, pady=8)
+        ctk.CTkButton(info, text="Power Up", width=70, fg_color=C["btn"],
+                      command=self._flash_power_up).pack(side="left", padx=4)
+        ctk.CTkButton(info, text="Reset", width=60, fg_color=C["btn"],
+                      command=self._flash_reset).pack(side="left", padx=4)
+
+        self.flash_info_var = ctk.StringVar(value="No chip detected")
+        ctk.CTkLabel(info, textvariable=self.flash_info_var, text_color=C["text"],
+                     font=("Consolas", 11)).pack(side="left", padx=12)
+
+        # Actions
+        act = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=8)
+        act.pack(fill="x", padx=16, pady=5)
+
+        ctk.CTkButton(act, text="Read Flash", width=90, fg_color=C["green"],
+                      text_color="#000", command=self._flash_read).pack(side="left", padx=10, pady=8)
+        ctk.CTkButton(act, text="Write File", width=90, fg_color=C["red"],
+                      hover_color="#ff5a7a", command=self._flash_write).pack(side="left", padx=4)
+        ctk.CTkButton(act, text="Erase Chip", width=90, fg_color=C["red"],
+                      hover_color="#ff5a7a", command=self._flash_erase).pack(side="left", padx=4)
+        ctk.CTkButton(act, text="Restore", width=80, fg_color=C["orange"],
+                      command=self._flash_restore).pack(side="left", padx=4)
+
+        # Progress
+        self.flash_progress = ctk.CTkProgressBar(tab, fg_color=C["panel"],
+                                                   progress_color=C["accent"])
+        self.flash_progress.pack(fill="x", padx=16, pady=(0, 4))
+        self.flash_progress.set(0)
+
+        self.flash_status_var = ctk.StringVar(value="Ready")
+        ctk.CTkLabel(tab, textvariable=self.flash_status_var, text_color=C["dim"],
+                     font=("Segoe UI", 10)).pack(anchor="w", padx=16)
+
+        # Hex viewer
+        hv = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=8)
+        hv.pack(fill="both", expand=True, padx=16, pady=(5, 10))
+
+        ctk.CTkLabel(hv, text="Flash Contents (hex preview)", font=("Segoe UI", 11, "bold"),
+                     text_color=C["accent"]).pack(anchor="w", padx=10, pady=(6, 2))
+
+        self.flash_hex_text = ctk.CTkTextbox(hv, fg_color=C["entry"],
+                                              font=("Consolas", 10), state="disabled")
+        self.flash_hex_text.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+    def _flash_connect(self):
+        try:
+            self.spi_adapter = SPIAdapter()
+            self.spi_adapter.open()
+            self.flash = SPIFlash(self.spi_adapter)
+            self.flash_conn_status.configure(text="Connected", text_color=C["green"])
+            self.log("SPI flash connected", "ok")
+        except Exception as e:
+            self.log(f"SPI connect error: {e}", "err")
+            self.flash_conn_status.configure(text="Error", text_color=C["red"])
+
+    def _flash_detect(self):
+        if not self.flash:
+            self.log("Connect SPI first", "warn")
+            return
+        try:
+            info = self.flash.detect()
+            self.flash_info = info
+            self.flash_info_var.set(f"{info.name} — {info.size_mb:.1f}MB "
+                                    f"({info.sector_count} sectors) | "
+                                    f"ID: 0x{info.jedec_id[0]:02X}{info.jedec_id[1]:02X}{info.jedec_id[2]:02X}")
+            self.log(f"Flash detected: {info.name}", "ok")
+        except Exception as e:
+            self.log(f"Flash detect error: {e}", "err")
+            self.flash_info_var.set("Detection failed")
+
+    def _flash_power_up(self):
+        if not self.flash:
+            return
+        try:
+            self.flash.power_up()
+            self.log("Flash powered up", "ok")
+        except Exception as e:
+            self.log(f"Power up error: {e}", "err")
+
+    def _flash_reset(self):
+        if not self.flash:
+            return
+        try:
+            self.flash.reset()
+            self.log("Flash reset", "ok")
+        except Exception as e:
+            self.log(f"Reset error: {e}", "err")
+
+    def _flash_read(self):
+        if not self.flash:
+            self.log("Connect SPI first", "warn")
+            return
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".bin",
+            filetypes=[("Binary", "*.bin"), ("All", "*.*")],
+            title="Save Flash Dump")
+        if not filepath:
+            return
+
+        if not self.flash_info:
+            self._flash_detect()
+        if not self.flash_info or self.flash_info.size_bytes == 0:
+            self.log("Cannot read — unknown flash size", "err")
+            return
+
+        self.flash_status_var.set("Reading flash...")
+        self.flash_progress.set(0)
+
+        def do():
+            def progress(cur, total):
+                self.after(0, self.flash_progress.set, cur / total)
+            try:
+                size = self.flash.dump_to_file(filepath, progress_cb=progress)
+                self.after(0, self.flash_status_var.set, f"Read {size} bytes → {filepath}")
+                self.after(0, self.log, f"Flash dumped: {filepath} ({size} bytes)", "ok")
+                self.after(0, self._show_flash_hex, filepath, 256)
+            except Exception as e:
+                self.after(0, self.log, f"Flash read error: {e}", "err")
+        threading.Thread(target=do, daemon=True).start()
+
+    def _flash_write(self):
+        if not self.flash:
+            self.log("Connect SPI first", "warn")
+            return
+        filepath = filedialog.askopenfilename(
+            filetypes=[("Binary", "*.bin"), ("All", "*.*")],
+            title="Select firmware file to write")
+        if not filepath:
+            return
+
+        data = Path(filepath).read_bytes()
+        if self.flash_info and len(data) > self.flash_info.size_bytes:
+            self.log(f"File too large: {len(data)} bytes", "err")
+            return
+
+        confirm = messagebox.askyesno("Confirm Write",
+            f"ERASE and write {len(data)} bytes to flash?\n\n"
+            f"This will destroy existing contents.\nFile: {filepath}")
+        if not confirm:
+            return
+
+        self.flash_status_var.set("Writing flash...")
+        self.flash_progress.set(0)
+
+        def do():
+            def progress(cur, total):
+                self.after(0, self.flash_progress.set, cur / total)
+            try:
+                # Erase first
+                self.after(0, self.flash_status_var.set, "Erasing chip...")
+                self.flash.erase_chip()
+
+                # Write
+                self.after(0, self.flash_status_var.set, "Writing data...")
+                self.flash.write(0, data, progress_cb=progress)
+
+                # Verify
+                self.after(0, self.flash_status_var.set, "Verifying...")
+                readback = self.flash.read(0, len(data))
+                if readback == data:
+                    self.after(0, self.flash_status_var.set, f"Write complete — {len(data)} bytes verified")
+                    self.after(0, self.log, f"Flash write verified: {len(data)} bytes", "ok")
+                else:
+                    for i in range(len(data)):
+                        if readback[i] != data[i]:
+                            self.after(0, self.log, f"Verify mismatch at 0x{i:06X}", "err")
+                            break
+                    self.after(0, self.flash_status_var.set, "Write complete — VERIFY FAILED")
+            except Exception as e:
+                self.after(0, self.log, f"Flash write error: {e}", "err")
+        threading.Thread(target=do, daemon=True).start()
+
+    def _flash_erase(self):
+        if not self.flash:
+            self.log("Connect SPI first", "warn")
+            return
+        confirm = messagebox.askyesno("Confirm Erase",
+            "ERASE entire flash chip?\n\nThis will destroy all contents.")
+        if not confirm:
+            return
+
+        self.flash_status_var.set("Erasing chip...")
+        def do():
+            try:
+                self.flash.erase_chip()
+                self.after(0, self.flash_status_var.set, "Erase complete")
+                self.after(0, self.log, "Flash erased", "ok")
+            except Exception as e:
+                self.after(0, self.log, f"Erase error: {e}", "err")
+        threading.Thread(target=do, daemon=True).start()
+
+    def _flash_restore(self):
+        if not self.flash:
+            self.log("Connect SPI first", "warn")
+            return
+        filepath = filedialog.askopenfilename(
+            filetypes=[("Binary", "*.bin"), ("All", "*.*")],
+            title="Select firmware file to restore")
+        if not filepath:
+            return
+
+        confirm = messagebox.askyesno("Confirm Restore",
+            f"Erase and restore flash from:\n{filepath}\n\nContinue?")
+        if not confirm:
+            return
+
+        self.flash_status_var.set("Restoring flash...")
+        self.flash_progress.set(0)
+
+        def do():
+            def progress(phase, cur, total):
+                self.after(0, self.flash_progress.set, cur / total if total else 0)
+                self.after(0, self.flash_status_var.set, f"{phase}: {cur}/{total}")
+            try:
+                self.flash.full_restore(filepath, progress_cb=progress)
+                self.after(0, self.flash_status_var.set, "Restore complete — verified")
+                self.after(0, self.log, f"Flash restored: {filepath}", "ok")
+            except Exception as e:
+                self.after(0, self.log, f"Restore error: {e}", "err")
+        threading.Thread(target=do, daemon=True).start()
+
+    def _show_flash_hex(self, filepath, max_bytes=256):
+        """Show hex preview of flash dump."""
+        from pathlib import Path as P
+        try:
+            data = P(filepath).read_bytes()[:max_bytes]
+            lines = [f"{'Addr':<8} {'Hex':<48} {'ASCII'}"]
+            lines.append(f"{'-'*8} {'-'*48} {'-'*16}")
+            for i in range(0, len(data), 16):
+                chunk = data[i:i+16]
+                hex_part = " ".join(f"{b:02X}" for b in chunk)
+                ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
+                lines.append(f"0x{i:06X}  {hex_part:<48} {ascii_part}")
+
+            self.flash_hex_text.configure(state="normal")
+            self.flash_hex_text.delete("1.0", "end")
+            self.flash_hex_text.insert("end", "\n".join(lines))
+            self.flash_hex_text.configure(state="disabled")
+        except Exception:
+            pass
 
     # ─── OTP Scanner ───────────────────────────────────────────────────────
 

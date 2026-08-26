@@ -178,6 +178,75 @@ CD3217B12 Test Fixture:
 └── CNTL1 (B15) → Pull to 3.3V or GND for address config
 ```
 
+## SPI Flash (External ROM)
+
+The CD3217B12 loads firmware from an external SPI flash chip. This tool can read/write that flash via the same FTDI FT232H adapter.
+
+### Flash Chip Details
+
+| Board Position | Typical Flash | Size | Notes |
+|----------------|---------------|------|-------|
+| Near CD3217B12 | Winbond W25Q80 | 1MB | PD firmware + config |
+| Some boards | GD25Q80 / IS25LP080 | 1MB | Same pinout, compatible |
+
+### SPI Wiring (FTDI FT232H → Flash Chip)
+
+```
+FT232H ADBUS0 = SCK   → Flash CLK
+FT232H ADBUS1 = MOSI  → Flash DI (SI)
+FT232H ADBUS2 = MISO  → Flash DO (SO)
+FT232H ADBUS3 = CS#   → Flash CS#
+FT232H GND             → Flash GND
+FT232H 3.3V (if needed) → Flash VCC
+```
+
+### CLI Usage
+
+```bash
+# Detect flash chip
+python -m cd3217_analyzer --flash-detect
+
+# Dump flash to file
+python -m cd3217_analyzer --flash-read dump.bin
+
+# Write firmware to flash (erases first!)
+python -m cd3217_analyzer --flash-write firmware.bin
+
+# Erase entire flash
+python -m cd3217_analyzer --flash-erase
+
+# Full restore: erase + write + verify
+python -m cd3217_analyzer --flash-restore firmware.bin
+```
+
+### GUI Usage
+
+Go to the **Flash** tab:
+1. Click **Connect SPI** to open FTDI in SPI mode
+2. Click **Detect Chip** to identify the flash
+3. **Read Flash** — dump full contents to .bin file
+4. **Write File** — erase + write a firmware file
+5. **Erase Chip** — wipe the flash
+6. **Restore** — erase + write + verify
+
+### Workflow: Clone Firmware from Working Board
+
+```bash
+# 1. Connect FTDI to flash on WORKING board
+python -m cd3217_analyzer --flash-read good_board.bin
+
+# 2. Connect FTDI to flash on BROKEN/locked board
+python -m cd3217_analyzer --flash-restore good_board.bin
+```
+
+### Notes
+
+- **I2C and SPI cannot run simultaneously** on the same FT232H
+- Disconnect I2C before connecting SPI (close the app, rewire, reopen)
+- The flash chip is typically in SOIC-8 or WSON-8 package
+- Use a SOIC-8 test clip for in-circuit reading without desoldering
+- Reading is non-destructive — safe to dump from any board
+
 ## Known I2C Addresses
 
 | Address | Description |
