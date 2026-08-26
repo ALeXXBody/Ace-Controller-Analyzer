@@ -25,6 +25,13 @@ from cd3217_analyzer.registers import (
     decode_vid,
     is_ace2_address,
 )
+from cd3217_analyzer.models import (
+    MACBOOK_MODELS,
+    MacBookModel,
+    get_model,
+    list_models,
+    model_ids,
+)
 from cd3217_analyzer.analyzer import (
     CD3217Analyzer,
     DeviceResult,
@@ -86,6 +93,7 @@ class Application(tk.Tk):
         self.scan_results = []
         self.devices: Dict[int, DeviceResult] = {}
         self.selected_address = None
+        self.current_model: Optional[MacBookModel] = None
 
         # Configure styles
         self._setup_styles()
@@ -258,6 +266,20 @@ class Application(tk.Tk):
         # Title
         ttk.Label(top, text="CD3217B12 Analyzer", style="Title.TLabel").pack(
             side=tk.LEFT, padx=(0, 20))
+
+        # Model selector
+        model_frame = ttk.Frame(top)
+        model_frame.pack(side=tk.LEFT, padx=(0, 16))
+        ttk.Label(model_frame, text="Model:").pack(side=tk.LEFT, padx=(0, 4))
+        self.model_var = tk.StringVar(value="Auto-detect")
+        model_values = ["Auto-detect"] + [
+            f"{m.model_id} - {m.name}" for m in list_models()
+        ]
+        self.model_combo = ttk.Combobox(
+            model_frame, textvariable=self.model_var, width=38,
+            values=model_values, state="readonly")
+        self.model_combo.pack(side=tk.LEFT)
+        self.model_combo.bind("<<ComboboxSelected>>", self._on_model_change)
 
         # Connection controls
         conn_frame = ttk.Frame(top)
@@ -628,31 +650,28 @@ class Application(tk.Tk):
             self.strap_result_labels[key] = lbl
 
         # Common configs reference
-        ref = ttk.LabelFrame(tab, text="Common Addresses (A2442)")
-        ref.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
+        self.strap_ref_frame = ttk.LabelFrame(tab, text="Common Addresses")
+        self.strap_ref_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
 
-        ref_data = [
-            ("UF400 (UPC0)", "0x38", "0x38", "Vanilla"),
-            ("UF500 (UPC1)", "0x3F", "0x3F", "Vanilla"),
-            ("UG400 (UPC2)", "0x3B", "0x3B", "OTP"),
-            ("U5500 (UPC5)", "0x3A", "0x3A", "OTP"),
-        ]
+        self.strap_ref_tree = ttk.Treeview(
+            self.strap_ref_frame,
+            columns=("pos", "p1", "p2", "type", "port"),
+            show="headings", height=6)
+        self.strap_ref_tree.heading("pos", text="Position")
+        self.strap_ref_tree.heading("p1", text="Port 1")
+        self.strap_ref_tree.heading("p2", text="Port 2")
+        self.strap_ref_tree.heading("type", text="Type")
+        self.strap_ref_tree.heading("port", text="Port #")
+        self.strap_ref_tree.column("pos", width=140)
+        self.strap_ref_tree.column("p1", width=80)
+        self.strap_ref_tree.column("p2", width=80)
+        self.strap_ref_tree.column("type", width=80)
+        self.strap_ref_tree.column("port", width=60)
 
-        ref_tree = ttk.Treeview(ref, columns=("pos", "p1", "p2", "type"),
-                                 show="headings", height=5)
-        ref_tree.heading("pos", text="Position")
-        ref_tree.heading("p1", text="Port 1")
-        ref_tree.heading("p2", text="Port 2")
-        ref_tree.heading("type", text="Type")
-        ref_tree.column("pos", width=140)
-        ref_tree.column("p1", width=80)
-        ref_tree.column("p2", width=80)
-        ref_tree.column("type", width=80)
+        self.strap_ref_tree.pack(fill=tk.X, padx=4, pady=4)
 
-        for pos, p1, p2, typ in ref_data:
-            ref_tree.insert("", tk.END, values=(pos, p1, p2, typ))
-
-        ref_tree.pack(fill=tk.X, padx=4, pady=4)
+        # Populate with default data
+        self._update_strap_reference()
 
     def _build_log_tab(self):
         """Build the log tab."""
@@ -699,6 +718,57 @@ class Application(tk.Tk):
         self.status_right.pack(side=tk.RIGHT, padx=8)
 
     # ─── Logging ──────────────────────────────────────────────────────────
+
+    def _on_model_change(self, event=None):
+        """Handle model selector change."""
+        sel = self.model_var.get()
+        if sel == "Auto-detect":
+            self.current_model = None
+            self.log("Model: Auto-detect (generic scan)", "info")
+        else:
+            model_id = sel.split(" - ")[0].strip()
+            self.current_model = get_model(model_id)
+            if self.current_model:
+                self.log(f"Model: {self.current_model.name} ({self.current_model.board_id})",
+                         "info")
+                self._update_strap_reference()
+                self._update_batch_addresses()
+
+    def _update_strap_reference(self):
+        """Update the strap decoder reference table for the selected model."""
+        # Clear existing ref tree
+        for item in self.strap_ref_tree.get_children():
+            self.strap_ref_tree.delete(item)
+
+        if self.current_model:
+            title = f"Common Addresses ({self.current_model.model_id})"
+            for pos in self.current_model.positions:
+                p1 = f"0x{pos.address:02X}"
+                p2 = f"0x{pos.address:02X}"
+                tag = pos.addressing.capitalize()
+                self.strap_ref_tree.insert("", tk.END, values=(
+                    pos.ref, p1, p2, tag, f"Port {pos.i2c_port}"))
+        else:
+            title = "Common Addresses"
+            defaults = [
+                ("UF400 (UPC0)", "0x38", "0x38", "Vanilla", "1"),
+                ("UF500 (UPC1)", "0x3F", "0x3F", "Vanilla", "1"),
+                ("UB300 (UPC2)", "0x20", "0x20", "OTP", "1"),
+                ("UB400 (UPC3)", "0x74", "0x74", "OTP", "1"),
+                ("UF500 (UPC4)", "0x39", "0x39", "Strap", "2"),
+                ("UF600 (UPC5)", "0x10", "0x10", "Strap", "2"),
+            ]
+            for vals in defaults:
+                self.strap_ref_tree.insert("", tk.END, values=vals)
+
+        # Update label frame text
+        self.strap_ref_frame.configure(text=title)
+
+    def _update_batch_addresses(self):
+        """Update batch address field based on selected model."""
+        if self.current_model and self.current_model.positions:
+            addrs = [f"0x{p.address:02X}" for p in self.current_model.positions]
+            self.batch_addr_var.set(",".join(addrs))
 
     def log(self, msg: str, level: str = "info"):
         """Add a message to the log."""

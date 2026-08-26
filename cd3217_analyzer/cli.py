@@ -30,6 +30,7 @@ from .report import (
     save_csv_log,
     save_json_report,
 )
+from .models import get_model, list_models, model_ids
 
 
 def create_adapter(args) -> I2CAdapter:
@@ -275,6 +276,10 @@ Examples:
                         help="I2C bus number for smbus/ch341 (default: 1)")
     parser.add_argument("--addresses", default=None,
                         help="Comma-separated hex addresses to check (e.g., 0x38,0x3F)")
+    parser.add_argument("--model", "-m", default=None,
+                        help="MacBook model (e.g., A2442, A2337) for model-specific address map")
+    parser.add_argument("--list-models", action="store_true",
+                        help="List all supported MacBook models and exit")
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--scan", action="store_true",
@@ -298,6 +303,39 @@ Examples:
                         help="Output file (.json or .csv)")
 
     args = parser.parse_args()
+
+    # Handle --list-models
+    if args.list_models:
+        print("Supported MacBook Models:")
+        print(f"{'ID':<10} {'Name':<45} {'Chips':<6} {'Board ID'}")
+        print("-" * 85)
+        for m in list_models():
+            print(f"{m.model_id:<10} {m.name:<45} {m.chip_count:<6} {m.board_id}")
+        print()
+        print("Use --model <ID> to load a model's address map.")
+        sys.exit(0)
+
+    # Handle --model
+    model = None
+    if args.model:
+        model = get_model(args.model)
+        if model is None:
+            print(f"Unknown model: {args.model}")
+            print(f"Available models: {', '.join(model_ids())}")
+            sys.exit(1)
+        print(f"Model: {model.name} ({model.board_id})")
+        print(f"CD3217 positions:")
+        for pos in model.positions:
+            addr = f"0x{pos.address:02X}"
+            print(f"  {pos.ref:<10} {addr}  ({pos.addressing}, "
+                  f"Port {pos.i2c_port}, {pos.notes or 'no notes'})")
+        print()
+
+        # Auto-populate addresses from model if none provided
+        if not args.addresses:
+            args.addresses = ",".join(f"0x{p.address:02X}" for p in model.positions)
+            print(f"Using model addresses: {args.addresses}")
+            print()
 
     # Create adapter
     adapter = create_adapter(args)

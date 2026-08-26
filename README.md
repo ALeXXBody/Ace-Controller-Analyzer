@@ -201,21 +201,116 @@ CD3217B12 Test Fixture:
 
 ## MacBook Board Reference
 
-For **A2442** (2021 M1 Pro 14"):
+### 2-Port Models (M1 / M2 / Intel)
 
-| Position | Port 1 | Port 2 | Type |
-|----------|--------|--------|------|
-| UF400 (UPC0) | 0x38 | 0x38 | Vanilla |
-| UF500 (UPC1) | 0x3F | 0x3F | Vanilla |
-| UG400 (UPC2) | 0x3B | 0x3B | OTP |
-| U5500 (UPC5) | 0x3A | 0x3A | OTP |
+**A2337** — MacBook Air M1 (2020) — 820-02016
 
-For **A2337** (2020 M1):
+| Position | Address | Type | Port |
+|----------|---------|------|------|
+| UF400 | 0x70 | Vanilla (strap) | 2 |
+| UF500 | 0x7E | Vanilla (strap) | 2 |
 
-| Position | Port 1 | Port 2 | Type |
-|----------|--------|--------|------|
-| UF400 | 0x70 | - | Vanilla |
-| UF500 | 0x7E | - | Vanilla |
+**A2338** — MacBook Pro 13" M1 (2020) — 820-02020
+
+| Position | Address | Type | Port |
+|----------|---------|------|------|
+| UF400 | 0x38 | Vanilla (strap) | 2 |
+| UF500 | 0x3F | Vanilla (strap) | 2 |
+
+**A2179** — MacBook Air 13" i5 (2020, Intel) — 820-01996
+
+| Position | Address | Type | Port |
+|----------|---------|------|------|
+| UF400 | 0x70 | Vanilla (strap) | 2 |
+| UF500 | 0x7E | Vanilla (strap) | 2 |
+
+**A2289** — MacBook Pro 13" i5 (2020, Intel) — 820-01987
+
+| Position | Address | Type | Port |
+|----------|---------|------|------|
+| UF400 | 0x38 | Vanilla (strap) | 2 |
+| UF500 | 0x3F | Vanilla (strap) | 2 |
+
+**A2251** — MacBook Pro 13" i5 (2020, Intel, 4-port) — 820-01958
+
+| Position | Address | Type | Port |
+|----------|---------|------|------|
+| UF400 | 0x38 | Vanilla (strap) | 2 |
+| UF500 | 0x3F | Vanilla (strap) | 2 |
+
+### 4-Port Models (M1 Pro/Max)
+
+**A2442** — MacBook Pro 14" M1 Pro/Max (2021) — 820-02100
+
+| Position | Address | Type | Port | Notes |
+|----------|---------|------|------|-------|
+| UB300 | 0x20 | OTP | 1 | Debug/TBT |
+| UB400 | 0x74 | OTP | 1 | Debug/TBT |
+| UF500 | 0x39 | Strap (GND) | 2 | SMC |
+| UF600 | 0x10 | Strap (GND) | 2 | SMC |
+
+**A2485** — MacBook Pro 16" M1 Pro/Max (2021) — 820-02100 (same board)
+
+| Position | Address | Type | Port | Notes |
+|----------|---------|------|------|-------|
+| UB300 | 0x20 | OTP | 1 | Debug/TBT |
+| UB400 | 0x74 | OTP | 1 | Debug/TBT |
+| UF500 | 0x39 | Strap (GND) | 2 | SMC |
+| UF600 | 0x10 | Strap (GND) | 2 | SMC |
+
+### 4-Port Models (M2 Pro/Max)
+
+**A2779** — MacBook Pro 14" M2 Pro/Max (2023) — 820-02230
+
+| Position | Address | Type | Port | Notes |
+|----------|---------|------|------|-------|
+| UB300 | 0x20 | OTP | 1 | Debug/TBT |
+| UB400 | 0x74 | OTP | 1 | Debug/TBT |
+| UF500 | 0x39 | Strap (GND) | 2 | SMC |
+| UF600 | 0x10 | Strap (GND) | 2 | SMC |
+
+**A2780** — MacBook Pro 16" M2 Pro/Max (2023) — 820-02230
+
+| Position | Address | Type | Port | Notes |
+|----------|---------|------|------|-------|
+| UB300 | 0x20 | OTP | 1 | Debug/TBT |
+| UB400 | 0x74 | OTP | 1 | Debug/TBT |
+| UF500 | 0x39 | Strap (GND) | 2 | SMC |
+| UF600 | 0x10 | Strap (GND) | 2 | SMC |
+
+### T2 Models
+
+**A2141** — MacBook Pro 16" i9 (2019, T2) — 820-01997
+
+| Position | Address | Type | Notes |
+|----------|---------|------|-------|
+| UB300 | 0x50 | OTP | Port 1 — Left |
+| UB400 | 0x28 | OTP | Port 1 — Left |
+| UB700 | 0x3C | OTP | Port 2 — Right |
+| UB800 | 0x30 | OTP | Port 2 — Right |
+
+> All OTP — addresses burned at factory. Cannot use strap-only scan.
+
+**A2159** — MacBook Pro 13" i5 (2019, T2) — 820-01843
+
+| Position | Address | Type | Notes |
+|----------|---------|------|-------|
+| UB300 | 0x50 | OTP | Port 1 |
+| UB400 | 0x28 | OTP | Port 1 |
+
+### Using Model Selection
+
+**CLI:**
+```bash
+# List all supported models
+python -m cd3217_analyzer --list-models
+
+# Diagnose with model-specific addresses
+python -m cd3217_analyzer --model A2442 --scan
+python -m cd3217_analyzer --model A2337 --diagnose 0x70
+```
+
+**GUI:** Select your MacBook model from the dropdown in the top bar. The Strap Decoder reference table and Batch Test addresses will update automatically.
 
 ## References
 
