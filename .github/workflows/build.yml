@@ -26,10 +26,11 @@ jobs:
         run: >
           pyinstaller
           --name "CD3217B12_Analyzer"
-          --windowed
+          --onedir
           --noconfirm
           --clean
-          --hidden-import customtkinter
+          --collect-all customtkinter
+          --collect-all cd3217_analyzer
           --hidden-import cd3217_analyzer
           --hidden-import cd3217_analyzer.registers
           --hidden-import cd3217_analyzer.analyzer
@@ -45,19 +46,18 @@ jobs:
       - name: Create portable package
         shell: pwsh
         run: |
-          Get-ChildItem -Recurse -Filter "*.exe" | Select-Object FullName
-          mkdir CD3217B12_Portable
-          Copy-Item dist\CD3217B12_Analyzer.exe CD3217B12_Portable\ -ErrorAction SilentlyContinue
-          if (-not (Test-Path CD3217B12_Portable\CD3217B12_Analyzer.exe)) {
-            $exe = Get-ChildItem -Recurse -Filter "CD3217B12_Analyzer.exe" | Select-Object -First 1
-            if ($exe) { Copy-Item $exe.FullName CD3217B12_Portable\ }
-          }
-          if (-not (Test-Path CD3217B12_Portable\CD3217B12_Analyzer.exe)) {
-            Write-Error "EXE not found after build"
+          $exeDir = "dist\CD3217B12_Analyzer"
+          if (-not (Test-Path $exeDir)) {
+            Write-Error "Build output not found at $exeDir"
             exit 1
           }
-          Set-Content -Path CD3217B12_Portable\Run.bat -Value "@echo off`r`ncd /d `"%~dp0`"`r`nstart CD3217B12_Analyzer.exe" -Encoding ASCII
-          Compress-Archive -Path CD3217B12_Portable -DestinationPath CD3217B12_Portable.zip -Force
+          $portable = "CD3217B12_Portable"
+          if (Test-Path $portable) { Remove-Item $portable -Recurse -Force }
+          Copy-Item $exeDir $portable -Recurse
+          Set-Content -Path "$portable\Run.bat" -Value "@echo off`r`ncd /d `"%~dp0`"`r`nstart CD3217B12_Analyzer.exe" -Encoding ASCII
+          Compress-Archive -Path $portable -DestinationPath CD3217B12_Portable.zip -Force
+          $zipSize = (Get-Item CD3217B12_Portable.zip).Length / 1MB
+          Write-Host "Package created: $([math]::Round($zipSize,1)) MB"
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
