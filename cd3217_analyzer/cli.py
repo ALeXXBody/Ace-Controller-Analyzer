@@ -190,7 +190,6 @@ def cmd_batch(analyzer: CD3217Analyzer, count: int = 1,
 def cmd_otp_scan(analyzer: CD3217Analyzer, address: int,
                  output: Optional[str] = None) -> None:
     """Full OTP register scan of a CD3217B12 chip."""
-    from .otp import scan_otp, format_dump_table, save_dump_json, save_dump_binary
 
     print(f"Scanning OTP registers at 0x{address:02X} (0x00-0x7F)...")
     print("This reads 32 x 4-byte chunks. May take a few seconds.\n")
@@ -220,7 +219,6 @@ def cmd_otp_scan(analyzer: CD3217Analyzer, address: int,
 def cmd_otp_diff(file_a: str, file_b: str,
                  output: Optional[str] = None) -> None:
     """Compare two OTP dumps to find OTP-backed registers."""
-    from .otp import load_dump_binary, load_dump_json, save_diff_report
 
     # Load dumps (try JSON first, then binary)
     dump_a = load_dump_json(file_a) or load_dump_binary(file_a)
@@ -247,7 +245,6 @@ def cmd_otp_diff(file_a: str, file_b: str,
 def cmd_otp_export(analyzer: CD3217Analyzer, address: int,
                    filepath: str) -> None:
     """Export OTP dump to file."""
-    from .otp import scan_otp, save_dump_json, save_dump_binary
 
     print(f"Scanning OTP at 0x{address:02X}...")
 
@@ -271,7 +268,6 @@ def cmd_otp_export(analyzer: CD3217Analyzer, address: int,
 
 def cmd_otp_import(filepath: str) -> None:
     """Import and display an OTP dump."""
-    from .otp import load_dump_binary, load_dump_json, format_dump_table
 
     dump = load_dump_json(filepath) or load_dump_binary(filepath)
 

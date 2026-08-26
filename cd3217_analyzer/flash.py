@@ -171,7 +171,13 @@ class SPIFlash:
     def read(self, address: int, length: int) -> bytes:
         """Read data from flash at given address."""
         addr_bytes = struct.pack(">I", address & 0xFFFFFF)[1:]  # 3-byte address
-        return self._cmd(CMD_READ_DATA, addr_bytes + b"\x00" * length)[1:]
+        # Send [CMD_READ_DATA, addr2, addr1, addr0] then clock out length bytes
+        # exchange() sends cmd+addr+zeros, receives garbage+data
+        resp = self.spi.transfer(
+            bytes([CMD_READ_DATA]) + addr_bytes + b"\x00" * length
+        )
+        # First 4 bytes are command+address (received as garbage), data follows
+        return resp[4:4 + length]
 
     def read_all(self, progress_cb: Callable = None) -> bytes:
         """Read entire flash contents."""
@@ -285,7 +291,7 @@ class SPIFlash:
 
     def full_restore(self, filepath: str,
                      progress_cb: Callable = None) -> None:
-        """Erase chip and write firmware from file."""
+        """Erase chip and write firmware from file, with verify."""
         data = Path(filepath).read_bytes()
         if not self.info:
             self.detect()
@@ -302,18 +308,14 @@ class SPIFlash:
         self.erase_chip()
         phase("erase", 1, 1)
 
-        # Write
-        self.write(0, data, lambda cur, total: phase("write", cur, total))
+        # Write with verify
+        success, err_addr = self.write_verify(0, data,
+            lambda cur, total: phase("write", cur, total))
 
-        # Verify
-        readback = self.read(0, len(data))
-        if readback != data:
-            # Find first bad byte
-            for i in range(len(data)):
-                if readback[i] != data[i]:
-                    raise FlashError(f"Verify failed at 0x{i:06X}: "
-                                     f"expected 0x{data[i]:02X}, got 0x{readback[i]:02X}")
-            raise FlashError("Verify failed (unknown error)")
+        if not success:
+            raise FlashError(f"Verify failed at 0x{err_addr:06X}: "
+                             f"expected 0x{data[err_addr]:02X}, got "
+                             f"0x{self.read(err_addr, 1)[0]:02X}")
 
     def dump_to_file(self, filepath: str,
                      progress_cb: Callable = None) -> int:

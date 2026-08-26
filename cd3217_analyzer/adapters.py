@@ -91,8 +91,6 @@ class FTDIAdapter(I2CAdapter):
         from pyftdi.i2c import I2cController
         self._i2c = I2cController()
         self._i2c.configure(self.url)
-        # Set clock frequency
-        self._i2c._queue.clear()
 
     def close(self) -> None:
         if self._i2c:
@@ -273,8 +271,8 @@ def detect_adapter() -> Optional[I2CAdapter]:
         from pyftdi.i2c import I2cController
         adapter = FTDIAdapter()
         adapter.open()
-        # Quick test
-        adapter.scan(0x00, 0x01)
+        # Quick test — scan valid range
+        adapter.scan(0x08, 0x77)
         return adapter
     except Exception:
         pass

@@ -871,8 +871,10 @@ class Application(ctk.CTk):
             self.after(0, lambda: self.batch_start_btn.configure(state="normal"))
             total_r = len(self.batch_results)
             passed = sum(1 for r in self.batch_results if r.health == HealthStatus.PASS)
+            warned = sum(1 for r in self.batch_results if r.health == HealthStatus.WARN)
+            failed = sum(1 for r in self.batch_results if r.health == HealthStatus.FAIL)
             self.after(0, self.batch_status_var.set,
-                       f"Done: {total_r} tests | {passed} pass | {total_r - passed} fail")
+                       f"Done: {total_r} tests | {passed} pass | {warned} warn | {failed} fail")
         threading.Thread(target=do, daemon=True).start()
 
     def _add_batch_row(self, iteration, addr, health, score, mode, faults, time_ms):
@@ -1191,9 +1193,9 @@ class Application(ctk.CTk):
         self.flash_progress.set(0)
 
         def do():
-            def progress(phase, cur, total):
+            def progress(cur, total):
                 self.after(0, self.flash_progress.set, cur / total if total else 0)
-                self.after(0, self.flash_status_var.set, f"{phase}: {cur}/{total}")
+                self.after(0, self.flash_status_var.set, f"{cur}/{total}")
             try:
                 self.flash.full_restore(filepath, progress_cb=progress)
                 self.after(0, self.flash_status_var.set, "Restore complete — verified")

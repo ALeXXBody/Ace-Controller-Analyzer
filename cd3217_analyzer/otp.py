@@ -316,7 +316,7 @@ def format_dump_table(dump: OTPDump, show_zeros: bool = False) -> str:
         val = int.from_bytes(raw, "little")
 
         reg_def = REGISTERS.get(offset)
-        name = reg_def.name if reg_def else f"未知 (0x{offset:02X})"
+        name = reg_def.name if reg_def else f"REG_0x{offset:02X}"
 
         if not show_zeros and val == 0 and not reg_def:
             continue
