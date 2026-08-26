@@ -1,41 +1,49 @@
 @echo off
-REM CD3217B12 (Apple ACE2) I2C Diagnostic Analyzer - Windows Launcher
-REM Double-click this file to start the GUI
+title CD3217B12 Analyzer
+color 0B
 
-cd /d "%~dp0"
+echo.
+echo  ========================================
+echo   CD3217B12 (Apple ACE2) I2C Analyzer
+echo  ========================================
+echo.
 
-REM Check Python is available
+REM === Check Python ===
 python --version >nul 2>&1
 if errorlevel 1 (
+    echo  [!] Python not found.
     echo.
-    echo ERROR: Python not found!
+    echo  Python 3.8+ is required to run this application.
+    echo  Download from: https://www.python.org/downloads/
     echo.
-    echo Install Python 3.8+ from https://www.python.org/downloads/
-    echo Make sure to check "Add Python to PATH" during installation.
+    echo  IMPORTANT: Check "Add Python to PATH" during installation!
+    echo.
+    echo  After installing Python, run this script again.
     echo.
     pause
     exit /b 1
 )
 
-REM Check/install dependencies
-echo Checking dependencies...
-pip install customtkinter smbus2 >nul 2>&1
-
-REM Check for FTDI (optional)
-pip show pyftdi >nul 2>&1
-if errorlevel 1 (
+REM === Check/install dependencies (only once) ===
+if not exist ".deps_installed" (
+    echo  [*] First run - installing dependencies...
     echo.
-    echo NOTE: pyftdi not installed (needed for FTDI FT232H adapters)
-    echo To install: pip install pyftdi
+    pip install customtkinter smbus2 --quiet --disable-pip-version-check
+    if errorlevel 1 (
+        echo  [!] Failed to install dependencies.
+        echo  Try running: pip install customtkinter smbus2
+        pause
+        exit /b 1
+    )
+    echo. > .deps_installed
+    echo  [+] Dependencies installed successfully!
     echo.
 )
 
-REM Launch GUI
-echo Starting CD3217B12 Analyzer...
-python gui.py
-
+REM === Launch GUI ===
+echo  Starting CD3217B12 Analyzer...
+echo.
+pythonw gui.py 2>nul
 if errorlevel 1 (
-    echo.
-    echo Application exited with an error.
-    pause
+    python gui.py 2>nul
 )

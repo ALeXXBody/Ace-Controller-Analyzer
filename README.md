@@ -37,33 +37,23 @@ A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery co
 
 ## Installation
 
-### Windows (GUI)
+### Option 1: Download the .exe (easiest)
 
-1. Install Python 3.8+ from https://www.python.org/downloads/
-   - **Important:** Check "Add Python to PATH" during installation
-2. Download/clone this project
-3. Double-click `CD3217_Analyzer.bat` to launch the GUI
-   - Or run: `python gui.py`
+1. Go to **[Releases](https://github.com/ALeXXBody/cd3217-analyzer/releases)** and download `CD3217B12_Portable.zip`
+2. Unzip anywhere
+3. Double-click `Run.bat` — done. No Python needed.
 
-### Build Standalone .exe
+### Option 2: Run from source (first time only)
 
-```bash
-pip install pyinstaller customtkinter
-pyinstaller CD3217_Analyzer.spec --clean --noconfirm
-# Or: build.bat (Windows)
-# Output: dist/CD3217B12_Analyzer.exe
-```
+1. Install **Python 3.8+** from https://www.python.org/downloads/
+   - **CHECK THE BOX "Add Python to PATH"** (very important!)
+2. Download this repo
+3. Double-click **`setup.bat`** — installs everything + creates Desktop shortcut
+4. From then on, just double-click the Desktop shortcut
 
-The .exe is self-contained — no Python installation needed on the target machine.
+### Option 3: Build the .exe yourself
 
-### Command Line
-
-```bash
-cd cd3217-analyzer
-pip install -e .
-# Or with FTDI support:
-pip install -e ".[ftdi]"
-```
+Double-click `build.bat`. Takes ~1 minute. Output goes to `CD3217B12_Portable/` folder.
 
 ## GUI Usage
 

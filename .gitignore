@@ -1,11 +1,21 @@
-# Include this file in any build
-*.pyc
+# Byte-compiled
 __pycache__/
-*.egg-info/
-dist/
+*.py[cod]
+
+# Build artifacts
 build/
+dist/
+*.spec.bak
+*.egg-info/
 .eggs/
-*.egg
-.venv/
-venv/
-.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deps marker
+.deps_installed
