@@ -43,6 +43,8 @@ from .otp import (
 )
 from .spi_adapter import SPIAdapter
 from .flash import SPIFlash, FlashError
+from .utils import parse_address_list, parse_hex_address
+from . import __version__
 
 
 def create_adapter(args) -> I2CAdapter:
@@ -76,14 +78,7 @@ def create_adapter(args) -> I2CAdapter:
 
 def parse_addresses(addr_str: str) -> List[int]:
     """Parse comma-separated hex addresses."""
-    addrs = []
-    for part in addr_str.split(","):
-        part = part.strip()
-        if part.startswith("0x"):
-            addrs.append(int(part, 16))
-        else:
-            addrs.append(int(part))
-    return addrs
+    return parse_address_list(addr_str)
 
 
 def cmd_scan(analyzer: CD3217Analyzer) -> None:
@@ -472,7 +467,7 @@ def cmd_interactive(analyzer: CD3217Analyzer) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="CD3217B12 (Apple ACE2) I2C Diagnostic Analyzer",
+        description=f"CD3217B12 (Apple ACE2) I2C Diagnostic Analyzer v{__version__}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -546,6 +541,7 @@ Examples:
                         help="Number of iterations for batch mode (default: 3)")
     parser.add_argument("-o", "--output", default=None,
                         help="Output file (.json or .csv)")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     args = parser.parse_args()
 
@@ -582,10 +578,41 @@ Examples:
             print(f"Using model addresses: {args.addresses}")
             print()
 
-    # Create adapter
+    # Commands that do not need an I2C adapter
+    if args.flash_detect or args.flash_read or args.flash_write \
+            or args.flash_erase or args.flash_restore:
+        try:
+            cmd_flash(args)
+        except KeyboardInterrupt:
+            print("\nAborted.")
+        except Exception as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        return
+
+    if args.strap:
+        from .registers import decode_i2c_address_straps
+        a1 = parse_hex_address(args.strap[0])
+        a2 = parse_hex_address(args.strap[1])
+        info = decode_i2c_address_straps(a1, a2)
+        print(f"Port 1 address: {info['port1_addr']}")
+        print(f"Port 2 address: {info['port2_addr']}")
+        print(f"ADDR bits: {info['addr_bits']} -> {info['addr_resistor']}")
+        print(f"CNTL1: {info['cntl1']} -> {info['cntl1_source']}")
+        print(f"CNTL2: {info['cntl2']} -> {info['cntl2_source']}")
+        return
+
+    if args.otp_diff:
+        cmd_otp_diff(args.otp_diff[0], args.otp_diff[1], args.output)
+        return
+
+    if args.otp_import:
+        cmd_otp_import(args.otp_import)
+        return
+
+    # Create I2C adapter for remaining commands
     adapter = create_adapter(args)
 
-    # Parse custom addresses if provided
     addresses = None
     if args.addresses:
         addresses = parse_addresses(args.addresses)
@@ -597,45 +624,21 @@ Examples:
             if args.scan:
                 cmd_scan(analyzer)
             elif args.diagnose:
-                addr = int(args.diagnose, 16) if args.diagnose.startswith("0x") \
-                    else int(args.diagnose)
-                cmd_diagnose(analyzer, addr)
+                cmd_diagnose(analyzer, parse_hex_address(args.diagnose))
             elif args.dump:
-                addr = int(args.dump, 16) if args.dump.startswith("0x") \
-                    else int(args.dump)
-                cmd_register_dump(analyzer, addr)
+                cmd_register_dump(analyzer, parse_hex_address(args.dump))
             elif args.full:
                 cmd_full_report(analyzer, args.output)
             elif args.batch:
                 cmd_batch(analyzer, count=args.count, output=args.output)
-            elif args.strap:
-                from .registers import decode_i2c_address_straps
-                a1 = int(args.strap[0], 16) if args.strap[0].startswith("0x") \
-                    else int(args.strap[0])
-                a2 = int(args.strap[1], 16) if args.strap[1].startswith("0x") \
-                    else int(args.strap[1])
-                info = decode_i2c_address_straps(a1, a2)
-                print(f"Port 1 address: {info['port1_addr']}")
-                print(f"Port 2 address: {info['port2_addr']}")
-                print(f"ADDR bits: {info['addr_bits']} -> {info['addr_resistor']}")
-                print(f"CNTL1: {info['cntl1']} -> {info['cntl1_source']}")
-                print(f"CNTL2: {info['cntl2']} -> {info['cntl2_source']}")
             elif args.otp_scan:
-                addr = int(args.otp_scan, 16) if args.otp_scan.startswith("0x") \
-                    else int(args.otp_scan)
-                cmd_otp_scan(analyzer, addr, args.output)
-            elif args.otp_diff:
-                cmd_otp_diff(args.otp_diff[0], args.otp_diff[1], args.output)
+                cmd_otp_scan(analyzer, parse_hex_address(args.otp_scan), args.output)
             elif args.otp_export:
-                addr = int(args.otp_export[0], 16) if args.otp_export[0].startswith("0x") \
-                    else int(args.otp_export[0])
-                cmd_otp_export(analyzer, addr, args.otp_export[1])
-            elif args.otp_import:
-                cmd_otp_import(args.otp_import)
-            elif args.flash_detect or args.flash_read or args.flash_write \
-                    or args.flash_erase or args.flash_restore:
-                # Flash commands use SPI adapter (no I2C adapter needed)
-                cmd_flash(args)
+                cmd_otp_export(
+                    analyzer,
+                    parse_hex_address(args.otp_export[0]),
+                    args.otp_export[1],
+                )
             else:
                 cmd_interactive(analyzer)
 

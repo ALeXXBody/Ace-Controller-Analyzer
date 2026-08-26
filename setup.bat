@@ -37,11 +37,11 @@ python --version
 echo.
 
 echo  [2/3] Installing packages...
-pip install customtkinter smbus2 --quiet --disable-pip-version-check
+pip install -r requirements.txt --quiet --disable-pip-version-check
 if errorlevel 1 (
     echo  [!] Package installation failed.
     echo  Try running as Administrator, or:
-    echo      pip install customtkinter smbus2
+    echo      pip install -r requirements.txt
     pause
     exit /b 1
 )

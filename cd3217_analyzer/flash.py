@@ -291,31 +291,45 @@ class SPIFlash:
 
     def full_restore(self, filepath: str,
                      progress_cb: Callable = None) -> None:
-        """Erase chip and write firmware from file, with verify."""
+        """Erase chip and write firmware from file, with verify.
+
+        progress_cb is called as progress_cb(current, total).
+        """
         data = Path(filepath).read_bytes()
         if not self.info:
             self.detect()
 
+        if self.info.size_bytes == 0:
+            raise FlashError("Unknown flash size — cannot restore")
+
         if len(data) > self.info.size_bytes:
             raise FlashError(f"File too large: {len(data)} > {self.info.size_bytes}")
 
-        def phase(phase_name, cur, total):
+        def report(cur: int, total: int) -> None:
             if progress_cb:
-                progress_cb(phase_name, cur, total)
+                progress_cb(cur, total)
 
-        # Erase
-        phase("erase", 0, 1)
+        # Erase (0-10%)
+        report(0, 100)
         self.erase_chip()
-        phase("erase", 1, 1)
+        report(10, 100)
 
-        # Write with verify
-        success, err_addr = self.write_verify(0, data,
-            lambda cur, total: phase("write", cur, total))
+        # Write (10-90%)
+        def write_progress(cur, total):
+            if total:
+                report(10 + int(cur / total * 80), 100)
+
+        success, err_addr = self.write_verify(0, data, progress_cb=write_progress)
+        report(100, 100)
 
         if not success:
-            raise FlashError(f"Verify failed at 0x{err_addr:06X}: "
-                             f"expected 0x{data[err_addr]:02X}, got "
-                             f"0x{self.read(err_addr, 1)[0]:02X}")
+            bad = self.read(err_addr, 1)
+            got = bad[0] if bad else 0xFF
+            expected = data[err_addr] if 0 <= err_addr < len(data) else 0xFF
+            raise FlashError(
+                f"Verify failed at 0x{err_addr:06X}: "
+                f"expected 0x{expected:02X}, got 0x{got:02X}"
+            )
 
     def dump_to_file(self, filepath: str,
                      progress_cb: Callable = None) -> int:

@@ -28,10 +28,10 @@ REM === Check/install dependencies (only once) ===
 if not exist ".deps_installed" (
     echo  [*] First run - installing dependencies...
     echo.
-    pip install customtkinter smbus2 --quiet --disable-pip-version-check
+    pip install customtkinter smbus2 pyftdi --quiet --disable-pip-version-check
     if errorlevel 1 (
         echo  [!] Failed to install dependencies.
-        echo  Try running: pip install customtkinter smbus2
+        echo  Try running: pip install -r requirements.txt
         pause
         exit /b 1
     )

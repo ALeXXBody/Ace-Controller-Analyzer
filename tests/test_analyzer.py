@@ -25,7 +25,7 @@ class TestRegisters(unittest.TestCase):
         self.assertTrue(is_ace2_address(0x3F))
         self.assertTrue(is_ace2_address(0x3B))
         self.assertTrue(is_ace2_address(0x6B))
-        self.assertFalse(is_ace2_address(0x50))
+        self.assertTrue(is_ace2_address(0x50))  # A2141 map
         self.assertFalse(is_ace2_address(0x00))
 
     def test_decode_mode_reg_app(self):

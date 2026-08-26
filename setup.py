@@ -2,16 +2,19 @@ from setuptools import setup, find_packages
 
 setup(
     name="cd3217-analyzer",
-    version="1.0.0",
+    version="0.2.0",
     description="I2C Diagnostic Analyzer for CD3217B12 (Apple ACE2) USB-C PD Controllers",
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[
+        "customtkinter>=5.2.0",
         "smbus2>=0.4.0",
     ],
     extras_require={
         "ftdi": ["pyftdi>=0.54.0"],
+        "gui": ["customtkinter>=5.2.0"],
         "dev": ["pytest>=7.0", "pytest-cov>=4.0"],
+        "build": ["pyinstaller>=6.0"],
     },
     entry_points={
         "console_scripts": [
