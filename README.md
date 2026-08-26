@@ -30,8 +30,10 @@ A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery co
 
 ### Software
 - Python 3.8+
+- `pip install customtkinter` (modern dark-themed GUI)
 - `pip install smbus2` (for CH341/SMBus adapters)
 - `pip install pyftdi` (for FTDI FT232H)
+- `pip install pyinstaller` (optional, to build .exe)
 
 ## Installation
 
@@ -42,6 +44,17 @@ A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery co
 2. Download/clone this project
 3. Double-click `CD3217_Analyzer.bat` to launch the GUI
    - Or run: `python gui.py`
+
+### Build Standalone .exe
+
+```bash
+pip install pyinstaller customtkinter
+pyinstaller CD3217_Analyzer.spec --clean --noconfirm
+# Or: build.bat (Windows)
+# Output: dist/CD3217B12_Analyzer.exe
+```
+
+The .exe is self-contained — no Python installation needed on the target machine.
 
 ### Command Line
 

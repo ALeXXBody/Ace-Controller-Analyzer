@@ -1,9 +1,9 @@
 # Core dependencies
+customtkinter>=5.2.0
 smbus2>=0.4.0
 
 # Optional: FTDI FT232H support
 # pyftdi>=0.54.0
 
-# Optional: For development
-# pytest>=7.0
-# pytest-cov>=4.0
+# Optional: Build .exe
+# pyinstaller>=6.0

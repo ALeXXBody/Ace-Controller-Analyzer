@@ -19,7 +19,7 @@ if errorlevel 1 (
 
 REM Check/install dependencies
 echo Checking dependencies...
-pip install smbus2 >nul 2>&1
+pip install customtkinter smbus2 >nul 2>&1
 
 REM Check for FTDI (optional)
 pip show pyftdi >nul 2>&1
