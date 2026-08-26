@@ -374,6 +374,12 @@ Go to the **OTP Scanner** tab:
 - [Asahi Linux ACE Wiki](https://leo3418.github.io/asahi-wiki-build/hwusb-pd/) - Reverse engineering
 - [t8012dev ACE Part 1](https://blog.t8012.dev/ace-part-1/) - Technical deep dive
 
+## Support
+
+If this tool helps you with board repair, consider buying me a coffee:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/alexxbody)
+
 ## License
 
 MIT
