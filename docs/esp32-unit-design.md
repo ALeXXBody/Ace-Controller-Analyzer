@@ -1,15 +1,20 @@
-# CD3217-Analyzer: ESP32 Standalone Unit — Design & Roadmap
+# CD3217-Analyzer: ESP32 / RP2040 Standalone Unit — Design & Roadmap
 
-> Status: **Milestone 1 spike DONE** (firmware compiles; no hardware flash yet)
+> Status: **Milestone 1 spike DONE** (firmware compiles on 9 boards; no hardware
+> flash yet)
 > Session date: 2026-08-27
 >
 > **M1 spike results (28 Aug 2026):**
-> - `firmware_esp32/` builds with **Arduino** framework on **ESP32-S3, C3, and
->   classic ESP32** (verified via `pio run`).
+> - `firmware_esp32/` builds with **Arduino** on the **ESP32** family
+>   (**S3, C3, classic**) *and* the **Pico/RP2040/RP2350** family
+>   (**RP2040-Zero, Pico 1, Pico 2, Pico W, Pico 2 W**) — verified via `pio run`.
+> - **Web UI** runs on the WiFi boards: ESP32 S3/C3/classic + **Pico W, Pico 2 W**.
+> - **Wired boards** (RP2040-Zero, Pico 1, Pico 2) have no WiFi → they serve as
+>   the USB-I2C bridge in M2 (all RP2040/RP2350 have native USB).
+> - The web UI uses the built-in sync `WebServer.h`, so no external web lib is
+>   needed across ESP32 + Pico — this removed all cross-arch lib friction.
 > - **ESP32-C6 does NOT build with Arduino** in espressif32 7.0.1 →
->   "This board doesn't support arduino framework!". C6 needs **ESP-IDF**
->   (as VoiceSentry's C6 firmware already uses) or a newer platform.
->   Tracked as a known limitation — C6 stays a secondary target.
+>   needs ESP-IDF. Tracked as a known limitation — C6 stays a secondary target.
 > - Firmware: WiFi SoftAP `cd3217-analyzer` + mDNS `cd3217.local` + web UI
 >   (`/`) + `/api/scan` (real I2C scan 0x08–0x77) + `/api/health`.
 
@@ -20,34 +25,49 @@
 Turn the GUI/FTDI app into a **two-halves** system:
 
 1. **Existing Windows app** (`gui.py`, `cd3217_analyzer/*`) — the full-featured analysis tool.
-2. **NEW: ESP32 standalone unit** — a pocket I2C bench tool that:
-   - hosts its own **Wi-Fi web UI** (phone/laptop), no PC needed,
+2. **NEW: ESP32 / RP2040 standalone unit** — a pocket I2C bench tool that:
+   - hosts its own **Wi-Fi web UI** (phone/laptop), no PC needed *(WiFi boards)*,
    - **reads and writes OTP** on CD3217B12 (ACE2) chips via I2C,
    - keeps a **large-flash OTP library on-board** (survives power loss),
    - is **flashed/updated and its OTP library synced by the Windows app** over USB.
 
-The Windows app gains a **4th hardware backend** (ESP32-as-USB-I2C-bridge) that
-implements the *same* `I2CAdapter` interface, so all existing scan/diagnose/
-analyze code runs against it with **zero changes** to the logic layer.
+The Windows app gains a **4th hardware backend** (board-as-USB-I2C-bridge, any
+ESP32 or Pico via native/ROM USB) that implements the *same* `I2CAdapter`
+interface, so all existing scan/diagnose/analyze code runs against it with
+**zero changes** to the logic layer.
 
 ---
 
 ## 2. Board Selection (target "all boards that can take it")
 
-Goal: one firmware that runs across common ESP32 variants, and degrades
-gracefully on smaller boards.
+Goal: one firmware that runs across common **ESP32** and **RP2040/RP2350**
+boards, degrading gracefully on smaller ones. Same Arduino core + `main.cpp`;
+only the pins and (for WiFi) the connectivity differ per env.
 
-| Board | Flash | USB-native | I2C | Arduino build (M1) | Verdict |
-|-------|-------|-----------|-----|--------------------|---------|
-| **ESP32-S3** 16/32MB | 16–32MB | ✅ | HW (2×) | ✅ compiles | **⭐ primary target** |
-| ESP32-C6 | 4MB | ✅ | HW (1×) | ❌ needs IDF/newer platform | Secondary — see below |
-| ESP32-C3 | 4MB | ✅ | HW | ✅ compiles | Supported |
-| ESP32 (classic) | 4MB | ❌(w/ USB-UART) | HW | ✅ compiles | Supported |
+| Board | Core | Flash | WiFi | Arduino build (M1) | Verdict |
+|-------|------|-------|------|--------------------|-----|
+| **ESP32-S3** 16/32MB | Xtensa | 16–32MB | ✅ | ✅ compiles | **⭐ primary (web UI)** |
+| ESP32-C3 | RISC-V | 4MB | ✅ | ✅ compiles | Supported (web UI) |
+| ESP32 (classic) | Xtensa | 4MB | ✅ | ✅ compiles | Supported (web UI) |
+| ESP32-C6 | RISC-V | 4MB | ✅ | ❌ needs IDF | Secondary — see below |
+| **RP2040-Zero** (Waveshare) | ARM M0+ | 2MB | ❌ | ✅ compiles | Supported (USB bridge M2) |
+| **Pico 1** (RP2040) | ARM M0+ | 2MB | ❌ | ✅ compiles | Supported (USB bridge M2) |
+| **Pico 2** (RP2350) | ARM M33 | 4MB | ❌ | ✅ compiles | Supported (USB bridge M2) |
+| **Pico W** (RP2040) | ARM M0+ | 2MB | ✅ CYW43439 | ✅ compiles | Supported (web UI) |
+| **Pico 2 W** (RP2350) | ARM M33 | 4MB | ✅ CYW43439 | ✅ compiles | Supported (web UI) |
 
-**"Can take it" = has hardware I2C + ≥4MB flash + WiFi.** S3/C3/classic all build
-with the shared Arduino firmware today. **C6** needs an espidf port or an
-espressif32 platform bump; it was kept in `platformio.ini` but is not an
-Arduino build target yet.
+**Split by capability:**
+
+- **WiFi boards** (ESP32-S3/C3/classic, Pico W, Pico 2 W) → full embedded
+  **web UI** (M1).
+- **Wired boards** (RP2040-Zero, Pico 1, Pico 2) → no WiFi; they shine as the
+  **USB-I2C bridge** in M2 (native USB on every RP2040/RP2350 board).
+- **ESP32-C6** needs an espidf port or an espressif32 platform bump; it stays
+  in `platformio.ini` but is not an Arduino build target yet.
+
+All verified to compile (`pio run`) in the M1 spike. The main.cpp uses the
+built-in sync `WebServer.h` (present on ESP32 and Pico cores), so no external
+web-server lib is needed — eliminating cross-arch lib friction.
 
 **"Extra space for OTP"** = a dedicated MTD/partition (`otpstore`) carved from
 flash. Sizes:
@@ -104,11 +124,20 @@ protocol (same commands, two carriers).
 
 ## 4. Firmware design (Arduino / PlatformIO)
 
-Chosen toolchain: **PlatformIO + arduino-esp32** (installed
-`framework-arduinoespressif32`). The M1 spike builds on S3/C3/classic with a
-single source tree; per-board envs differ only by GPIOs + partitions.
-**C6** is the one board that needs ESP-IDF here (no Arduino support in
-espressif32 7.0.1), so it stays a secondary target.
+Chosen toolchain: **PlatformIO + Arduino**, spanning two platforms in one
+`platformio.ini`:
+
+- `espressif32` (installed) — ESP32-S3/C3/classic/C6
+- `maxgerhardt/platform-raspberrypi` — Pico family (RP2040/RP2350), custom
+  `boards/waveshare_rp2040_zero.json` for the RP2040-Zero
+
+One `main.cpp` builds for both cores; `#ifdef ARDUINO_ARCH_RP2040` handles the
+only API difference (I2C pin setup via `Wire.setSDA/setSCL`). The web UI uses
+the **built-in sync `WebServer.h`** (present on ESP32 + Pico), so no external
+web lib is required. Per-board envs differ only by GPIOs, platform, and
+`-DCD3217_HAS_WIFI` (WiFi boards) vs none (wired boards, which get the USB
+bridge in M2). **ESP32-C6** still needs ESP-IDF here (no Arduino in
+espressif32 7.0.1).
 
 ### 4.1 Modules
 
@@ -162,38 +191,42 @@ FTDI rig.
 
 ## 5. Windows app integration (the part reusing existing code)
 
-Add one backend file `cd3217_analyzer/esp32_adapter.py` implementing the
-existing `I2CAdapter` ABC (`adapters.py:15`):
+Add one backend file `cd3217_analyzer/usb_bridge_adapter.py` implementing the
+existing `I2CAdapter` ABC (`adapters.py:15`). It talks the framed CDC protocol
+to any board (ESP32 or Pico — both present as a serial port):
 
 ```python
-class ESP32Adapter(I2CAdapter):
+class UsbBridgeAdapter(I2CAdapter):
     def __init__(self, port="COM3", baud=115200): ...
     open/close/scan/read_bytes/write_bytes/...
 ```
 
 Because the ABC is already the seam, **GUI and CLI logic need no changes** —
-the user just picks "ESP32 (USB)" as the adapter in the GUI instead of "FTDI".
+the user just picks "Board (USB bridge)" as the adapter in the GUI instead of
+"FTDI".
 
 ### 5.1 New Windows features (incremental)
 
-1. **ESP32 Connect tab** — pick COM port, open bridge, test with a scan.
-2. **Flash ESP32 for first time** — from the Windows app: download latest
-   firmware binary, hold boot button, and flash via `esptool` (bundled). This is
-   the "flash the board for the first time in using it as i2c tool" requirement.
-3. **Sync OTP library** — pull dumps from the ESP's `otpstore` and/or push the
-   user's GitHub-collected known-good dumps onto the board.
-4. **Update firmware (OTA)** — upload new `.bin` over WiFi via web UI.
+1. **Board Connect tab** — pick COM port, open bridge, test with a scan.
+2. **Flash the board for the first time** — from the Windows app: download the
+   latest firmware binary and flash it. ESP32 → `esptool` (bundled); Pico →
+   drop-in UF2 (it's just a USB drive). This is the "flash the board for the
+   first time in using it as i2c tool" requirement.
+3. **Sync OTP library** — pull dumps from the board's `otpstore` and/or push
+   the user's GitHub-collected known-good dumps onto the board.
+4. **Update firmware (OTA)** — upload new `.bin` over WiFi via web UI (WiFi
+   boards) or over USB.
 
 ### 5.2 GitHub OTP library sync (the "sync to github" requirement)
 
-The ESP32 **does not** push to GitHub itself (no creds). Instead:
+The board **does not** push to GitHub itself (no creds). Instead:
 
-- ESP32 = **capture** + **local library**.
+- Board = **capture** + **local library**.
 - User hits "Export to GitHub repo" in the Windows app (already has `gh` /
   repo context) → pushes dumps as files into a `otp-library/<chip>/<serial>/`
   tree in **this repo** or a dedicated `cd3217-otp-library` repo.
-- Windows app can also **pull** the repo library back onto any ESP32
-  (`STORE_PUT`), turning a board into a curated known-good OTP pack.
+- Windows app can also **pull** the repo library back onto any board
+  (`STORE_PUT`), turning it into a curated known-good OTP pack.
 
 ---
 
@@ -212,8 +245,8 @@ The ESP32 **does not** push to GitHub itself (no creds). Instead:
 
 | # | Milestone | Deliverable | Out of scope / gate |
 |---|-----------|-------------|---------------------|
-| 1 | **Firmware skeleton** | ✅ **DONE (28 Aug)** — WiFi AP, mDNS, web UI, on-device I2C scan; builds on S3/C3/classic | C6 needs IDF |
-| 2 | **USB bridge** | CDC protocol; `ESP32Adapter` in Windows app; full scan/read/write from GUI over USB | OTP write still gated |
+| 1 | **Firmware skeleton** | ✅ **DONE (28 Aug)** — WiFi AP, mDNS, web UI, on-device I2C scan; builds on **9 boards**: ESP32 S3/C3/classic (web UI) + RP2040-Zero/Pico1/2/W/2W | C6 needs IDF |
+| 2 | **USB bridge** | CDC protocol; `Adapter` in Windows app (ESP32 + Pico); full scan/read/write from GUI over USB | OTP write still gated |
 | 3 | **OTP store** | `otpstore` part, read/write OTP on-device + via web UI, JSON index, library browser | — |
 | 4 | **Windows admin** | Connect tab, **flash-for-first-time**, OTP library export to GitHub | — |
 | 5 | **Multi-board** | C6 via IDF or platform bump, fallback 4MB partition tables, level-shift notes | — |
@@ -221,15 +254,19 @@ The ESP32 **does not** push to GitHub itself (no creds). Instead:
 | 7 | **Polish** | 3.3/5V tolerance notes, enclosure ref, README, docs | Release |
 
 ### M1 spike — done
-`firmware_esp32/` (Arduino) on **ESP32-S3** (primary): WiFi SoftAP
-`cd3217-analyzer` + mDNS `cd3217.local`, web UI at `/` with a "Scan I2C bus"
-button hitting `/api/scan` (real hardware scan 0x08–0x77, marks known ACE2
-addresses), plus `/api/health`. Builds: `pio run -e esp32s3`.
+`firmware_esp32/` (Arduino) on **ESP32-S3** (primary) + the full Pico family:
+WiFi SoftAP `cd3217-analyzer` + mDNS `cd3217.local`, web UI at `/` with a
+"Scan I2C bus" button hitting `/api/scan` (real hardware scan 0x08–0x77, marks
+known ACE2 addresses), plus `/api/health`.
+- **Web UI**: ESP32-S3/C3/classic, Pico W, Pico 2 W
+- **Wired (I2C + serial, USB bridge in M2)**: RP2040-Zero, Pico 1, Pico 2
+- Builds: `pio run -e <env>`, e.g. `esp32s3`, `rp2040_zero`, `pico_w`.
 
 ### Immediate next step (Milestone 2 — USB bridge)
-Add the USB CDC framed-protocol (section 4.2) to the firmware and the
-`ESP32Adapter` in the Windows app so the existing GUI/CLI drives the scan
-over USB with no analyzer-logic changes.
+Add the USB CDC framed-protocol (section 4.2) to the firmware and an
+`Adapter` in the Windows app so the existing GUI/CLI drives the scan
+over USB on **any** of these boards (ESP32 or Pico, both have native/ROM USB)
+with no analyzer-logic changes.
 
 ---
 
@@ -238,8 +275,8 @@ over USB with no analyzer-logic changes.
 1. **Wi-Fi mode**: SoftAP (ESP creates its own network, works anywhere) vs STA
    (joins `192.168.50.0/24`, reachable from LAN) vs both. Proposal: **both**,
    STA-first with SoftAP fallback. *Likely go this route, confirm later.*
-2. **USB transport**: ROM CDC (native on S3/C6) — recommended — vs legacy
-   USB-UART for classic ESP32. 
+2. **USB transport**: ROM CDC native USB (S3/C6, all Pico/RP2040) — recommended
+   — vs legacy USB-UART for classic ESP32.
 3. **Gating OTP writes**: hard-confirm only, or also a physical jumper
    (`IO0`) that must be pulled to enable destructive writes?
 4. **GitHub library location**: same repo (`otp-library/`) vs separate
@@ -256,12 +293,14 @@ you say otherwise. Q5 is a hardware fact only you can confirm from the bench.
 
 ```
 firmware_esp32/            NEW * — PlatformIO firmware (Arduino)
-  src/main.cpp              * M1: WiFi AP + mDNS + web UI + I2C scan
+  src/main.cpp              * M1: WiFi AP + mDNS + web UI + I2C scan (multi-arch)
   src/i2c_master, proto, usb_bridge, webui, otpstore, wifi_mgr  (M2+)
-  platformio.ini           * envs: esp32s3 (primary), c3, classic; c6 planned/IDF
+  platformio.ini           * 9 envs: esp32s3/c3/classic + rp2040_zero/pico/pico_w/pico2/pico2w
+                           *      (esp32c6 flagged: needs IDF)
+  boards/waveshare_rp2040_zero.json * RP2040-Zero custom board def
   partitions.csv           * app0 + otpstore (spiffs) + coredump
-cd3217_analyzer/esp32_adapter.py   NEW  — I2CAdapter backend (M2)
-gui.py                     EDIT — ESP32 connect/flash/sync UI (M4)
+cd3217_analyzer/*_adapter.py   NEW — I2CAdapter backend (USB bridge, M2)
+gui.py                     EDIT — USB connect/flash/sync UI (M4)
 pyproject / requirements   EDIT — add esptool, pyserial (M4)
 .github/workflows/build.yml EDIT — build firmware on tag (M6)
 ```
