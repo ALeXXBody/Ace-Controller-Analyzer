@@ -801,6 +801,15 @@ class Application(ctk.CTk):
                     self.log(f"USB bridge on {port} did not respond to PING. "
                              "Is the board running CD3217 firmware?", "err")
                     return
+                # Log which firmware the board is actually running so a wrong
+                # flash (e.g. pico2 firmware on a Pico 1) is obvious.
+                try:
+                    b = adapter.info()
+                    if b and b.get("board"):
+                        self.log(f"Board firmware: {b['board']} "
+                                 f"(SDA={b.get('sda')} SCL={b.get('scl')})", "ok")
+                except Exception:
+                    pass
             else:
                 return
 
