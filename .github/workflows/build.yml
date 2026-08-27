@@ -1,4 +1,4 @@
-name: Build Windows .exe
+name: Build Windows .exe + ESP32 firmware
 
 on:
   push:
@@ -64,4 +64,42 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: CD3217B12_Portable.zip
+          generate_release_notes: true
+
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware (all boards)
+        working-directory: firmware_esp32
+        run: |
+          pio run -e esp32s3 -e esp32c3 -e esp32 \
+                  -e rp2040_zero -e pico -e pico_w -e pico2 -e pico2w
+
+      - name: Collect artifacts
+        working-directory: firmware_esp32
+        run: |
+          mkdir -p dist
+          for e in esp32s3 esp32c3 esp32 rp2040_zero pico pico_w pico2 pico2w; do
+            cp ".pio/build/$e/firmware.bin" "dist/cd3217_$e.bin"
+          done
+          for e in rp2040_zero pico pico_w pico2 pico2w; do
+            cp ".pio/build/$e/firmware.uf2" "dist/cd3217_$e.uf2"
+          done
+          ls -la dist
+
+      - name: Upload firmware to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: firmware_esp32/dist/*
           generate_release_notes: true
