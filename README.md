@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="https://buymeacoffee.com/ALeXXBody" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
+</p>
+
 # CD3217B12 (Apple ACE2) I2C Diagnostic Analyzer
 
 A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery controllers used in MacBook repair. The tool communicates over I2C to read device registers, validate chip health, and identify faults.
