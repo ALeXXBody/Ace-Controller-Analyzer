@@ -18,7 +18,7 @@ if errorlevel 1 (
 
 REM === Check/install build tools ===
 echo  [1/4] Installing build tools...
-pip install pyinstaller customtkinter smbus2 --quiet --disable-pip-version-check 2>nul
+pip install pyinstaller customtkinter smbus2 pyserial --quiet --disable-pip-version-check 2>nul
 
 REM === Clean previous builds ===
 echo  [2/4] Cleaning previous builds...
@@ -43,7 +43,12 @@ pyinstaller ^
     --hidden-import cd3217_analyzer.otp ^
     --hidden-import cd3217_analyzer.spi_adapter ^
     --hidden-import cd3217_analyzer.flash ^
+    --hidden-import cd3217_analyzer.flash_board ^
+    --hidden-import cd3217_analyzer.usb_bridge ^
     --hidden-import cd3217_analyzer.cli ^
+    --hidden-import serial ^
+    --hidden-import serial.tools ^
+    --hidden-import serial.tools.list_ports ^
     gui.py
 
 if errorlevel 1 (

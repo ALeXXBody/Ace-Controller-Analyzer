@@ -20,7 +20,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install pyinstaller customtkinter smbus2
+        run: pip install pyinstaller customtkinter smbus2 pyserial
 
       - name: Build .exe
         run: >
@@ -40,7 +40,12 @@ jobs:
           --hidden-import cd3217_analyzer.otp
           --hidden-import cd3217_analyzer.spi_adapter
           --hidden-import cd3217_analyzer.flash
+          --hidden-import cd3217_analyzer.flash_board
+          --hidden-import cd3217_analyzer.usb_bridge
           --hidden-import cd3217_analyzer.cli
+          --hidden-import serial
+          --hidden-import serial.tools
+          --hidden-import serial.tools.list_ports
           gui.py
 
       - name: Create portable package
