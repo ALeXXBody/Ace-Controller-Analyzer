@@ -118,14 +118,10 @@ class UsbBridgeAdapter(I2CAdapter):
 
     # ---- I2CAdapter interface ----------------------------------------------
     def scan(self, start: int = 0x08, end: int = 0x77) -> List[int]:
+        # Firmware SCAN response payload is the list of found addresses
+        # (the count is transmitted as the frame's plen, already stripped).
         resp = self._transact(CMD_SCAN)
-        if not resp:
-            return []
-        n = resp[0]
-        found = []
-        for i in range(min(n, len(resp) - 1)):
-            found.append(resp[i + 1])
-        return found
+        return list(resp)
 
     def read_byte(self, address: int, register: int) -> int:
         payload = bytes([address, register, 1])

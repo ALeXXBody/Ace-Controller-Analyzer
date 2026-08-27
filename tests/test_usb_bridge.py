@@ -96,7 +96,7 @@ class TestUsbBridgeAdapter(unittest.TestCase):
         self.assertTrue(adapter.handshake())
 
     def test_scan(self):
-        adapter, fake = self.make_adapter([make_response(CMD_SCAN, bytes([2, 0x38, 0x3F]))])
+        adapter, fake = self.make_adapter([make_response(CMD_SCAN, bytes([0x38, 0x3F]))])
         found = adapter.scan()
         self.assertEqual(found, [0x38, 0x3F])
 
