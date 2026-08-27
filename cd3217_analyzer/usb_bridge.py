@@ -73,30 +73,44 @@ class UsbBridgeAdapter(I2CAdapter):
         return bytes([MAGIC, cmd, len(payload) & 0xFF]) + payload + bytes([ck])
 
     def _transact(self, cmd: int, payload: bytes = b"", retries: int = 2) -> bytes:
-        """Send a frame and read the matching response payload (without status)."""
+        """Send a frame and read the matching response payload (without status).
+
+        Reads bytes one at a time and rescans forward past any stray bytes
+        (e.g. the boot banner) until it finds a complete valid frame whose
+        cmd matches. The resync loop always makes progress.
+        """
         self._require_open()
         frame = self._frame(cmd, payload)
         for attempt in range(retries + 1):
             self._ser.reset_input_buffer()
             self._ser.write(frame)
-            # response: [MAGIC][cmd][plen][payload...][cksum]
-            # read until we have a full valid frame (or timeout).
-            data = bytearray()
+
+            buf = bytearray()
             timeout_end = time.time() + self.timeout
             while time.time() < timeout_end:
-                if self._ser.in_waiting:
-                    data += self._ser.read(self._ser.in_waiting)
-                    if len(data) >= 3:
-                        plen = data[2]
-                        total = 3 + plen + 1
-                        if len(data) >= total:
-                            body = bytes(data[1:total])
-                            if body[0] == cmd:
-                                resp = bytes(data[3:3 + plen])
-                                if _verify_ck(body, plen):
-                                    return resp
-                            # wrong cmd or bad cksum -> resync by dropping a byte
-                            data.pop(0)
+                b = self._ser.read(1)
+                if not b:
+                    continue
+                buf.append(b[0])
+                # scan forward for a [MAGIC][cmd][plen][payload][ck] frame
+                i = 0
+                while len(buf) - i >= 4:
+                    if buf[i] != MAGIC:
+                        i += 1
+                        continue
+                    body = bytes(buf[i + 1:])          # [cmd][plen][payload][ck]
+                    if len(body) >= 2:
+                        plen = body[1]
+                        total = 2 + plen + 1
+                        if len(body) >= total:
+                            frame = body[:total]
+                            if frame[0] == cmd and _verify_ck(frame, plen):
+                                return bytes(frame[2:2 + plen])
+                            i += 1  # not our target — keep scanning
+                            continue
+                    break  # need more bytes for this candidate
+                if i:
+                    del buf[:i]
             if attempt < retries:
                 continue
             raise IOError(f"Bridge no response for cmd 0x{cmd:02X}")

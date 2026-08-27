@@ -36,6 +36,7 @@ class UsbBridge {
  private:
   uint8_t buf_[BRIDGE_MAX_FRAME];
   size_t  len_ = 0;
+  size_t  frame_len_ = 0;   // length of the last fully-received frame
   bool    got_magic_ = false;
 
   bool readByte_(uint8_t &b);

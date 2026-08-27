@@ -81,6 +81,20 @@ class TestUsbBridgeAdapter(unittest.TestCase):
         self.assertEqual(frame[0], MAGIC)
         self.assertEqual(frame[1], CMD_PING)
 
+    def test_resync_past_boot_banner(self):
+        # Board boots, prints a text banner, THEN responds to PING. The host
+        # must scan past the stray ASCII bytes and still find the frame.
+        banner = b"[boot] CD3217-Analyzer M1 spike, board=pico\n"
+        resp = banner + make_response(CMD_PING, b"\x51")
+        adapter, fake = self.make_adapter([resp])
+        self.assertTrue(adapter.handshake())
+
+    def test_ping_wrong_cmd_ignored(self):
+        # A frame for a different cmd must not satisfy the PING.
+        resp = make_response(CMD_INFO, b"\x04pico\x04\x05") + make_response(CMD_PING, b"\x51")
+        adapter, fake = self.make_adapter([resp])
+        self.assertTrue(adapter.handshake())
+
     def test_scan(self):
         adapter, fake = self.make_adapter([make_response(CMD_SCAN, bytes([2, 0x38, 0x3F]))])
         found = adapter.scan()

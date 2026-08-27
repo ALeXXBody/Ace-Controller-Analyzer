@@ -43,6 +43,7 @@ bool UsbBridge::readFrame_() {
       uint8_t ck = buf_[1] ^ buf_[2];
       for (size_t i = 0; i < plen; i++) ck ^= buf_[3 + i];
       if (ck == buf_[total - 1]) {
+        frame_len_ = total;      // saved before len_ is cleared
         got_magic_ = false;
         len_ = 0;
         return true;
@@ -161,7 +162,7 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
 
 void UsbBridge::poll() {
   if (readFrame_()) {
-    handleFrame_(buf_, len_);
+    handleFrame_(buf_, frame_len_);
     // readFrame_ already reset len_/got_magic_ on success.
   }
 }
