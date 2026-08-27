@@ -44,13 +44,20 @@ A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery co
 
 ## Installation
 
-### Option 1: Download the .exe (easiest)
+### Option 1: Download the installer (easiest)
 
-1. Go to **[Releases](https://github.com/ALeXXBody/cd3217-analyzer/releases)** and download `CD3217B12_Portable.zip`
-2. Unzip anywhere
-3. Double-click `Run.bat` — done. No Python needed.
+1. Go to **[Releases](https://github.com/ALeXXBody/cd3217-analyzer/releases)** and download `CD3217B12_Analyzer_Setup.exe`
+2. Run it — installs to your user Programs folder (no admin prompt), adds a
+   Start Menu entry and optional Desktop shortcut, and registers an uninstaller.
+3. Launch **CD3217B12 Analyzer** from the Start Menu. No Python needed.
 
-### Option 2: Run from source (first time only)
+### Option 2: Portable (no install)
+
+1. Download `CD3217B12_Portable.zip` from **[Releases](https://github.com/ALeXXBody/cd3217-analyzer/releases)**
+2. Unzip anywhere and run `CD3217B12_Analyzer.exe` directly — no console
+   window, no install, leaves nothing on the machine.
+
+### Option 3: Run from source (first time only)
 
 1. Install **Python 3.8+** from https://www.python.org/downloads/
    - **CHECK THE BOX "Add Python to PATH"** (very important!)
@@ -58,9 +65,12 @@ A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery co
 3. Double-click **`setup.bat`** — installs everything + creates Desktop shortcut
 4. From then on, just double-click the Desktop shortcut
 
-### Option 3: Build the .exe yourself
+### Option 4: Build the .exe yourself
 
-Double-click `build.bat`. Takes ~1 minute. Output goes to `CD3217B12_Portable/` folder.
+Double-click `build.bat`. Takes ~1 minute. Output goes to `dist\CD3217B12_Analyzer\`
+(windowed, no console) plus `CD3217B12_Portable.zip`. With
+[Inno Setup 6](https://jrsoftware.org/isinfo.php) installed you can also
+compile the proper installer: `ISCC.exe installer.iss`.
 
 ## GUI Usage
 

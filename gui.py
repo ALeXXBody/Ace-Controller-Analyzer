@@ -12,6 +12,13 @@ from typing import Callable, Dict, List, Optional
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
+# Windowed (console-less) PyInstaller builds have sys.stdout/stderr = None;
+# any stray print() would then crash the app. Route them to devnull.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
@@ -55,6 +62,12 @@ from cd3217_analyzer.utils import (
 )
 
 
+def resource_path(rel: str) -> str:
+    """Locate a bundled asset in dev mode and inside a PyInstaller exe."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, rel)
+
+
 class Application(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -62,6 +75,7 @@ class Application(ctk.CTk):
         self.geometry("1360x900")
         self.minsize(1024, 720)
         self.configure(fg_color=C["bg"])
+        self._set_window_icon()
 
         self.adapter = None
         self.connected = False
@@ -80,6 +94,26 @@ class Application(ctk.CTk):
 
         self._build_ui()
         self.after(400, self._auto_detect)
+
+    def _set_window_icon(self):
+        """Set the taskbar / title-bar icon (skip silently if unavailable)."""
+        try:
+            from tkinter import PhotoImage
+            icon = resource_path(os.path.join("assets", "icon.png"))
+            if os.path.exists(icon):
+                self._icon_img = PhotoImage(file=icon)  # keep a reference
+                self.iconphoto(False, self._icon_img)
+            # Windows: show a proper icon (not the python.exe icon) in the
+            # taskbar for windowed PyInstaller builds.
+            if sys.platform.startswith("win"):
+                try:
+                    import ctypes
+                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                        f"cd3217.analyzer.{__version__}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     # ─── UI ────────────────────────────────────────────────────────────────
 
@@ -1680,6 +1714,18 @@ class Application(ctk.CTk):
 
 
 def main():
+    # High-DPI: mark the process DPI-aware so Windows doesn't bitmap-scale the
+    # UI (crisp text on 125%/150% displays). Must run before the Tk window is
+    # created; CustomTkinter then picks up the system scaling factor itself.
+    if sys.platform.startswith("win"):
+        try:
+            from ctypes import windll
+            try:
+                windll.user32.SetProcessDpiAwarenessContext(-4)  # per-monitor v2
+            except Exception:
+                windll.shcore.SetProcessDpiAwareness(1)           # system aware
+        except Exception:
+            pass
     app = Application()
     app.mainloop()
 

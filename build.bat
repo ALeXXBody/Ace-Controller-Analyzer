@@ -4,7 +4,7 @@ color 0A
 
 echo.
 echo  ========================================
-echo   Build Standalone .exe
+echo   Build Standalone .exe (windowed, no console)
 echo  ========================================
 echo.
 
@@ -25,15 +25,19 @@ echo  [2/4] Cleaning previous builds...
 if exist dist rmdir /s /q dist
 if exist build rmdir /s /q build
 
-REM === Build .exe ===
+REM === Build .exe (windowed + icon; no console shadow) ===
 echo  [3/4] Building .exe (this may take 1-2 minutes)...
 echo.
 pyinstaller ^
     --name "CD3217B12_Analyzer" ^
+    --onedir ^
     --windowed ^
+    --icon assets\icon.ico ^
+    --add-data "assets;assets" ^
     --noconfirm ^
     --clean ^
-    --hidden-import customtkinter ^
+    --collect-all customtkinter ^
+    --collect-all cd3217_analyzer ^
     --hidden-import cd3217_analyzer ^
     --hidden-import cd3217_analyzer.registers ^
     --hidden-import cd3217_analyzer.analyzer ^
@@ -58,30 +62,20 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM === Create portable folder ===
+REM === Create portable zip (no Run.bat — the exe is launched directly) ===
 echo  [4/4] Creating portable package...
-if exist "CD3217B12_Portable" rmdir /s /q "CD3217B12_Portable"
-mkdir "CD3217B12_Portable"
-copy dist\CD3217B12_Analyzer.exe "CD3217B12_Portable\" >nul
-
-REM Create launcher for portable folder
-(
-echo @echo off
-echo title CD3217B12 Analyzer
-echo cd /d "%%~dp0"
-echo start CD3217B12_Analyzer.exe
-echo) > "CD3217B12_Portable\Run.bat"
+powershell -NoProfile -Command "Compress-Archive -Path 'dist\CD3217B12_Analyzer' -DestinationPath 'CD3217B12_Portable.zip' -Force"
 
 echo.
 echo  ========================================
 echo   BUILD COMPLETE!
 echo  ========================================
 echo.
-echo  Output: CD3217B12_Portable\
-echo    - CD3217B12_Analyzer.exe   (standalone, no Python needed)
-echo    - Run.bat                  (double-click launcher)
+echo  Output:
+echo    dist\CD3217B12_Analyzer\CD3217B12_Analyzer.exe   (run directly)
+echo    CD3217B12_Portable.zip                           (portable package)
 echo.
-echo  You can copy the CD3217B12_Portable folder
-echo  to any Windows machine and run it directly.
+echo  Optional installer (requires Inno Setup 6):
+echo    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 echo.
 pause

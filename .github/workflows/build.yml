@@ -27,8 +27,11 @@ jobs:
           pyinstaller
           --name "CD3217B12_Analyzer"
           --onedir
+          --windowed
           --noconfirm
           --clean
+          --icon assets/icon.ico
+          --add-data "assets;assets"
           --collect-all customtkinter
           --collect-all cd3217_analyzer
           --hidden-import cd3217_analyzer
@@ -56,19 +59,36 @@ jobs:
             Write-Error "Build output not found at $exeDir"
             exit 1
           }
-          $portable = "CD3217B12_Portable"
-          if (Test-Path $portable) { Remove-Item $portable -Recurse -Force }
-          Copy-Item $exeDir $portable -Recurse
-          Set-Content -Path "$portable\Run.bat" -Value "@echo off`r`ncd /d `"%~dp0`"`r`nstart CD3217B12_Analyzer.exe" -Encoding ASCII
-          Compress-Archive -Path $portable -DestinationPath CD3217B12_Portable.zip -Force
+          # Portable zip contains the app folder only — no Run.bat launcher,
+          # the .exe is windowed (no console flash) and runs directly.
+          Compress-Archive -Path $exeDir -DestinationPath CD3217B12_Portable.zip -Force
           $zipSize = (Get-Item CD3217B12_Portable.zip).Length / 1MB
           Write-Host "Package created: $([math]::Round($zipSize,1)) MB"
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Error "Inno Setup 6 not found at $iscc"
+            exit 1
+          }
+          # Pass the tag (e.g. v0.4) as the installer version when available.
+          $ver = "${env:GITHUB_REF_NAME}" -replace '^v',''
+          if ($ver -notmatch '^\d+\.\d+') { $ver = "0.0.0" }
+          & $iscc "/DAppVersion=$ver" installer.iss
+          if (-not (Test-Path "installer\CD3217B12_Analyzer_Setup.exe")) {
+            Write-Error "Installer was not produced"
+            exit 1
+          }
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: CD3217B12_Portable.zip
+          files: |
+            CD3217B12_Portable.zip
+            installer/CD3217B12_Analyzer_Setup.exe
           generate_release_notes: true
 
   firmware:
