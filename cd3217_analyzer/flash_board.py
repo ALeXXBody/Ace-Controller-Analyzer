@@ -73,7 +73,11 @@ def flash_pico_uf2(uf2_path: str, bootsel_drive: Optional[str] = None,
     """Flash a Pico-family board with a .uf2 via BOOTSEL mass-storage.
 
     Copies the .uf2 onto the bootsel volume. The RP2040/RP2350 ROM flashes it
-    and reboots automatically.
+    and reboots automatically (the BOOTSEL drive disappears on success).
+
+    This verifies the flash actually applied by polling for the drive to
+    unmount, and raises on timeout / ambiguous targets so a partial or wrong
+    flash cannot pass silently.
 
     Returns a human-readable status message.
     """
@@ -82,16 +86,40 @@ def flash_pico_uf2(uf2_path: str, bootsel_drive: Optional[str] = None,
     if not uf2_path.lower().endswith(".uf2"):
         raise ValueError("Expected a .uf2 firmware file")
 
-    drive = bootsel_drive or (find_bootsel_drives() or [None])[0]
-    if not drive:
+    drives = find_bootsel_drives()
+    drive = bootsel_drive or (drives[0] if drives else None)
+    if not drive or drive not in drives:
+        if not drive:
+            raise RuntimeError(
+                "No Pico in BOOTSEL mode found. Hold the BOOTSEL button and "
+                "plug the board into USB, then retry."
+            )
+        raise RuntimeError(f"BOOTSEL drive {drive!r} not present. Re-try with "
+                           "the board in BOOTSEL mode.")
+    if len(drives) > 1 and not bootsel_drive:
         raise RuntimeError(
-            "No Pico in BOOTSEL mode found. Hold the BOOTSEL button and plug "
-            "the board into USB, then retry."
+            f"Multiple Pico boards in BOOTSEL mode detected: {', '.join(drives)}. "
+            "Please flash one at a time."
         )
 
-    dest = os.path.join(drive, os.path.basename(uf2_path))
+    name = os.path.basename(uf2_path)
+    dest = os.path.join(drive, name)
     shutil.copyfile(uf2_path, dest)
-    return f"Flashed {os.path.basename(uf2_path)} to {drive}. Board will reboot."
+
+    # Verify: the BOOTSEL drive should unmount once the ROM flashes + reboots.
+    import time
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if drive not in find_bootsel_drives():
+            return (f"Flashed {name} to {drive} — board rebooted into the app. "
+                    "Replug the board if it does not show a COM port.")
+        time.sleep(0.5)
+    raise RuntimeError(
+        f"Flash of {name} did not complete within {int(timeout)}s. The BOOTSEL "
+        "drive stayed mounted. Wrong .uf2 for this board, or flash error — "
+        "re-check you are using this board's file (e.g. cd3217_pico2.uf2 for "
+        "Pico 2 / RP2350) and try again."
+    )
 
 
 # ---- ESP32: esptool ----------------------------------------------------------
