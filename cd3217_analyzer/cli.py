@@ -43,7 +43,8 @@ from .otp import (
 )
 from .spi_adapter import SPIAdapter
 from .flash import SPIFlash, FlashError
-from .usb_bridge import UsbBridgeAdapter, list_bridge_ports, normalize_port
+from .usb_bridge import (UsbBridgeAdapter, list_bridge_ports,
+                         list_ports_with_desc, normalize_port)
 from .utils import parse_address_list, parse_hex_address
 from . import __version__
 
@@ -549,6 +550,9 @@ Examples:
                        help="Erase + write + verify FILE.bin to SPI flash")
     group.add_argument("--flash-board", metavar="FILE",
                        help="Flash firmware FILE (.uf2 or .bin) to a connected board")
+    group.add_argument("--list-ports", action="store_true",
+                       help="List serial ports with device names and exit (helps "
+                            "identify which COM is the Pico 2 / RP2040 board)")
     group.add_argument("--interactive", "-i", action="store_true",
                        help="Interactive mode (default if no command given)")
 
@@ -559,6 +563,19 @@ Examples:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     args = parser.parse_args()
+
+    # Handle --list-ports
+    if args.list_ports:
+        ports = list_ports_with_desc()
+        if not ports:
+            print("No serial ports found. Plug in the board and check "
+                  "Device Manager (Ports / COM & LPT), then use --port COMx.")
+            sys.exit(0)
+        print(f"{'PORT':<8} {'DEVICE'}")
+        print("-" * 64)
+        for port, desc, hwid in ports:
+            print(f"{port:<8} {desc}  {hwid}")
+        sys.exit(0)
 
     # Handle --list-models
     if args.list_models:

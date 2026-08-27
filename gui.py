@@ -808,8 +808,14 @@ class Application(ctk.CTk):
                 self.log("Could not connect", "err")
                 return
 
-            # detect_adapter already opens
-            if selection != "Auto-detect" and not getattr(adapter, "_i2c", None) and not getattr(adapter, "_bus", None):
+            # All branches above already opened the adapter (including
+            # detect_adapter(), which opens internally). Only open if something
+            # still needs it, and never open an already-open CDC port twice —
+            # a second serial.Serial() on a held RPi/ESP32 CDC port wedges
+            # Windows' usbser.sys and throws "Access is denied" (errno 13).
+            if not getattr(adapter, "is_open", False) \
+               and not getattr(adapter, "_i2c", None) \
+               and not getattr(adapter, "_bus", None):
                 adapter.open()
 
             self.adapter = adapter

@@ -47,19 +47,34 @@ class UsbBridgeAdapter(I2CAdapter):
     def open(self) -> None:
         if serial is None:
             raise RuntimeError("pyserial is not installed: pip install pyserial")
+        if self._ser is not None:
+            # Already open — never open a held CDC port twice. A second open on
+            # Windows' usbser.sys wedges the driver / denies access.
+            return
         self._ser = serial.Serial(self.port, self.baud, timeout=self.timeout,
                                   write_timeout=self.timeout)
-        self._ser.reset_input_buffer()
-        # Drain any boot banner lines before sending frames.
-        time.sleep(0.3)
-        self._ser.reset_input_buffer()
+        # Drain once. Opening asserts DTR/RTS which can reset the board; give it
+        # a beat to (re)enumerate, then drop any boot banner so it can't pollute
+        # frame parsing. We do NOT re-flush before every send.
+        time.sleep(0.5)
+        if self._ser:
+            try:
+                self._ser.reset_input_buffer()
+            except Exception:
+                pass
 
     def close(self) -> None:
         if self._ser:
             try:
                 self._ser.close()
+            except Exception:
+                pass
             finally:
                 self._ser = None
+
+    @property
+    def is_open(self) -> bool:
+        return self._ser is not None
 
     def _require_open(self):
         if self._ser is None:
@@ -77,16 +92,24 @@ class UsbBridgeAdapter(I2CAdapter):
 
         Reads bytes one at a time and rescans forward past any stray bytes
         (e.g. the boot banner) until it finds a complete valid frame whose
-        cmd matches. The resync loop always makes progress.
+        cmd matches. The resync loop always makes progress. We intentionally do
+        NOT flush the input buffer before each send, so a response that landed
+        between retries is not discarded.
         """
         self._require_open()
         frame = self._frame(cmd, payload)
-        for attempt in range(retries + 1):
-            self._ser.reset_input_buffer()
+        deadline_total = time.time() + self.timeout * (retries + 1) + 0.5
+        attempt = 0
+        while True:
+            # Flush stale bytes (e.g. a partial banner) before sending, then
+            # read our fresh response. Standard request/response pattern.
+            try:
+                self._ser.reset_input_buffer()
+            except Exception:
+                pass
             self._ser.write(frame)
-
             buf = bytearray()
-            timeout_end = time.time() + self.timeout
+            timeout_end = min(time.time() + self.timeout, deadline_total)
             while time.time() < timeout_end:
                 b = self._ser.read(1)
                 if not b:
@@ -103,17 +126,17 @@ class UsbBridgeAdapter(I2CAdapter):
                         plen = body[1]
                         total = 2 + plen + 1
                         if len(body) >= total:
-                            frame = body[:total]
-                            if frame[0] == cmd and _verify_ck(frame, plen):
-                                return bytes(frame[2:2 + plen])
+                            cand = body[:total]
+                            if cand[0] == cmd and _verify_ck(cand, plen):
+                                return bytes(cand[2:2 + plen])
                             i += 1  # not our target — keep scanning
                             continue
                     break  # need more bytes for this candidate
                 if i:
                     del buf[:i]
-            if attempt < retries:
-                continue
-            raise IOError(f"Bridge no response for cmd 0x{cmd:02X}")
+            if attempt >= retries or time.time() >= deadline_total:
+                break
+            attempt += 1  # retry without flushing; let a late response arrive
         raise IOError(f"Bridge no response for cmd 0x{cmd:02X}")
 
     # ---- I2CAdapter interface ----------------------------------------------
@@ -166,12 +189,24 @@ class UsbBridgeAdapter(I2CAdapter):
         return {"board": board, "sda": sda, "scl": scl}
 
     def handshake(self) -> bool:
-        """Send PING and confirm the device responds (banner already drained)."""
-        try:
-            resp = self._transact(CMD_PING)
-            return bool(resp) and resp[0] == 0x51
-        except Exception:
-            return False
+        """Confirm the device responds, retrying until it's ready.
+
+        Opening a Pico's USB-CDC port asserts DTR and can cause a fresh
+        enumeration / soft-reset, so the bridge may not be ready to answer for
+        a moment. We loop PING attempts over a generous window so a
+        slow-but-healthy board still connects instead of failing the first
+        blind attempt.
+        """
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            try:
+                resp = self._transact(CMD_PING, retries=1)
+                if resp and resp[0] == 0x51:
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.3)
+        return False
 
 
 def _verify_ck(body: bytes, plen: int):
@@ -204,9 +239,10 @@ def normalize_port(port: str) -> str:
 def list_bridge_ports() -> List[str]:
     """Return candidate serial port names (debug helper).
 
-    Uses pyserial's comports(); on Windows, if that yields nothing (e.g. the
-    list_ports submodule isn't bundled or enumeration fails), falls back to
-    probing COM1..COM255 so a real COM8 is still found.
+    Uses only pyserial's comports() — never brute-force opens COM1..255. A
+    naive per-port open (which by default asserts DTR/RTS) can reset a Pico's
+    USB-CDC device or wedge Windows' usbser.sys driver, so we must not do that
+    just to discover ports. Ask the user to type the port if none are listed.
     """
     if serial is None:
         return []
@@ -219,13 +255,33 @@ def list_bridge_ports() -> List[str]:
                 ports.append(name)
     except Exception:
         ports = []
-    if not ports and sys.platform.startswith("win"):
-        for i in range(1, 256):
-            try:
-                with serial.Serial(f"COM{i}", 115200, timeout=0.1):
-                    ports.append(f"COM{i}")
-            except Exception:
-                continue
-    # de-dupe, keep order
     seen = set()
     return [p for p in ports if not (p in seen or seen.add(p))]
+
+
+def list_ports_with_desc() -> List[tuple]:
+    """Return [(port, description, hwid), ...] sorted by port name.
+
+    The friendly name / VID:PID lets the user tell boards apart (e.g. a Pico 2
+    vs an RP2040-Zero are separate COM ports) instead of guessing the number.
+    Pure enumeration via comports(); no open-close probing (see
+    list_bridge_ports for why that is unsafe on Windows CDC).
+    """
+    out = []
+    try:
+        import serial.tools.list_ports as lp
+        for p in lp.comports():
+            out.append((getattr(p, "device", ""),
+                        getattr(p, "description", ""),
+                        getattr(p, "hwid", "")))
+    except Exception:
+        pass
+    out.sort(key=lambda x: _port_sort_key(x[0]))
+    return out
+
+
+def _port_sort_key(port: str) -> tuple:
+    """Sort COMxx numerically: COM2 before COM10."""
+    if port.upper().startswith("COM") and port[3:].isdigit():
+        return (0, int(port[3:]))
+    return (1, 0)

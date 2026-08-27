@@ -138,6 +138,41 @@ class TestUsbBridgeAdapter(unittest.TestCase):
         with self.assertRaises(OSError):
             adapter.read_bytes(0x38, 0x00, 4)
 
+    def test_open_is_idempotent(self):
+        # Opening twice must not create a second serial handle — a second
+        # serial.Serial() on a held Windows CDC port wedges usbser.sys and
+        # throws "Access is denied" (PermissionError 13).
+        from unittest.mock import patch
+
+        constructed = {"n": 0}
+
+        class FakeSerial:
+            def __init__(self, *a, **k):
+                constructed["n"] += 1
+
+            def reset_input_buffer(self):
+                pass
+
+            def write(self, frame):
+                pass
+
+            def read(self, n):
+                return b""
+
+            def close(self):
+                pass
+
+        fake_module = type("serial", (), {"Serial": FakeSerial})()
+        with patch("cd3217_analyzer.usb_bridge.serial", fake_module):
+            with patch("cd3217_analyzer.usb_bridge.time.sleep"):
+                adapter = UsbBridgeAdapter(port="COM9")
+                adapter.open()
+                adapter.open()
+        self.assertEqual(constructed["n"], 1)
+        self.assertTrue(adapter.is_open)
+        adapter.close()
+        self.assertFalse(adapter.is_open)
+
 
 class TestNormalizePort(unittest.TestCase):
     def test_bare_number(self):

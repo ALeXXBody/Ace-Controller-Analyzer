@@ -179,6 +179,12 @@ UsbBridge bridge;   // USB-CDC serial bridge (all boards)
 
 void setup() {
   Serial.begin(115200);
+  // Arduino-Pico USB-CDC drops ALL output unless the host has asserted DTR.
+  // Ignore flow control so the boot banner is always visible and the bridge
+  // replies even if the host doesn't pulse DTR on connect.
+#ifdef ARDUINO_ARCH_RP2040
+  Serial.ignoreFlowControl(true);
+#endif
   delay(300);
   Serial.printf("\n[boot] CD3217-Analyzer M1 spike, board=%s\n", CD3217_BOARD);
   Serial.printf("[boot] I2C SDA=%d SCL=%d\n", I2C_SDA_GPIO, I2C_SCL_GPIO);
