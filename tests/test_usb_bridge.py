@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 from cd3217_analyzer.usb_bridge import (
     UsbBridgeAdapter,
     _verify_ck,
+    normalize_port,
     CMD_SCAN,
     CMD_READ,
     CMD_WRITE,
@@ -122,6 +123,24 @@ class TestUsbBridgeAdapter(unittest.TestCase):
         adapter, fake = self.make_adapter([make_response(CMD_READ, bytes([0xFF]))])
         with self.assertRaises(OSError):
             adapter.read_bytes(0x38, 0x00, 4)
+
+
+class TestNormalizePort(unittest.TestCase):
+    def test_bare_number(self):
+        self.assertEqual(normalize_port("8"), "COM8")
+        self.assertEqual(normalize_port("26"), "COM26")
+
+    def test_com_variants(self):
+        self.assertEqual(normalize_port("COM8"), "COM8")
+        self.assertEqual(normalize_port("com8"), "COM8")
+
+    def test_real_paths_pass_through(self):
+        self.assertEqual(normalize_port("/dev/ttyACM0"), "/dev/ttyACM0")
+
+    def test_empty_and_spaces(self):
+        self.assertEqual(normalize_port(""), "")
+        self.assertEqual(normalize_port("   "), "")
+        self.assertEqual(normalize_port("COM"), "COM")
 
 
 if __name__ == "__main__":

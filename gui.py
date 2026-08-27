@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from cd3217_analyzer import __version__
 from cd3217_analyzer.adapters import FTDIAdapter, SMBusAdapter, detect_adapter
-from cd3217_analyzer.usb_bridge import UsbBridgeAdapter, list_bridge_ports
+from cd3217_analyzer.usb_bridge import UsbBridgeAdapter, list_bridge_ports, normalize_port
 from cd3217_analyzer.analyzer import (
     CD3217Analyzer,
     DeviceResult,
@@ -781,7 +781,7 @@ class Application(ctk.CTk):
                 adapter = SMBusAdapter(bus_number=int(self.bus_var.get() or "1"))
                 adapter.open()
             elif selection == "USB Bridge (board)":
-                port = self.bus_var.get().strip()
+                port = normalize_port(self.bus_var.get())
                 if not port:
                     ports = list_bridge_ports()
                     if not ports:

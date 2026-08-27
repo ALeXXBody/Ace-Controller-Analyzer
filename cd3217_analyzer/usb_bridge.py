@@ -13,6 +13,7 @@ Requires: pyserial
 Install:  pip install pyserial
 """
 
+import sys
 import time
 from typing import List, Optional
 
@@ -171,15 +172,50 @@ def _verify_ck(body: bytes, plen: int):
     return ck == body[-1]
 
 
+def normalize_port(port: str) -> str:
+    """Return a real serial port name from user input.
+
+    Accepts a bare COM number ("8" or "COM8") and passes real paths through
+    unchanged. On non-Windows systems a bare number is interpreted as a
+    CD-ROM/board index the same way.
+    """
+    p = (port or "").strip()
+    if not p:
+        return p
+    # "COM8", "com8" -> "COM8"; bare "8" -> "COM8"
+    if p.upper().startswith("COM") and p[3:].isdigit():
+        n = str(int(p[3:]))
+        return ("COM" + n) if n else ""
+    if p.isdigit():
+        return "COM" + str(int(p))
+    return p
+
+
 def list_bridge_ports() -> List[str]:
-    """Return candidate serial port names (debug helper)."""
+    """Return candidate serial port names (debug helper).
+
+    Uses pyserial's comports(); on Windows, if that yields nothing (e.g. the
+    list_ports submodule isn't bundled or enumeration fails), falls back to
+    probing COM1..COM255 so a real COM8 is still found.
+    """
     if serial is None:
         return []
     ports = []
     try:
         import serial.tools.list_ports as lp
         for p in lp.comports():
-            ports.append(p.device)
+            name = getattr(p, "device", None)
+            if name:
+                ports.append(name)
     except Exception:
-        pass
-    return ports
+        ports = []
+    if not ports and sys.platform.startswith("win"):
+        for i in range(1, 256):
+            try:
+                with serial.Serial(f"COM{i}", 115200, timeout=0.1):
+                    ports.append(f"COM{i}")
+            except Exception:
+                continue
+    # de-dupe, keep order
+    seen = set()
+    return [p for p in ports if not (p in seen or seen.add(p))]

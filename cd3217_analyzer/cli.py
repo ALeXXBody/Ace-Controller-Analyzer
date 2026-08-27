@@ -43,7 +43,7 @@ from .otp import (
 )
 from .spi_adapter import SPIAdapter
 from .flash import SPIFlash, FlashError
-from .usb_bridge import UsbBridgeAdapter, list_bridge_ports
+from .usb_bridge import UsbBridgeAdapter, list_bridge_ports, normalize_port
 from .utils import parse_address_list, parse_hex_address
 from . import __version__
 
@@ -74,7 +74,8 @@ def create_adapter(args) -> I2CAdapter:
         return SMBusAdapter(bus_number=bus)
 
     if adapter_type in ("usb", "bridge", "board"):
-        port = args.port or (list_bridge_ports() or [None])[0]
+        port = normalize_port(args.port) if args.port else (
+            list_bridge_ports() or [None])[0]
         if not port:
             print("ERROR: No USB serial port found. Plug in the board and "
                   "specify --port COMx")
