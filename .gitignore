@@ -9,6 +9,9 @@ dist/
 *.egg-info/
 .eggs/
 
+# PlatformIO (ESP32 firmware)
+.pio/
+
 # IDE
 .vscode/
 .idea/

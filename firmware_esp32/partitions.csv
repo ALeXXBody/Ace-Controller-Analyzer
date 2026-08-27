@@ -1,0 +1,19 @@
+# CD3217-Analyzer ESP32 partition table
+# Primary: 16MB flash. otpstore (LittleFS) holds the on-board OTP library.
+#
+# 16MB layout:
+#   - app0     0x10000  (app)
+#   - otpstore 0xE0000  (LittleFS OTP library)
+#   - nvs, phy_init standard
+#
+# NOTE: For 4MB boards this layout is too big. Milestone 5 will introduce
+# per-board partition files (partitions_4mb.csv etc). For the M1 spike the
+# S3 (16/32MB) is the reference; the C6/C3/classic envs below still build but
+# may exceed 4MB flash until M5 splits the table.
+
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x5000,
+otadata,  data, ota,     0xe000,  0x2000,
+app0,     app,  factory, 0x10000, 0x3F0000,
+otpstore, data, spiffs,  0x400000,0xC00000,
+coredump, data, coredump,0x1000000,0x100000,
