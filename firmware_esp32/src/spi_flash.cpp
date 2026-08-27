@@ -14,7 +14,17 @@ static uint8_t sf_rx[4 + SF_READ_CHUNK];
 void SpiFlash::begin() {
   pinMode(PIN_SPI_CS, OUTPUT);
   digitalWrite(PIN_SPI_CS, HIGH);
+#ifdef ARDUINO_ARCH_RP2040
+  // arduino-pico API: set pins first, then begin() (same pattern as
+  // Wire.setSDA/setSCL for I2C). CS stays under manual GPIO control.
+  CD_SPI.setRX(PIN_SPI_MISO);
+  CD_SPI.setTX(PIN_SPI_MOSI);
+  CD_SPI.setSCK(PIN_SPI_SCK);
+  CD_SPI.setCS(PIN_SPI_CS);
+  CD_SPI.begin();
+#else
   CD_SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SPI_CS);
+#endif
 }
 
 void SpiFlash::xfer(const uint8_t *tx, uint8_t *rx, size_t n) {
