@@ -21,6 +21,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <ArduinoJson.h>
+#include "bridge.h"
 
 #ifdef CD3217_HAS_WIFI
 #include <WiFi.h>
@@ -116,8 +117,7 @@ async function runScan(){
 )rawliteral";
 
 // Known ACE2 addresses (subset from cd3217_analyzer/registers.py) for the UI.
-static const char *knownForAddr(uint8_t addr) {
-  switch (addr) {
+static const char *knownForAddr(uint8_t addr) {  switch (addr) {
     case 0x38: return "ACE2 Port1 (GND)";
     case 0x3F: return "ACE2 Port1 (float)";
     case 0x3B: return "ACE2 Port1 OTP";
@@ -175,11 +175,15 @@ static void apiHealth() {
 }
 #endif // CD3217_HAS_WIFI
 
+UsbBridge bridge;   // USB-CDC serial bridge (all boards)
+
 void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.printf("\n[boot] CD3217-Analyzer M1 spike, board=%s\n", CD3217_BOARD);
   Serial.printf("[boot] I2C SDA=%d SCL=%d\n", I2C_SDA_GPIO, I2C_SCL_GPIO);
+  bridge.begin();
+  Serial.println("[bridge] USB-CDC bridge ready (0x05 INFO / 0x01 SCAN ...)");
 
   // ---- I2C (hardware) -------------------------------------------------------
 #ifdef ARDUINO_ARCH_RP2040
@@ -223,6 +227,7 @@ void setup() {
 }
 
 void loop() {
+  bridge.poll();                       // USB-CDC bridge (all boards)
 #ifdef CD3217_HAS_WIFI
   server.handleClient();
 #endif

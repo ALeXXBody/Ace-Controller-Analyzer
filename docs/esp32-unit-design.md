@@ -246,9 +246,9 @@ The board **does not** push to GitHub itself (no creds). Instead:
 | # | Milestone | Deliverable | Out of scope / gate |
 |---|-----------|-------------|---------------------|
 | 1 | **Firmware skeleton** | ✅ **DONE (28 Aug)** — WiFi AP, mDNS, web UI, on-device I2C scan; builds on **9 boards**: ESP32 S3/C3/classic (web UI) + RP2040-Zero/Pico1/2/W/2W | C6 needs IDF |
-| 2 | **USB bridge** | CDC protocol; `Adapter` in Windows app (ESP32 + Pico); full scan/read/write from GUI over USB | OTP write still gated |
+| 2 | **USB bridge** | ✅ **DONE** — CDC protocol on firmware (all boards); `UsbBridgeAdapter` in Windows app; scan/read/write from GUI/CLI over USB | OTP write still gated |
 | 3 | **OTP store** | `otpstore` part, read/write OTP on-device + via web UI, JSON index, library browser | — |
-| 4 | **Windows admin** | Connect tab, **flash-for-first-time**, OTP library export to GitHub | — |
+| 4 | **Windows admin** | 🔶 **PARTIAL** — flashing (`flash_board.py`: UF2 bootsel + esptool) done; OTP library export to GitHub pending | — |
 | 5 | **Multi-board** | C6 via IDF or platform bump, fallback 4MB partition tables, level-shift notes | — |
 | 6 | **OTA** | Wireless firmware update from web UI | — |
 | 7 | **Polish** | 3.3/5V tolerance notes, enclosure ref, README, docs | Release |
@@ -267,6 +267,20 @@ Add the USB CDC framed-protocol (section 4.2) to the firmware and an
 `Adapter` in the Windows app so the existing GUI/CLI drives the scan
 over USB on **any** of these boards (ESP32 or Pico, both have native/ROM USB)
 with no analyzer-logic changes.
+
+#### M2 status — done
+- **Firmware**: `src/bridge.h` / `src/bridge.cpp` — framed binary protocol
+  `[0xA5][cmd][plen][payload][cksum]` over CDC serial (`Serial`), on **all**
+  boards. Commands: `0x01 SCAN`, `0x02 READ`, `0x03 WRITE`, `0x04 PING`,
+  `0x05 INFO` (reports board, SDA, SCL). Built & verified across all 8 boards.
+- **Adapter**: `cd3217_analyzer/usb_bridge.py` → `UsbBridgeAdapter` implements
+  the `I2CAdapter` ABC (adapters.py). User picks **"USB Bridge (board)"** in the
+  GUI (or `--adapter usb --port COMx` in the CLI) instead of FTDI; the existing
+  scan/diagnose/dump/OTP flows work unchanged.
+- **Flashing**: `cd3217_analyzer/flash_board.py` — Pico-family via UF2
+  drag-and-drop to the BOOTSEL mass-storage volume (zero deps, works on
+  Windows); ESP32 via `esptool`. GUI "Flash board" button + `--flash-board`.
+- Tests: `tests/test_usb_bridge.py`, `tests/test_flash_board.py` (15 new).
 
 ---
 
@@ -294,14 +308,16 @@ you say otherwise. Q5 is a hardware fact only you can confirm from the bench.
 ```
 firmware_esp32/            NEW * — PlatformIO firmware (Arduino)
   src/main.cpp              * M1: WiFi AP + mDNS + web UI + I2C scan (multi-arch)
+  src/bridge.h/.cpp         * M2: USB-CDC framed bridge (all boards) — DONE
   src/i2c_master, proto, usb_bridge, webui, otpstore, wifi_mgr  (M2+)
   platformio.ini           * 9 envs: esp32s3/c3/classic + rp2040_zero/pico/pico_w/pico2/pico2w
                            *      (esp32c6 flagged: needs IDF)
   boards/waveshare_rp2040_zero.json * RP2040-Zero custom board def
   partitions.csv           * app0 + otpstore (spiffs) + coredump
-cd3217_analyzer/*_adapter.py   NEW — I2CAdapter backend (USB bridge, M2)
-gui.py                     EDIT — USB connect/flash/sync UI (M4)
-pyproject / requirements   EDIT — add esptool, pyserial (M4)
-.github/workflows/build.yml EDIT — build firmware on tag (M6)
+cd3217_analyzer/usb_bridge.py   NEW — I2CAdapter backend (USB bridge, M2) — DONE
+cd3217_analyzer/flash_board.py  NEW — UF2 bootsel + esptool flashing (M4) — DONE
+gui.py                     EDIT — USB connect + flash UI — DONE
+requirements.txt           EDIT — add pyserial — DONE
+tests/test_usb_bridge.py, test_flash_board.py  NEW — DONE
 ```
-`*` = already created in the M1 spike.
+`*` = already created in the M1 spike. `DONE` = implemented in this pass.

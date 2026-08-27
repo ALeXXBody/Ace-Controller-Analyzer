@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from cd3217_analyzer import __version__
 from cd3217_analyzer.adapters import FTDIAdapter, SMBusAdapter, detect_adapter
+from cd3217_analyzer.usb_bridge import UsbBridgeAdapter, list_bridge_ports
 from cd3217_analyzer.analyzer import (
     CD3217Analyzer,
     DeviceResult,
@@ -157,7 +158,7 @@ class Application(ctk.CTk):
         self.adapter_menu = ctk.CTkOptionMenu(
             controls,
             variable=self.adapter_var,
-            values=["Auto-detect", "FTDI FT232H", "SMBus (Linux)", "CH341"],
+            values=["Auto-detect", "FTDI FT232H", "SMBus (Linux)", "CH341", "USB Bridge (board)"],
             width=150,
             fg_color=C["entry"],
             button_color=C["btn"],
@@ -165,12 +166,12 @@ class Application(ctk.CTk):
         )
         self.adapter_menu.grid(row=1, column=1, padx=4)
 
-        ctk.CTkLabel(controls, text="Bus", text_color=C["dim"], font=F["small"]).grid(
+        ctk.CTkLabel(controls, text="Bus/Port", text_color=C["dim"], font=F["small"]).grid(
             row=0, column=2, sticky="w", padx=4
         )
         self.bus_var = ctk.StringVar(value="1")
         ctk.CTkEntry(
-            controls, textvariable=self.bus_var, width=48, fg_color=C["entry"]
+            controls, textvariable=self.bus_var, width=70, fg_color=C["entry"]
         ).grid(row=1, column=2, padx=4)
 
         self.connect_btn = ctk.CTkButton(
@@ -189,6 +190,18 @@ class Application(ctk.CTk):
             controls, text="● Disconnected", text_color=C["red"], font=F["body"]
         )
         self.conn_status.grid(row=1, column=4, padx=6)
+
+        self.flash_btn = ctk.CTkButton(
+            controls,
+            text="Flash board",
+            width=100,
+            height=32,
+            fg_color=C["btn"],
+            hover_color=C["btn_hover"],
+            text_color=C["text"],
+            command=self._flash_board,
+        )
+        self.flash_btn.grid(row=1, column=5, padx=(6, 4))
 
     def _build_device_panel(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
@@ -767,6 +780,27 @@ class Application(ctk.CTk):
             elif selection in ("SMBus (Linux)", "CH341"):
                 adapter = SMBusAdapter(bus_number=int(self.bus_var.get() or "1"))
                 adapter.open()
+            elif selection == "USB Bridge (board)":
+                port = self.bus_var.get().strip()
+                if not port:
+                    ports = list_bridge_ports()
+                    if not ports:
+                        self.log("No USB serial port found. Plug in the board "
+                                 "and enter the COM port (e.g. COM5) in Bus/Port.", "warn")
+                        return
+                    port = ports[0]
+                adapter = UsbBridgeAdapter(port=port)
+                adapter.open()
+                ok = False
+                try:
+                    ok = adapter.handshake()
+                except Exception:
+                    ok = False
+                if not ok:
+                    adapter.close()
+                    self.log(f"USB bridge on {port} did not respond to PING. "
+                             "Is the board running CD3217 firmware?", "err")
+                    return
             else:
                 return
 
@@ -784,6 +818,43 @@ class Application(ctk.CTk):
             self.log(f"Connected: {type(adapter).__name__}", "ok")
         except Exception as e:
             self.log(f"Connection failed: {e}", "err")
+
+    def _flash_board(self):
+        """Flash firmware (.uf2 / .bin) to a connected board."""
+        fpath = filedialog.askopenfilename(
+            title="Select firmware to flash",
+            filetypes=[
+                ("Firmware", "*.uf2 *.bin"),
+                ("UF2 (Pico/RP2040)", "*.uf2"),
+                ("Binary (ESP32)", "*.bin"),
+                ("All files", "*.*"),
+            ],
+        )
+        if not fpath:
+            return
+
+        def worker():
+            try:
+                from cd3217_analyzer.flash_board import find_bootsel_drives, flash_file
+                if fpath.lower().endswith(".uf2"):
+                    drives = find_bootsel_drives()
+                    if not drives:
+                        self.log("No Pico in BOOTSEL mode. Hold BOOTSEL and "
+                                 "plug in the board, then retry.", "warn")
+                        return
+                    msg = flash_file(fpath, bootsel_drive=drives[0])
+                else:
+                    port = self.bus_var.get().strip() if self.connected else None
+                    if not port:
+                        self.log("Connect to the board first (enter COM port in "
+                                 "Bus/Port), then Flash.", "warn")
+                        return
+                    msg = flash_file(fpath, port=port)
+                self.log(msg, "ok")
+            except Exception as e:
+                self.log(f"Flash failed: {e}", "err")
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _disconnect(self):
         if self.adapter:

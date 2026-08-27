@@ -43,6 +43,7 @@ from .otp import (
 )
 from .spi_adapter import SPIAdapter
 from .flash import SPIFlash, FlashError
+from .usb_bridge import UsbBridgeAdapter, list_bridge_ports
 from .utils import parse_address_list, parse_hex_address
 from . import __version__
 
@@ -71,6 +72,15 @@ def create_adapter(args) -> I2CAdapter:
     if adapter_type in ("smbus", "linux", "ch341"):
         bus = args.bus or 1
         return SMBusAdapter(bus_number=bus)
+
+    if adapter_type in ("usb", "bridge", "board"):
+        port = args.port or (list_bridge_ports() or [None])[0]
+        if not port:
+            print("ERROR: No USB serial port found. Plug in the board and "
+                  "specify --port COMx")
+            sys.exit(1)
+        print(f"USB bridge adapter on {port}")
+        return UsbBridgeAdapter(port=port)
 
     print(f"Unknown adapter type: {adapter_type}")
     sys.exit(1)
@@ -490,10 +500,12 @@ Examples:
     )
 
     parser.add_argument("--adapter", "-a", default="auto",
-                        choices=["auto", "ftdi", "ch341", "smbus", "linux"],
+                        choices=["auto", "ftdi", "ch341", "smbus", "linux", "usb"],
                         help="I2C adapter type (default: auto-detect)")
     parser.add_argument("--ftdi-url", default=None,
                         help="FTDI device URL (default: ftdi://ftdi:232h/1)")
+    parser.add_argument("--port", default=None,
+                        help="Serial port for USB bridge adapter (e.g., COM5)")
     parser.add_argument("--bus", "-b", type=int, default=1,
                         help="I2C bus number for smbus/ch341 (default: 1)")
     parser.add_argument("--addresses", default=None,
@@ -534,6 +546,8 @@ Examples:
                        help="Erase entire SPI flash chip")
     group.add_argument("--flash-restore", metavar="FILE",
                        help="Erase + write + verify FILE.bin to SPI flash")
+    group.add_argument("--flash-board", metavar="FILE",
+                       help="Flash firmware FILE (.uf2 or .bin) to a connected board")
     group.add_argument("--interactive", "-i", action="store_true",
                        help="Interactive mode (default if no command given)")
 
@@ -583,6 +597,18 @@ Examples:
             or args.flash_erase or args.flash_restore:
         try:
             cmd_flash(args)
+        except KeyboardInterrupt:
+            print("\nAborted.")
+        except Exception as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        return
+
+    if args.flash_board:
+        from .flash_board import flash_file
+        try:
+            msg = flash_file(args.flash_board, port=args.port)
+            print(msg)
         except KeyboardInterrupt:
             print("\nAborted.")
         except Exception as e:

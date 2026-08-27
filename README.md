@@ -23,6 +23,8 @@ A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery co
   - **FTDI FT232H** (recommended - Adafruit FT232H breakout, etc.)
   - **CH341A** (cheap but needs voltage shifter for 3.3V)
   - **Linux SMBus** (Raspberry Pi, BeagleBone, etc.)
+  - **CD3217-Analyzer board** (RP2040/Pico or ESP32 running the firmware —
+    acts as a USB-I2C bridge over its USB port; no FTDI needed)
 - Test fixture with:
   - 3.3V power supply for VIN_3V3
   - I2C pullup resistors (2.2kΩ to 3.3V on SDA and SCL)
@@ -33,6 +35,7 @@ A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery co
 - `pip install customtkinter` (modern dark-themed GUI)
 - `pip install smbus2` (for CH341/SMBus adapters)
 - `pip install pyftdi` (for FTDI FT232H)
+- `pip install pyserial` (for a CD3217-Analyzer board / USB bridge)
 - `pip install pyinstaller` (optional, to build .exe)
 
 ## Installation
@@ -136,7 +139,19 @@ python -m cd3217_analyzer --strap 0x38 0x2F
 ```bash
 python -m cd3217_analyzer --adapter ftdi
 python -m cd3217_analyzer --adapter smbus --bus 1
+python -m cd3217_analyzer --adapter usb --port COM5   # CD3217-Analyzer board (USB bridge)
 ```
+
+### Flash a board (RP2040/Pico or ESP32)
+Works even when the app is otherwise disconnected — it just needs the board on USB.
+```bash
+# Pico-family — hold BOOTSEL, plug in, then:
+python -m cd3217_analyzer --flash-board firmware_esp32/dist/cd3217_pico.uf2
+
+# ESP32 — needs a COM port:
+python -m cd3217_analyzer --flash-board firmware_esp32/dist/cd3217_esp32s3.bin --port COM5
+```
+Or use the **"Flash board"** button in the GUI (pick the `.uf2` / `.bin`).
 
 ### Custom Address List
 ```bash
