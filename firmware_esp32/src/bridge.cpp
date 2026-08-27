@@ -3,6 +3,10 @@
  */
 
 #include "bridge.h"
+#include "spi_flash.h"
+
+// Max SPI full-duplex payload: response = status + rx, must fit 1-byte plen.
+#define BRIDGE_SPI_MAX 240
 
 void UsbBridge::begin() {
   // Serial is initialised in main setup(); nothing extra needed here.
@@ -154,6 +158,21 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
       resp[1 + blen] = I2C_SDA_GPIO;
       resp[2 + blen] = I2C_SCL_GPIO;
       sendResp_(0x05, resp, 3 + blen);
+      break;
+    }
+    case 0x10: {
+      // SPI_XFR: full-duplex exchange, CS wrapped. resp = [status][rx...]
+      if (plen > BRIDGE_SPI_MAX) {
+        uint8_t r = 0xFF;
+        sendResp_(0x10, &r, 1);
+        break;
+      }
+      static uint8_t rxbuf[BRIDGE_SPI_MAX];
+      SpiFlash::xfer(pl, rxbuf, plen);
+      uint8_t resp[1 + BRIDGE_SPI_MAX];
+      resp[0] = 0x00;
+      memcpy(resp + 1, rxbuf, plen);
+      sendResp_(0x10, resp, (size_t)plen + 1);
       break;
     }
     default: break;

@@ -287,17 +287,28 @@ def cmd_otp_import(filepath: str) -> None:
 
 
 def cmd_flash(args) -> None:
-    """Handle flash commands (detect, read, write, erase, restore)."""
-    from .spi_adapter import SPIAdapter
-    from .flash import SPIFlash
+    """Handle flash commands (detect, read, write, erase, restore).
 
+    SPI backend: the CD3217 board USB bridge (--adapter usb, default when a
+    port is given) or an FTDI FT232H dongle (--adapter ftdi).
+    """
     try:
-        spi = SPIAdapter()
-        spi.open()
-        flash = SPIFlash(spi)
+        if args.adapter in ("usb", "bridge", "board") or (
+                args.adapter == "auto" and args.port):
+            from .spi_bridge import make_bridge_flash
+            bridge, flash = make_bridge_flash(args.port)
+            spi = flash.spi
+            print(f"SPI via board USB bridge on {bridge.port}")
+        else:
+            from .spi_adapter import SPIAdapter
+            from .flash import SPIFlash
+            spi = SPIAdapter()
+            spi.open()
+            flash = SPIFlash(spi)
     except Exception as e:
         print(f"ERROR: Could not connect to SPI adapter: {e}")
-        print("Make sure FTDI FT232H is connected and pyftdi is installed.")
+        print("Use --adapter usb --port COMx with a CD3217 board, or connect "
+              "an FTDI FT232H (with pyftdi installed).")
         sys.exit(1)
 
     try:
@@ -539,7 +550,7 @@ Examples:
     group.add_argument("--otp-import", metavar="FILE",
                        help="Import and display an OTP dump from FILE")
     group.add_argument("--flash-detect", action="store_true",
-                       help="Detect SPI flash chip (requires FTDI FT232H)")
+                       help="Detect SPI flash chip (FTDI FT232H or CD3217 board via --adapter usb)")
     group.add_argument("--flash-read", metavar="FILE",
                        help="Dump SPI flash contents to FILE.bin")
     group.add_argument("--flash-write", metavar="FILE",

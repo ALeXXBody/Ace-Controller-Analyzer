@@ -199,7 +199,14 @@ CD3217B12 Test Fixture:
 
 ## SPI Flash (External ROM)
 
-The CD3217B12 loads firmware from an external SPI flash chip. This tool can read/write that flash via the same FTDI FT232H adapter.
+The CD3217B12 loads firmware from an external SPI flash chip. Every CD3217-Analyzer
+board (ESP32 and RP2040/Pico family) can act as a **standalone SPI flasher** through
+its hardware SPI pins — no FTDI FT232H needed. WiFi boards do it entirely from the
+browser; wired boards do it through the Windows app/CLI over USB.
+
+> **Voltage:** M1/M2-era Mac flash runs at 1.8V — use a level-shifting shield.
+> See **[docs/spi-shield.md](docs/spi-shield.md)** for the pin map, clip wiring
+> and shield design.
 
 ### Flash Chip Details
 
@@ -208,7 +215,16 @@ The CD3217B12 loads firmware from an external SPI flash chip. This tool can read
 | Near CD3217B12 | Winbond W25Q80 | 1MB | PD firmware + config |
 | Some boards | GD25Q80 / IS25LP080 | 1MB | Same pinout, compatible |
 
-### SPI Wiring (FTDI FT232H → Flash Chip)
+### Option A: Standalone with a board (recommended)
+
+- **WiFi boards** (ESP32-S3/C3/classic, Pico W / Pico 2 W): join the
+  `cd3217-analyzer` AP → `http://192.168.4.1` → **SPI Flash** tab →
+  detect / read to file / write with verify / erase — all from the browser.
+- **Wired boards** (Pico 1/2, RP2040-Zero): connect via USB, then in the app
+  connect through **USB Bridge (board)** first — the Flash tab automatically
+  uses the board instead of FTDI.
+
+### Option B: FTDI FT232H dongle
 
 ```
 FT232H ADBUS0 = SCK   → Flash CLK
@@ -219,23 +235,23 @@ FT232H GND             → Flash GND
 FT232H 3.3V (if needed) → Flash VCC
 ```
 
-### CLI Usage
+### CLI Usage (board on COM5, or omit --adapter for FTDI)
 
 ```bash
-# Detect flash chip
-python -m cd3217_analyzer --flash-detect
+# Detect flash chip via the board
+python -m cd3217_analyzer --adapter usb --port COM5 --flash-detect
 
 # Dump flash to file
-python -m cd3217_analyzer --flash-read dump.bin
+python -m cd3217_analyzer --adapter usb --port COM5 --flash-read dump.bin
 
 # Write firmware to flash (erases first!)
-python -m cd3217_analyzer --flash-write firmware.bin
+python -m cd3217_analyzer --adapter usb --port COM5 --flash-write firmware.bin
 
 # Erase entire flash
-python -m cd3217_analyzer --flash-erase
+python -m cd3217_analyzer --adapter usb --port COM5 --flash-erase
 
 # Full restore: erase + write + verify
-python -m cd3217_analyzer --flash-restore firmware.bin
+python -m cd3217_analyzer --adapter usb --port COM5 --flash-restore firmware.bin
 ```
 
 ### GUI Usage

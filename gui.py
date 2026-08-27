@@ -1467,15 +1467,31 @@ class Application(ctk.CTk):
     # ─── Flash ─────────────────────────────────────────────────────────────
 
     def _flash_connect(self):
+        from cd3217_analyzer.spi_bridge import BridgeSPIAdapter, BridgeSPIFlash
+
         if self.connected:
-            self.log("Disconnecting I2C before SPI (FT232H cannot do both)", "warn")
-            self._disconnect()
+            if isinstance(self.adapter, UsbBridgeAdapter):
+                # The board bridge does I2C and SPI on the same port — keep it.
+                pass
+            else:
+                self.log("Disconnecting I2C before SPI (FT232H cannot do both)",
+                         "warn")
+                self._disconnect()
         try:
-            self.spi_adapter = SPIAdapter()
-            self.spi_adapter.open()
-            self.flash = SPIFlash(self.spi_adapter)
-            self.flash_conn_status.configure(text="● SPI connected", text_color=C["green"])
-            self.log("SPI flash connected", "ok")
+            if isinstance(self.adapter, UsbBridgeAdapter) and self.connected:
+                # SPI over the already-connected board (no FT232H needed).
+                self.spi_adapter = BridgeSPIAdapter(self.adapter)
+                self.flash = BridgeSPIFlash(self.spi_adapter)
+                self.flash_conn_status.configure(
+                    text="● SPI via board", text_color=C["green"])
+                self.log("SPI flash via board USB bridge", "ok")
+            else:
+                self.spi_adapter = SPIAdapter()
+                self.spi_adapter.open()
+                self.flash = SPIFlash(self.spi_adapter)
+                self.flash_conn_status.configure(
+                    text="● SPI connected", text_color=C["green"])
+                self.log("SPI flash connected (FTDI)", "ok")
         except Exception as e:
             self.log(f"SPI connect error: {e}", "err")
             self.flash_conn_status.configure(text="● SPI error", text_color=C["red"])

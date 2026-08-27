@@ -15,6 +15,9 @@
  *   0x03 WRITE  req: [addr][reg][dlen][data...] resp: [status]
  *   0x04 PING   req: -                resp: [0x51]
  *   0x05 INFO   req: -                resp: [boardlen][board][sda][scl]
+ *   0x10 SPIXFR req: [tx bytes...] (≤240) resp: [status][rx bytes...]
+ *                                       full-duplex SPI exchange with CS
+ *                                       wrapped around it (SPI flash backend)
  *   status: 0x00 = OK, 0xFF = error (e.g. NACK/timeout)
  */
 
@@ -26,7 +29,7 @@
 #include <stdint.h>
 
 #define BRIDGE_MAGIC 0xA5
-#define BRIDGE_MAX_FRAME 16 + 64   // enough for one write op
+#define BRIDGE_MAX_FRAME 16 + 512  // room for a 240-byte SPI xfer + slack
 
 class UsbBridge {
  public:
