@@ -1148,18 +1148,40 @@ class Application(ctk.CTk):
 
     def _auto_detect(self):
         self.log("Scanning for I2C adapters...")
+        adapter = None
         try:
             adapter = detect_adapter()
         except Exception as e:
             self.log(f"Auto-detect error: {e}", "err")
-            return
         if adapter:
             self.adapter = adapter
             self.connected = True
             self._update_conn_status(True)
             self.log(f"Auto-detected: {type(adapter).__name__}", "ok")
-        else:
-            self.log("No adapter found. Select adapter and click Connect.", "warn")
+            return
+        # No FTDI/SMBus adapter: look for a CD3217 board on USB serial.
+        def board_scan():
+            from cd3217_analyzer.usb_bridge import scan_for_boards
+            try:
+                boards = scan_for_boards()
+            except Exception:
+                boards = []
+            def report():
+                if self.connected:      # user connected meanwhile
+                    return
+                if not boards:
+                    self.log("No adapter or board found. Select adapter and "
+                             "click Connect.", "warn")
+                    return
+                b = boards[0]
+                self.log(f"Board found: {b['board']} "
+                         f"({b['desc'] or 'USB serial'}) on {b['port']} — "
+                         "connecting...", "ok")
+                self.adapter_var.set("USB Bridge (board)")
+                self.bus_var.set(b["port"])
+                self._connect()
+            self._ui(report)
+        threading.Thread(target=board_scan, daemon=True).start()
 
     def _toggle_connection(self):
         if self.connected:
@@ -1184,12 +1206,31 @@ class Application(ctk.CTk):
             elif selection == "USB Bridge (board)":
                 port = normalize_port(self.bus_var.get())
                 if not port:
-                    ports = list_bridge_ports()
-                    if not ports:
-                        self.log("No USB serial port found. Plug in the board "
-                                 "and enter the COM port (e.g. COM5) in Bus/Port.", "warn")
+                    # No port given: scan USB serial ports for a board that
+                    # answers our bridge protocol (best match first).
+                    self.log("No port given — scanning for boards...")
+                    from cd3217_analyzer.usb_bridge import scan_for_boards
+                    try:
+                        boards = scan_for_boards()
+                    except Exception as e:
+                        boards = []
+                        self.log(f"Board scan error: {e}", "warn")
+                    if not boards:
+                        self.log("No CD3217 board found on any serial port. "
+                                 "Plug it in (or set the COM port in "
+                                 "Bus/Port) and retry.", "warn")
                         return
-                    port = ports[0]
+                    if len(boards) > 1:
+                        names = ", ".join(f"{b['board']} on {b['port']}"
+                                          for b in boards)
+                        self.log(f"Multiple boards found ({names}); "
+                                 f"using {boards[0]['board']} on "
+                                 f"{boards[0]['port']}", "warn")
+                    port = boards[0]["port"]
+                    self.bus_var.set(port)
+                    self.log(f"Board found: {boards[0]['board']} "
+                             f"({boards[0]['desc'] or 'USB serial'}) on "
+                             f"{port}", "ok")
                 adapter = UsbBridgeAdapter(port=port)
                 adapter.open()
                 ok = False
@@ -1238,8 +1279,60 @@ class Application(ctk.CTk):
             self.connected = True
             self._update_conn_status(True)
             self.log(f"Connected: {type(adapter).__name__}", "ok")
+            if isinstance(adapter, UsbBridgeAdapter):
+                self._start_board_watcher(adapter)
         except Exception as e:
             self.log(f"Connection failed: {e}", "err")
+
+    # ─── Board presence watcher ───────────────────────────────────────────
+
+    def _start_board_watcher(self, adapter: UsbBridgeAdapter):
+        """Watch the connected board; auto-disconnect when it's removed.
+
+        A board is considered removed when its COM port vanishes from the
+        OS enumeration (USB unplug). PING health is used as a secondary
+        signal: if the port still exists but the board hasn't answered for
+        several checks in a row, we also let go (wedged CDC driver state).
+        Runs on a daemon thread; calls back into the UI thread via after().
+        """
+        self._stop_board_watcher()
+        port = adapter.port
+        state = {"misses": 0}
+        self._board_watch_stop = threading.Event()
+
+        def tick():
+            if self._board_watch_stop.is_set():
+                return
+            if not self.connected or self.adapter is not adapter:
+                return
+            try:
+                from cd3217_analyzer.usb_bridge import port_exists
+                present = port_exists(port)
+            except Exception:
+                present = True
+            alive = False
+            if present:
+                alive = adapter.is_alive()
+                state["misses"] = 0 if alive else state["misses"] + 1
+            if (not present) or state["misses"] >= 5:
+                def gone():
+                    if self.connected and self.adapter is adapter:
+                        self.log("Board removed — disconnecting.", "warn")
+                        self._disconnect()
+                self._ui(gone)
+                return
+            self.after(2000, lambda: threading.Thread(
+                target=tick, daemon=True).start())
+
+        self.log(f"Watching {port} for board removal")
+        self.after(2000, lambda: threading.Thread(
+            target=tick, daemon=True).start())
+
+    def _stop_board_watcher(self):
+        evt = getattr(self, "_board_watch_stop", None)
+        if evt:
+            evt.set()
+        self._board_watch_stop = None
 
     def _flash_board(self):
         """Flash firmware (.uf2 / .bin) to a connected board."""
@@ -1279,6 +1372,7 @@ class Application(ctk.CTk):
         threading.Thread(target=worker, daemon=True).start()
 
     def _disconnect(self):
+        self._stop_board_watcher()
         if self.adapter:
             try:
                 self.adapter.close()

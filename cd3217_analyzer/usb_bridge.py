@@ -218,6 +218,19 @@ class UsbBridgeAdapter(I2CAdapter):
             time.sleep(0.3)
         return False
 
+    def is_alive(self) -> bool:
+        """One quick PING (no retries) — used by the removal watcher.
+
+        False means "didn't answer right now": either the board is gone or
+        it's busy. The watcher only reports removal after the port also
+        disappears from enumeration, so a busy-but-present board is fine.
+        """
+        try:
+            resp = self._transact(CMD_PING, retries=0)
+            return bool(resp) and resp[0] == 0x51
+        except Exception:
+            return False
+
 
 def _verify_ck(body: bytes, plen: int):
     """body = [cmd][plen][payload...][cksum]"""
@@ -295,3 +308,104 @@ def _port_sort_key(port: str) -> tuple:
     if port.upper().startswith("COM") and port[3:].isdigit():
         return (0, int(port[3:]))
     return (1, 0)
+
+
+# USB VID/PID of the boards this firmware runs on (native USB CDC).
+_BOARD_USB_IDS = {
+    (0x2E8A, 0x000A): "pico",   # Raspberry Pi Pico (RP2040, std USB)
+    (0x2E8A, 0x000F): "pico",   # Pico running Picoprobe... (reserved)
+    (0x2E8A, 0x000C): "pico_w",
+    (0x2E8A, 0x0009): "rp2350",  # Pico 2 (RP2350) / Pico 2 W std CDC
+    (0x2E8A, 0x000B): "esp32-s3",  # ESP32-S3 native USB JTAG/serial
+    (0x303A, 0x1001): "esp32",  # Espressif ESP32-S2/S3/C3 CDC
+    (0x303A, 0x0002): "esp32-c3",
+    (0x1A86, 0x55D4): "esp32-c6",  # WCH CH34x bridge on some C6 boards
+    (0x10C4, 0xEA60): "esp32-bridge",  # CP210x bridge (ESP32 classic)
+    (0x1A86, 0x7523): "esp32-bridge",  # CH340 bridge (ESP32 classic clones)
+}
+
+
+def _comports():
+    """pyserial comports() with graceful fallback."""
+    try:
+        import serial.tools.list_ports as lp
+        return list(lp.comports())
+    except Exception:
+        return []
+
+
+def scan_for_boards(current_port: Optional[str] = None,
+                    timeout: float = 0.8) -> List[dict]:
+    """Find CD3217 analyzer boards on the USB serial ports.
+
+    A "board" is a serial port where our bridge firmware answers PING and
+    reports its INFO (board name). Candidate ports are prioritized by USB
+    VID/PID (known dev-board IDs first), then everything else — so a board
+    behind a generic USB-serial bridge is still found.
+
+    ``current_port`` (if given) is skipped — it's the port this app already
+    holds open (opening it again would fail with Access denied).
+
+    Returns a list of dicts sorted best-first:
+        {"port": "COM8", "board": "pico1", "desc": "Raspberry Pi Pico",
+         "hwid": "USB VID:PID=2E8A:000A ..."}
+    """
+    if serial is None:
+        return []
+    current = normalize_port(current_port) if current_port else None
+
+    found = []
+    seen_usb = set()          # (vid, pid, serial_number) dedup
+    entries = []              # (priority, port, desc, hwid, vid, pid)
+
+    for p in _comports():
+        name = getattr(p, "device", None)
+        if not name:
+            continue
+        if current and name == current:
+            continue
+        vid = getattr(p, "vid", None)
+        pid = getattr(p, "pid", None)
+        sn = getattr(p, "serial_number", None) or ""
+        if vid is not None and pid is not None:
+            key = (vid, pid, sn)
+            if key in seen_usb:
+                continue       # same physical device listed twice
+            seen_usb.add(key)
+            prio = 0 if (vid, pid) in _BOARD_USB_IDS else 1
+        else:
+            prio = 1
+        entries.append((prio, name, getattr(p, "description", "") or "",
+                        getattr(p, "hwid", "") or "", vid, pid))
+
+    entries.sort(key=lambda e: (e[0], _port_sort_key(e[1])))
+
+    for _prio, name, desc, hwid, _vid, _pid in entries:
+        try:
+            a = UsbBridgeAdapter(port=name, timeout=timeout)
+            a.open()
+            try:
+                if not a.handshake():
+                    continue
+                info = a.info()
+            finally:
+                a.close()
+        except Exception:
+            continue
+        if info and info.get("board"):
+            found.append({"port": name,
+                          "board": info["board"],
+                          "desc": desc,
+                          "hwid": hwid})
+    return found
+
+
+def port_exists(port: str) -> bool:
+    """True when ``port`` is still present in the OS enumeration."""
+    if not port:
+        return False
+    want = normalize_port(port)
+    for p in _comports():
+        if getattr(p, "device", "") == want:
+            return True
+    return False
