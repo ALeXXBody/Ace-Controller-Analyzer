@@ -203,11 +203,12 @@ class Application(ctk.CTk):
         ctk.CTkLabel(
             controls, text="Adapter", text_color=C["dim"], font=F["small"]
         ).grid(row=0, column=1, sticky="w", padx=4)
-        self.adapter_var = ctk.StringVar(value="Auto-detect")
+        self.adapter_var = ctk.StringVar(value="Auto-detect (FTDI / board)")
         self.adapter_menu = ctk.CTkOptionMenu(
             controls,
             variable=self.adapter_var,
-            values=["Auto-detect", "FTDI FT232H", "SMBus (Linux)", "CH341", "USB Bridge (board)"],
+            values=["Auto-detect (FTDI / board)", "FTDI FT232H",
+                    "SMBus (Linux)", "CH341", "USB Bridge (board)"],
             width=150,
             fg_color=C["entry"],
             button_color=C["btn"],
@@ -1561,14 +1562,95 @@ class Application(ctk.CTk):
         else:
             self._connect()
 
+    def _connect_board_bridge(self) -> Optional[UsbBridgeAdapter]:
+        """Connect to a CD3217 board over USB; returns None on failure.
+
+        Uses the Bus/Port field when set; otherwise scans serial ports for a
+        board answering the bridge protocol (best match first). Handles the
+        handshake, firmware logging, Board-tab refresh and the firmware
+        update offer.
+        """
+        port = normalize_port(self.bus_var.get())
+        if not port:
+            # No port given: scan USB serial ports for a board that
+            # answers our bridge protocol (best match first).
+            self.log("No port given — scanning for boards...")
+            from cd3217_analyzer.usb_bridge import scan_for_boards
+            try:
+                boards = scan_for_boards()
+            except Exception as e:
+                boards = []
+                self.log(f"Board scan error: {e}", "warn")
+            if not boards:
+                self.log("No CD3217 board found on any serial port. "
+                         "Plug it in (or set the COM port in "
+                         "Bus/Port) and retry.", "warn")
+                return None
+            if len(boards) > 1:
+                names = ", ".join(f"{b['board']} on {b['port']}"
+                                  for b in boards)
+                self.log(f"Multiple boards found ({names}); "
+                         f"using {boards[0]['board']} on "
+                         f"{boards[0]['port']}", "warn")
+            port = boards[0]["port"]
+            self.bus_var.set(port)
+            self.log(f"Board found: {boards[0]['board']} "
+                     f"({boards[0]['desc'] or 'USB serial'}) on "
+                     f"{port}", "ok")
+        adapter = UsbBridgeAdapter(port=port)
+        adapter.open()
+        ok = False
+        try:
+            ok = adapter.handshake()
+        except Exception:
+            ok = False
+        if not ok:
+            adapter.close()
+            self.log(f"USB bridge on {port} did not respond to PING. "
+                     "Is the board running CD3217 firmware?", "err")
+            return None
+        # Log which firmware the board is actually running so a wrong
+        # flash (e.g. pico2 firmware on a Pico 1) is obvious, and
+        # populate the Board tab with its live pinout.
+        try:
+            b = adapter.info()
+            if b and b.get("board"):
+                fw = b.get("version")
+                self.log(f"Board firmware: {b['board']} "
+                         f"(fw {fw or 'unknown'})", "ok")
+        except Exception:
+            pass
+        try:
+            self._refresh_board_tab_live()
+        except Exception:
+            pass
+        # offer a firmware update when the board is outdated
+        try:
+            self._maybe_offer_board_update(adapter)
+        except Exception:
+            pass
+        return adapter
+
     def _connect(self):
         if self.spi_adapter:
             self._flash_disconnect()
         selection = self.adapter_var.get()
         self.log(f"Connecting to {selection}...")
         try:
-            if selection == "Auto-detect":
+            if selection.startswith("Auto-detect"):
                 adapter = detect_adapter()
+                if adapter is None:
+                    # No FTDI/SMBus hardware: fall back to scanning for a
+                    # CD3217 board on USB serial (board-first UX — the user
+                    # shouldn't have to pick the adapter type manually).
+                    self.log("No FTDI/SMBus adapter found — "
+                             "scanning for a CD3217 board...")
+                    adapter = self._connect_board_bridge()
+                    if adapter is None:
+                        self.log("Auto-detect found nothing: no FTDI, no "
+                                 "SMBus, no CD3217 board. Plug a board in "
+                                 "and retry.", "warn")
+                        return
             elif selection == "FTDI FT232H":
                 adapter = FTDIAdapter()
                 adapter.open()
@@ -1576,65 +1658,9 @@ class Application(ctk.CTk):
                 adapter = SMBusAdapter(bus_number=int(self.bus_var.get() or "1"))
                 adapter.open()
             elif selection == "USB Bridge (board)":
-                port = normalize_port(self.bus_var.get())
-                if not port:
-                    # No port given: scan USB serial ports for a board that
-                    # answers our bridge protocol (best match first).
-                    self.log("No port given — scanning for boards...")
-                    from cd3217_analyzer.usb_bridge import scan_for_boards
-                    try:
-                        boards = scan_for_boards()
-                    except Exception as e:
-                        boards = []
-                        self.log(f"Board scan error: {e}", "warn")
-                    if not boards:
-                        self.log("No CD3217 board found on any serial port. "
-                                 "Plug it in (or set the COM port in "
-                                 "Bus/Port) and retry.", "warn")
-                        return
-                    if len(boards) > 1:
-                        names = ", ".join(f"{b['board']} on {b['port']}"
-                                          for b in boards)
-                        self.log(f"Multiple boards found ({names}); "
-                                 f"using {boards[0]['board']} on "
-                                 f"{boards[0]['port']}", "warn")
-                    port = boards[0]["port"]
-                    self.bus_var.set(port)
-                    self.log(f"Board found: {boards[0]['board']} "
-                             f"({boards[0]['desc'] or 'USB serial'}) on "
-                             f"{port}", "ok")
-                adapter = UsbBridgeAdapter(port=port)
-                adapter.open()
-                ok = False
-                try:
-                    ok = adapter.handshake()
-                except Exception:
-                    ok = False
-                if not ok:
-                    adapter.close()
-                    self.log(f"USB bridge on {port} did not respond to PING. "
-                             "Is the board running CD3217 firmware?", "err")
+                adapter = self._connect_board_bridge()
+                if adapter is None:
                     return
-                # Log which firmware the board is actually running so a wrong
-                # flash (e.g. pico2 firmware on a Pico 1) is obvious, and
-                # populate the Board tab with its live pinout.
-                try:
-                    b = adapter.info()
-                    if b and b.get("board"):
-                        fw = b.get("version")
-                        self.log(f"Board firmware: {b['board']} "
-                                 f"(fw {fw or 'unknown'})", "ok")
-                except Exception:
-                    pass
-                try:
-                    self._refresh_board_tab_live()
-                except Exception:
-                    pass
-                # offer a firmware update when the board is outdated
-                try:
-                    self._maybe_offer_board_update(adapter)
-                except Exception:
-                    pass
             else:
                 return
 
