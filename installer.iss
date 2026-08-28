@@ -52,8 +52,12 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#AppName}"; \
     Filename: "{app}\{#AppExeName}"; Tasks: quicklaunchicon
 
 [Run]
+; Interactive install: checkbox "Launch app" on the last page.
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; \
     Flags: nowait postinstall skipifsilent
+; Silent install (app self-update): always relaunch the app when Setup
+; finishes, so the app reopens by itself after an update.
+Filename: "{app}\{#AppExeName}"; Flags: nowait; Check: WizardSilent
 
 [UninstallDelete]
 ; Remove user-generated reports/logs created next to the app

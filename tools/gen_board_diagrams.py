@@ -367,23 +367,38 @@ def draw_diagram(bd):
         cx = bx0 + step * (i + 0.5)
         draw_pad(label, cx, by1, "bottom")
 
-    # legend
+    # legend: 3 items measured and centered as one row; adapts (smaller gap,
+    # then smaller font) until it fits the canvas — the old fixed offsets
+    # overflowed on narrow boards like the Pico
     ly = H - FOOTER_H + 30
-    d.ellipse([W // 2 - 460, ly, W // 2 - 426, ly + 34], fill=COL_I2C)
-    d.text((W // 2 - 414, ly + 17), "I2C  (SDA / SCL)", font=f_label,
-           fill=COL_TEXT, anchor="lm")
-    d.ellipse([W // 2 - 170, ly, W // 2 - 136, ly + 34], fill=COL_SPI)
-    d.text((W // 2 - 124, ly + 17), "SPI  (SCK/MISO/MOSI/CS)",
-           font=f_label, fill=COL_TEXT, anchor="lm")
-    d.ellipse([W // 2 + 160, ly, W // 2 + 194, ly + 34], fill=COL_UART)
-    d.text((W // 2 + 206, ly + 17), "UART RX (sniff)", font=f_label,
-           fill=COL_TEXT, anchor="lm")
+    items = [("I2C  (SDA / SCL)", COL_I2C),
+             ("SPI  (SCK/MISO/MOSI/CS)", COL_SPI),
+             ("UART RX (sniff)", COL_UART)]
+    f_leg = f_bot
+    gap = 44
+    while True:
+        widths = [34 + 10 + text_wh(d, txt, f_leg)[0] for txt, _ in items]
+        total = sum(widths) + gap * (len(items) - 1)
+        if total <= W - 16 or gap <= 20:
+            break
+        gap -= 8
+    if total > W - 16:                     # still too wide: smaller font
+        f_leg = load_font(16)
+        widths = [34 + 10 + text_wh(d, txt, f_leg)[0] for txt, _ in items]
+        total = sum(widths) + gap * (len(items) - 1)
+    lx = (W - total) // 2
+    for (txt, col), w_it in zip(items, widths):
+        d.ellipse([lx, ly, lx + 34, ly + 34], fill=col)
+        d.text((lx + 44, ly + 17), txt, font=f_leg,
+               fill=COL_TEXT, anchor="lm")
+        lx += w_it + gap
 
     if bd.get("footnote"):
         d.text((W // 2, ly + 64), bd["footnote"], font=f_note,
                fill=COL_DIM, anchor="ma")
 
     geom = {"by1": by1, "legend_y": ly, "has_bottom": bool(bottom),
+            "legend_x0": (W - total) // 2, "legend_x1": (W - total) // 2 + total,
             "board_w": board_w}
     return img, pads, geom
 
@@ -412,6 +427,11 @@ def self_check(bd, img, pads, geom):
             print(f"  !! {bd['key']}: bottom labels (to y={label_bottom}) "
                   f"collide with legend (y={geom['legend_y']})")
             ok = False
+    # legend must fit inside the canvas (past overflow on narrow boards)
+    if geom["legend_x0"] < 2 or geom["legend_x1"] > img.width - 2:
+        print(f"  !! {bd['key']}: legend spans x {geom['legend_x0']}.."
+              f"{geom['legend_x1']} outside canvas 0..{img.width}")
+        ok = False
         # horizontal: widest bottom text must fit inside one pad spacing
         n_bot = len(bd.get("bottom", []))
         if n_bot >= 2:

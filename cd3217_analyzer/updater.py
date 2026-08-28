@@ -215,7 +215,12 @@ try {
   Rename-Item -Path $appDir -NewName ((Split-Path $appDir -Leaf) + '.old')
   Move-Item -Path $newDir -Destination $appDir
   L "folders swapped; starting app"
-  Start-Process -FilePath (Join-Path $appDir 'CD3217B12_Analyzer.exe')
+  $exe = Join-Path $appDir 'CD3217B12_Analyzer.exe'
+  for ($i = 0; $i -lt 10; $i++) {
+    try { Start-Process -FilePath $exe -ErrorAction Stop; break } catch {
+      L "start attempt $($i+1) failed: $_"; Start-Sleep -Milliseconds 1000
+    }
+  }
   for ($i = 0; $i -lt 20; $i++) {
     Start-Sleep -Milliseconds 500
     try { Remove-Item -Recurse -Force $old -ErrorAction Stop; break } catch {}
@@ -254,10 +259,12 @@ def apply_update(release: dict, progress_cb: Optional[Callable] = None
         setup = os.path.join(tmp, SETUP_ASSET)
         download_file(url, setup, progress_cb)
         # /SILENT: progress only, no questions.
-        # /CLOSEAPPLICATIONS + /RESTARTAPPLICATIONS: Restart Manager closes
-        # this app, Setup replaces it, then restarts it.
-        subprocess.Popen([setup, "/SILENT", "/CLOSEAPPLICATIONS",
-                          "/RESTARTAPPLICATIONS"])
+        # /CLOSEAPPLICATIONS: Restart Manager closes this app so Setup can
+        # replace it. The app is relaunched afterwards by the installer's
+        # [Run] entry (Check: WizardSilent) — deterministic, unlike
+        # /RESTARTAPPLICATIONS.
+        subprocess.Popen([setup, "/SILENT", "/CLOSEAPPLICATIONS"],
+                         creationflags=0x08000000 if os.name == "nt" else 0)
         return {"mode": mode, "action": "setup-launched", "path": setup}
 
     # portable
