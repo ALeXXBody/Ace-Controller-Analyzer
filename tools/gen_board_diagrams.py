@@ -106,7 +106,7 @@ BOARDS = [
         left=["5V", "GND", "3V3", "GP29", "GP28", "GP27", "GP26", "GP15"],
         bottom=["GP14", "GP13", "GP12", "GP11", "GP10", "GP9", "GP8"],
         right=["GP0", "GP1", "GP2", "GP3", "GP4", "GP5", "GP6", "GP7"],
-        board_w=340, pitch=64,
+        board_w=470, pitch=64,
         highlights={
             "GP4": ("i2c", "sda"), "GP5": ("i2c", "scl"),
             "GP12": ("spi", "miso"), "GP13": ("spi", "cs"),
@@ -222,9 +222,9 @@ def draw_diagram(bd):
     if bottom:
         board_h = max(board_h, len(bottom) * pitch + 60)
 
-    # Bottom pads draw their labels BELOW the board edge; reserve room so
-    # they never touch the legend (rp2040-zero / c6-zero previously collided).
-    bot_label_room = 64 if bottom else 0
+    # Bottom pads draw stacked labels BELOW the board edge (number, then role);
+    # reserve room so they never touch the legend.
+    bot_label_room = 110 if bottom else 0
 
     W = LABEL_MARGIN * 2 + board_w + PAD_W * 2 + 60
     H = HEADER_H + board_h + PAD_H * 2 + FOOTER_H + bot_label_room + \
@@ -326,22 +326,21 @@ def draw_diagram(bd):
             tx, ty = cx, r[3] + 14
             anchor = "ma"
         if col:
-            # draw each element exactly once: label above the pad line,
-            # role tag below (bottom pads: single combined line under the pad)
+            # side pads: ONE line — "GP4 SDA" (number + role together).
+            # bottom pads: stacked — number on top, role letter(s) below
+            # (bottom pads sit close together; a combined line would overlap).
             tag_txt = (I2C_TAGS if role == "i2c" else SPI_TAGS)[tag]
-            if side == "left":
-                d.text((tx, ty - 20), label, font=f_label, fill=col,
-                       anchor="rm")
-                d.text((tx, ty + 18), tag_txt, font=f_tag, fill=col,
-                       anchor="rm")
-            elif side == "right":
-                d.text((tx, ty - 20), label, font=f_label, fill=col,
-                       anchor="lm")
-                d.text((tx, ty + 18), tag_txt, font=f_tag, fill=col,
-                       anchor="lm")
-            else:  # bottom
-                d.text((tx, ty), label + " " + tag_txt, font=f_tag,
-                       fill=col, anchor="ma")
+            if side == "bottom":
+                d.text((cx, r[3] + 26), label, font=f_tag, fill=col,
+                       anchor="mm")
+                d.text((cx, r[3] + 54), tag_txt, font=f_tag, fill=col,
+                       anchor="mm")
+            elif side == "left":
+                d.text((tx, ty), label + " " + tag_txt, font=f_label,
+                       fill=col, anchor="rm")
+            else:  # right
+                d.text((tx, ty), label + " " + tag_txt, font=f_label,
+                       fill=col, anchor="lm")
         else:
             d.text((tx, ty), label, font=f_label, fill=COL_DIM, anchor=anchor)
 
@@ -371,13 +370,15 @@ def draw_diagram(bd):
         d.text((W // 2, ly + 64), bd["footnote"], font=f_note,
                fill=COL_DIM, anchor="ma")
 
-    geom = {"by1": by1, "legend_y": ly, "has_bottom": bool(bottom)}
+    geom = {"by1": by1, "legend_y": ly, "has_bottom": bool(bottom),
+            "board_w": board_w}
     return img, pads, geom
 
 
 def self_check(bd, img, pads, geom):
-    """Verify every highlighted pad rendered in its color, and that
-    bottom-pad labels can't touch the legend (past overlap bug)."""
+    """Verify every highlighted pad rendered in its color, that bottom-pad
+    labels can't touch the legend, and that bottom labels don't overlap
+    each other horizontally (past overlap bug)."""
     px = img.load()
     ok = True
     for label, (role, _tag) in bd["highlights"].items():
@@ -390,12 +391,24 @@ def self_check(bd, img, pads, geom):
                   f"(got rgba{r,g,b,a} role={got_role}, want {want})")
             ok = False
     if geom["has_bottom"]:
-        # bottom pad: edge +15, label top +14, label height ~30, margin 8
-        label_bottom = geom["by1"] + 15 + 14 + 30
-        if geom["legend_y"] < label_bottom + 8:
+        # stacked bottom labels: number centered at by1+26, role at by1+54,
+        # each ~24px tall -> ink bottom ≈ by1+66; keep 10px clear of legend
+        label_bottom = geom["by1"] + 66
+        if geom["legend_y"] < label_bottom + 10:
             print(f"  !! {bd['key']}: bottom labels (to y={label_bottom}) "
                   f"collide with legend (y={geom['legend_y']})")
             ok = False
+        # horizontal: widest bottom text must fit inside one pad spacing
+        n_bot = len(bd.get("bottom", []))
+        if n_bot >= 2:
+            spacing = geom["board_w"] / n_bot
+            widest = max(len(l) for l in bd["bottom"])
+            # ~14px per char at 24px bold font + padding
+            text_w = widest * 14 + 8
+            if text_w > spacing:
+                print(f"  !! {bd['key']}: bottom labels {text_w:.0f}px "
+                      f"wider than pad spacing {spacing:.0f}px — overlap")
+                ok = False
     return ok
 
 
