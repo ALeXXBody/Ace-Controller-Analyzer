@@ -93,6 +93,8 @@ the diagnosis table.
 
 ## Updating
 
+### App
+
 The app checks GitHub for new releases automatically at startup (silent) —
 or use the **Check updates** button in the top bar. When a new version is
 found, one click downloads and applies it:
@@ -102,6 +104,22 @@ found, one click downloads and applies it:
 - **Portable**: the app downloads the new package, replaces its own folder
   and restarts itself.
 - **From source**: the releases page opens in your browser.
+
+### Board firmware
+
+Boards report their firmware version on connect (Board tab shows it). When a
+board runs an older firmware than the current release, the app pops up and
+offers to update it — the right image is downloaded automatically and
+flashed with no wiring changes:
+
+- **Pico/RP2040 boards**: the app reboots the board into BOOTSEL and copies
+  the UF2 (flash-verified), then the board restarts.
+- **ESP32 boards**: the firmware streams over USB and is written to the OTA
+  partition, verified, then the board restarts itself.
+
+CLI equivalent: `python -m cd3217_analyzer --board-update [--port COMx]`.
+Note: first-generation firmware (pre-0.6.1) doesn't report a version — it
+shows as "unknown" and is offered the update.
 
 ## GUI Usage
 

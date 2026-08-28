@@ -23,6 +23,12 @@
  *   0x21 UART_READ  req: -                     resp: [n][n bytes]  (n≤240)
  *   0x24 UART_AUTOBAUD req: [pin]              resp: [status][width_us LE32]
  *                                       shortest start-bit pulse (0=silent)
+ *   0x30 FW_UPDATE  req: [sub][...]            resp: [status]
+ *     sub 0x00 BEGIN   [size LE32]  — ESP32: start OTA write
+ *     sub 0x01 CHUNK   [data ≤200]  — ESP32: write chunk (Update.write)
+ *     sub 0x02 END     []           — ESP32: finish+verify; board reboots
+ *     sub 0x03 BOOTSEL []           — RP2040: reboot into UF2 bootloader
+ *     sub 0x04 REBOOT  []           — normal reboot
  *   status: 0x00 = OK, 0xFF = error (e.g. NACK/timeout)
  */
 

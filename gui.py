@@ -385,6 +385,195 @@ class Application(ctk.CTk):
         self.log(f"Update failed: {err}", "err")
         messagebox.showerror("Update failed", str(err))
 
+    # ─── Board firmware update ────────────────────────────────────────────
+
+    def _maybe_offer_board_update(self, adapter: UsbBridgeAdapter):
+        """Popup when the connected board runs an older firmware.
+
+        Comparison is against the latest GitHub release (the app's own
+        version as fallback when offline). Runs the check on a worker
+        thread; the dialog opens on the UI thread.
+        """
+        if getattr(self, "_board_update_declined", False):
+            return
+        try:
+            info = adapter.info()
+        except Exception:
+            return
+        board = (info or {}).get("board")
+        fw = (info or {}).get("version")
+        if not board:
+            return
+
+        def work():
+            from cd3217_analyzer.updater import (fetch_latest_release,
+                                                 is_newer)
+            rel = None
+            try:
+                rel = fetch_latest_release()
+            except Exception:
+                rel = None
+            latest = rel["version"] if rel else __version__
+            # unknown version (pre-0.6.1 firmware) always counts as outdated
+            outdated = (fw is None) or is_newer(latest, fw)
+            if not outdated:
+                return
+            if rel is None:
+                self.log(f"Board firmware update available (board runs "
+                         f"{fw or 'an unknown version'}, latest is "
+                         f"{latest}) — connect to the internet to update.",
+                         "warn")
+                return
+            self._ui(lambda: self._ask_board_update(adapter, board, fw,
+                                                    rel))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _ask_board_update(self, adapter, board, fw, rel):
+        if not (self.connected and self.adapter is adapter):
+            return          # disconnected meanwhile
+        from cd3217_analyzer.updater import board_firmware_asset
+        asset = board_firmware_asset(board)
+        cur = fw or "older than 0.6.1"
+        if not asset:
+            self.log(f"Board '{board}' runs fw {cur} — a newer firmware "
+                     f"({rel['version']}) exists but this board has no "
+                     "release image; flash manually.", "warn")
+            return
+        if not messagebox.askyesno(
+                "Board firmware update",
+                f"A firmware update is available for this board.\n\n"
+                f"Board:  {board}\n"
+                f"Installed firmware:  {cur}\n"
+                f"Latest firmware:  {rel['version']}\n\n"
+                "Update now? The board will restart automatically\n"
+                "(about a minute — no wiring changes needed)."):
+            self._board_update_declined = True
+            self.log("Board firmware update declined (this session)")
+            return
+        self._perform_board_update(adapter, board, rel)
+
+    def _perform_board_update(self, adapter, board, rel):
+        """Download the board firmware and apply it (UF2 or OTA flow)."""
+        self._stop_board_watcher()
+        self.log(f"Updating board firmware: {board} -> {rel['version']}",
+                 "ok")
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Board firmware update")
+        dlg.geometry("440x160")
+        dlg.resizable(False, False)
+        dlg.attributes("-topmost", True)
+        dlg.grab_set()
+        ctk.CTkLabel(dlg, text=f"Updating {board} to fw {rel['version']}...",
+                     font=F["heading"]).pack(pady=(22, 8))
+        bar = ctk.CTkProgressBar(dlg, width=380, height=16)
+        bar.pack(pady=4)
+        bar.set(0)
+        info = ctk.CTkLabel(dlg, text="Downloading...", font=F["small"],
+                            text_color=C["dim"])
+        info.pack(pady=4)
+
+        def set_phase(txt, frac):
+            info.configure(text=txt)
+            bar.set(frac)
+
+        def dl_progress(done, total):
+            def upd():
+                if total:
+                    set_phase(f"Downloading firmware... "
+                              f"{done/1048576:.1f}/{total/1048576:.1f} MB",
+                              min(0.4, 0.4 * done / total))
+                else:
+                    set_phase(f"Downloading... {done/1048576:.1f} MB", 0.2)
+            self._ui(upd)
+
+        def work():
+            try:
+                from cd3217_analyzer.updater import download_board_firmware
+                path = download_board_firmware(board, rel, dl_progress)
+                self._ui(lambda: set_phase("Flashing board...", 0.45))
+                if path.lower().endswith(".uf2"):
+                    self._flash_board_uf2(adapter, path)
+                else:
+                    with open(path, "rb") as f:
+                        data = f.read()
+
+                    def fw_progress(done, total):
+                        self._ui(lambda: set_phase(
+                            f"Writing firmware... {done/1024:.0f}/"
+                            f"{total/1024:.0f} KB",
+                            0.45 + 0.5 * done / total))
+                    adapter.fw_update_image(data, fw_progress)
+                    # board reboots itself after fw_update_end
+                self._ui(lambda: self._board_update_stage2(dlg, board))
+            except Exception as e:
+                err = str(e)
+                self._ui(lambda: self._board_update_failed(dlg, err))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _flash_board_uf2(self, adapter, uf2_path):
+        """RP2040 flow: reboot to BOOTSEL, copy the UF2 (verified)."""
+        import time as _t
+        from cd3217_analyzer.flash_board import (find_bootsel_drives,
+                                                 flash_pico_uf2)
+        adapter.fw_reboot_bootsel()
+        adapter.close()
+        deadline = _t.time() + 20
+        drive = None
+        while _t.time() < deadline:
+            drives = find_bootsel_drives()
+            if drives:
+                drive = drives[0]
+                break
+            _t.sleep(0.5)
+        if not drive:
+            raise IOError("Board did not enter BOOTSEL mode — unplug it, "
+                          "hold BOOTSEL, plug back in and retry")
+        flash_pico_uf2(uf2_path, bootsel_drive=drive)
+
+    def _board_update_stage2(self, dlg, board):
+        """Firmware written — wait for the board to come back, reconnect."""
+        dlg.destroy()
+        self.log("Firmware written — waiting for the board to restart...",
+                 "ok")
+        self._disconnect()          # clean state; port may re-enumerate
+
+        def work():
+            import time as _t
+            from cd3217_analyzer.usb_bridge import scan_for_boards
+            deadline = _t.time() + 30
+            found = []
+            while _t.time() < deadline:
+                found = scan_for_boards()
+                if found:
+                    break
+                _t.sleep(2)
+            def report():
+                if not found:
+                    self.log("Board did not come back after the update — "
+                             "unplug/replug it, then Connect.", "warn")
+                    return
+                b = found[0]
+                self.log(f"Board back: {b['board']} on {b['port']} — "
+                         "reconnecting", "ok")
+                self.adapter_var.set("USB Bridge (board)")
+                self.bus_var.set(b["port"])
+                self._connect()
+            self._ui(report)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _board_update_failed(self, dlg, err):
+        dlg.destroy()
+        self.log(f"Board firmware update failed: {err}", "err")
+        messagebox.showerror("Board update failed", str(err))
+        # the port may be gone (mid-reboot) — let the watcher/disconnect clean
+        if not (self.connected and self.adapter and
+                getattr(self.adapter, "is_alive", lambda: True)()):
+            self._disconnect()
+
     def _build_device_panel(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", padx=12, pady=(12, 6))
@@ -720,8 +909,9 @@ class Application(ctk.CTk):
             self.board_status_dot.configure(text_color=C["green"])
             self._show_board_info(board)
             live = info.get("spi_sck") is not None
+            fw = info.get("version")
             self.board_sub_label.configure(text=(
-                f"Connected  ·  pins reported "
+                f"Connected  ·  fw {fw or 'unknown'}  ·  pins reported "
                 f"{'live by firmware' if live else 'from the board table'}"))
         else:
             self.board_status_dot.configure(text_color=C["red"])
@@ -1431,13 +1621,18 @@ class Application(ctk.CTk):
                 try:
                     b = adapter.info()
                     if b and b.get("board"):
+                        fw = b.get("version")
                         self.log(f"Board firmware: {b['board']} "
-                                 f"(SDA={b.get('sda')} SCL={b.get('scl')})",
-                                 "ok")
+                                 f"(fw {fw or 'unknown'})", "ok")
                 except Exception:
                     pass
                 try:
                     self._refresh_board_tab_live()
+                except Exception:
+                    pass
+                # offer a firmware update when the board is outdated
+                try:
+                    self._maybe_offer_board_update(adapter)
                 except Exception:
                     pass
             else:

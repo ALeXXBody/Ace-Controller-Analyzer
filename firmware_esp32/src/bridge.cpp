@@ -5,6 +5,13 @@
 #include "bridge.h"
 #include "spi_flash.h"
 #include "uart_sniff.h"
+#include "fw_version.h"
+
+#ifdef ARDUINO_ARCH_RP2040
+#include "pico/bootrom.h"      // reset_usb_boot() -> UF2 BOOTSEL mode
+#else
+#include <Update.h>            // ESP32 OTA self-update
+#endif
 
 // Max SPI full-duplex payload: response = status + rx, must fit 1-byte plen.
 #define BRIDGE_SPI_MAX 240
@@ -151,10 +158,13 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
     case 0x04: { uint8_t r = 0x51; sendResp_(0x04, &r, 1); break; }
     case 0x05: {
       // INFO: [boardlen][board][sda][scl][spi_sck][spi_miso][spi_mosi]
-      //       [spi_cs][hw][uart_rx]  (older firmware sends fewer fields)
+      //       [spi_cs][hw][uart_rx][verlen][version]
+      // (older firmware sends fewer fields; host tolerates all)
       const char *name = CD3217_BOARD;
       uint8_t blen = (uint8_t)strlen(name);
-      uint8_t resp[10 + 16];
+      const char *ver = CD3217_FW_VERSION;
+      uint8_t vlen = (uint8_t)strlen(ver);
+      uint8_t resp[24 + 16];
       resp[0] = blen;
       memcpy(resp + 1, name, blen);
       resp[1 + blen] = I2C_SDA_GPIO;
@@ -169,7 +179,9 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
       resp[7 + blen] = 0x02;   // hw: ESP32 family
 #endif
       resp[8 + blen] = PIN_UART_RX;
-      sendResp_(0x05, resp, 9 + blen);
+      resp[9 + blen] = vlen;
+      memcpy(resp + 10 + blen, ver, vlen);
+      sendResp_(0x05, resp, 10 + blen + vlen);
       break;
     }
     case 0x10: {
@@ -227,6 +239,81 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
       resp[3] = (w >> 16) & 0xFF;
       resp[4] = (w >> 24) & 0xFF;
       sendResp_(0x24, resp, 5);
+      break;
+    }
+    case 0x30: {
+      // FW_UPDATE: [sub][...]
+      if (plen < 1) {
+        uint8_t r = 0xFF;
+        sendResp_(0x30, &r, 1);
+        break;
+      }
+      uint8_t sub = pl[0];
+      const uint8_t *data = pl + 1;
+      size_t dlen = plen - 1;
+      uint8_t ok = 0xFF;
+
+      switch (sub) {
+        case 0x00: {   // BEGIN [size LE32] (ESP32 OTA)
+#ifdef ARDUINO_ARCH_RP2040
+          break;       // not supported — use BOOTSEL flow
+#else
+          if (dlen >= 4) {
+            uint32_t size = (uint32_t)data[0] | ((uint32_t)data[1] << 8) |
+                            ((uint32_t)data[2] << 16) |
+                            ((uint32_t)data[3] << 24);
+            ok = Update.begin(size, U_FLASH) ? 0x00 : 0xFF;
+          }
+          break;
+#endif
+        }
+        case 0x01: {   // CHUNK [data]
+#ifdef ARDUINO_ARCH_RP2040
+          break;
+#else
+          if (dlen > 0 && Update.write(data, dlen) == dlen) ok = 0x00;
+          break;
+#endif
+        }
+        case 0x02: {   // END: verify; reply then reboot into the new fw
+#ifdef ARDUINO_ARCH_RP2040
+          break;
+#else
+          if (Update.end(true)) {
+            ok = 0x00;
+            sendResp_(0x30, &ok, 1);
+            delay(150);              // let the reply reach the host
+            ESP.restart();
+            return;                  // never reached
+          }
+          break;
+#endif
+        }
+        case 0x03: {   // REBOOT TO BOOTSEL (RP2040 UF2 flow)
+#ifdef ARDUINO_ARCH_RP2040
+          ok = 0x00;
+          sendResp_(0x30, &ok, 1);
+          delay(150);                // let the reply reach the host
+          reset_usb_boot(0, 0);      // mounts as RPI-RP2 drive
+          return;
+#else
+          break;
+#endif
+        }
+        case 0x04: {   // REBOOT
+          ok = 0x00;
+          sendResp_(0x30, &ok, 1);
+          delay(150);
+#ifdef ARDUINO_ARCH_RP2040
+          watchdog_reboot(0, 0, 0);
+#else
+          ESP.restart();
+#endif
+          return;
+        }
+        default: break;
+      }
+      sendResp_(0x30, &ok, 1);
       break;
     }
     default: break;

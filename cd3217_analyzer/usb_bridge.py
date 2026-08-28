@@ -35,6 +35,7 @@ CMD_INFO = 0x05
 CMD_UART_SETUP = 0x20      # [baud LE32][pin] -> [status]; baud 0 = stop
 CMD_UART_READ = 0x21       # -> [n][n bytes]
 CMD_UART_AUTOBAUD = 0x24   # [pin] -> [status][width_us LE32]
+CMD_FW_UPDATE = 0x30       # [sub][...]: 0=begin 1=chunk 2=end 3=bootsel 4=reboot
 RESP_OK = 0x00
 
 
@@ -200,6 +201,15 @@ class UsbBridgeAdapter(I2CAdapter):
         for i, name in enumerate(fields):
             idx = 1 + blen + i
             out[name] = resp[idx] if len(resp) > idx else None
+        # optional trailing [verlen][version] (fw >= 0.6.1)
+        vidx = 1 + blen + len(fields)
+        if len(resp) > vidx:
+            vlen = resp[vidx]
+            vstr = bytes(resp[vidx + 1:vidx + 1 + vlen]).decode(
+                "utf-8", "replace")
+            out["version"] = vstr or None
+        else:
+            out["version"] = None
         return out
 
     def handshake(self) -> bool:
@@ -272,6 +282,58 @@ class UsbBridgeAdapter(I2CAdapter):
         # pulseIn truncates to whole µs, so the true width is in
         # [width, width+1) — use the midpoint before estimating the baud.
         return snap_baud(1_000_000.0 / (width_us + 0.5))
+
+    # ---- firmware self-update ----------------------------------------------
+
+    def fw_update_begin(self, size: int) -> None:
+        """ESP32: open an OTA write of ``size`` bytes."""
+        resp = self._transact(CMD_FW_UPDATE,
+                              b"\x00" + struct.pack("<I", size))
+        if not resp or resp[0] != 0x00:
+            raise IOError("Firmware update: board refused to start "
+                          "(no OTA partition?)")
+
+    def fw_update_chunk(self, data: bytes) -> None:
+        """ESP32: write one chunk (≤200 bytes)."""
+        if not data or len(data) > 200:
+            raise ValueError("chunk must be 1..200 bytes")
+        resp = self._transact(CMD_FW_UPDATE, b"\x01" + bytes(data))
+        if not resp or resp[0] != 0x00:
+            raise IOError(f"Firmware update: chunk write failed at "
+                          f"offset (status "
+                          f"0x{resp[0]:02X})" if resp else
+                          "Firmware update: no response")
+
+    def fw_update_end(self) -> None:
+        """ESP32: finish + verify; the board reboots into the new firmware."""
+        resp = self._transact(CMD_FW_UPDATE, b"\x02")
+        if not resp or resp[0] != 0x00:
+            raise IOError("Firmware update: verification failed")
+
+    def fw_update_image(self, data: bytes, progress_cb=None) -> None:
+        """Stream a full firmware image (bytes) to an ESP32 board."""
+        self.fw_update_begin(len(data))
+        off = 0
+        total = len(data)
+        while off < total:
+            chunk = data[off:off + 200]
+            self.fw_update_chunk(chunk)
+            off += len(chunk)
+            if progress_cb:
+                progress_cb(off, total)
+        self.fw_update_end()
+
+    def fw_reboot_bootsel(self) -> None:
+        """RP2040: reboot into the UF2 BOOTSEL bootloader."""
+        resp = self._transact(CMD_FW_UPDATE, b"\x03")
+        if not resp or resp[0] != 0x00:
+            raise IOError("Board refused to reboot into BOOTSEL")
+
+    def fw_reboot(self) -> None:
+        """Normal reboot."""
+        resp = self._transact(CMD_FW_UPDATE, b"\x04")
+        if not resp or resp[0] != 0x00:
+            raise IOError("Board refused to reboot")
 
 
 STANDARD_BAUDS = (9600, 19200, 38400, 57600, 115200, 230400, 460800,

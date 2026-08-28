@@ -29,6 +29,18 @@ RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 SETUP_ASSET = "CD3217B12_Analyzer_Setup.exe"
 PORTABLE_ASSET = "CD3217B12_Portable.zip"
 APP_EXE = "CD3217B12_Analyzer.exe"
+
+# Board name (from the bridge INFO frame) -> release firmware asset.
+BOARD_FIRMWARE_ASSETS = {
+    "pico1": "cd3217_pico.uf2",
+    "pico2": "cd3217_pico2.uf2",
+    "pico-w": "cd3217_pico_w.uf2",
+    "pico2-w": "cd3217_pico2w.uf2",
+    "rp2040-zero": "cd3217_rp2040_zero.uf2",
+    "esp32-s3-devkitc-1": "cd3217_esp32s3.bin",
+    "esp32-c3-supermini": "cd3217_esp32c3.bin",
+    "esp32-devkit": "cd3217_esp32.bin",
+}
 # Inno Setup writes the uninstall key "<AppId>_is1" (per-user install).
 _UNINSTALL_KEY = (r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
                   r"\{8E4C3D2A-9F6B-4E7A-B1C5-CD3217B12ANLZ}_is1")
@@ -88,6 +100,7 @@ def fetch_latest_release(timeout: float = 6.0) -> Optional[dict]:
         "portable_url": assets.get(PORTABLE_ASSET),
         "url": data.get("html_url") or RELEASES_URL,
         "notes": (data.get("body") or "")[:2000],
+        "assets": assets,          # every asset name -> download url
     }
 
 
@@ -142,6 +155,35 @@ def download_file(url: str, dest: str,
                 if progress_cb:
                     progress_cb(done, total)
     return dest
+
+
+def board_firmware_asset(board: str) -> Optional[str]:
+    """Release asset filename for a board INFO name (None if unsupported)."""
+    return BOARD_FIRMWARE_ASSETS.get((board or "").strip().lower())
+
+
+def download_board_firmware(board: str, release: dict,
+                            progress_cb: Optional[Callable] = None) -> str:
+    """Download the firmware asset for ``board`` into a temp file.
+
+    Returns the local path. Raises IOError when the board has no asset on
+    the release or the download fails.
+    """
+    name = board_firmware_asset(board)
+    if not name:
+        raise IOError(f"No firmware image available for board "
+                      f"'{board}' on GitHub releases")
+    rel = release or {}
+    assets = rel.get("assets") or {}
+    if not assets:
+        rel = fetch_latest_release()
+        assets = (rel or {}).get("assets") or {}
+    url = assets.get(name)
+    if not url:
+        raise IOError(f"Firmware '{name}' is missing from the latest "
+                      "release")
+    tmp = tempfile.mkdtemp(prefix="cd3217_fw_")
+    return download_file(url, os.path.join(tmp, name), progress_cb)
 
 
 # ─── update application ──────────────────────────────────────────────────────

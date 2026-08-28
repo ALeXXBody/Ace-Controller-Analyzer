@@ -108,6 +108,15 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
+      - name: Stamp firmware version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: firmware_esp32
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          sed -i "s/#define CD3217_FW_VERSION \".*\"/#define CD3217_FW_VERSION \"$VER\"/" src/fw_version.h
+          echo "Firmware version stamped: $VER"
+          cat src/fw_version.h
+
       - name: Build firmware (all boards)
         working-directory: firmware_esp32
         run: |

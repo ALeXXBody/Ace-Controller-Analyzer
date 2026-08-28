@@ -286,6 +286,83 @@ def cmd_otp_import(filepath: str) -> None:
     print(format_dump_table(dump, show_zeros=True))
 
 
+def cmd_board_update(args) -> None:
+    """Handle --board-update: flash the newest firmware to a board."""
+    from .usb_bridge import UsbBridgeAdapter, list_bridge_ports, normalize_port
+
+    port = normalize_port(args.port) if getattr(args, "port", None) else None
+    if not port:
+        ports = list_bridge_ports()
+        if not ports:
+            print("ERROR: no serial port found; plug in the board or use "
+                  "--port COMx")
+            sys.exit(1)
+        port = ports[0]
+    adapter = UsbBridgeAdapter(port=port)
+    adapter.open()
+    if not adapter.handshake():
+        adapter.close()
+        print(f"ERROR: board on {port} did not answer PING")
+        sys.exit(1)
+
+    info = adapter.info()
+    board = (info or {}).get("board")
+    fw = (info or {}).get("version")
+    if not board:
+        adapter.close()
+        print("ERROR: board did not report its type — cannot pick firmware")
+        sys.exit(1)
+    print(f"Board: {board} (fw {fw or 'unknown'}) on {port}")
+
+    from .updater import (download_board_firmware, fetch_latest_release,
+                          is_newer)
+    rel = fetch_latest_release()
+    if not rel:
+        adapter.close()
+        print("ERROR: could not reach GitHub — check the connection")
+        sys.exit(1)
+    if fw and not is_newer(rel["version"], fw):
+        print(f"Already up to date (fw {fw}, latest {rel['version']})")
+        adapter.close()
+        return
+    print(f"Downloading firmware {rel['version']}...")
+
+    try:
+        path = download_board_firmware(board, rel)
+    except IOError as e:
+        adapter.close()
+        print(f"ERROR: {e}")
+        sys.exit(1)
+
+    if path.lower().endswith(".uf2"):
+        print("Rebooting board into BOOTSEL and copying UF2...")
+        adapter.fw_reboot_bootsel()
+        adapter.close()
+        import time as _t
+        from .flash_board import find_bootsel_drives, flash_pico_uf2
+        deadline = _t.time() + 20
+        while _t.time() < deadline:
+            drives = find_bootsel_drives()
+            if drives:
+                break
+            _t.sleep(0.5)
+        else:
+            print("ERROR: board did not enter BOOTSEL mode")
+            sys.exit(1)
+        msg = flash_pico_uf2(path, bootsel_drive=drives[0])
+        print(msg)
+    else:
+        with open(path, "rb") as f:
+            data = f.read()
+        print(f"Writing {len(data)/1024:.0f} KB over the bridge...")
+        try:
+            adapter.fw_update_image(data)
+        finally:
+            adapter.close()
+        print("Firmware written and verified — board is restarting.")
+    print("Done. Reconnect with --adapter usb --port <port> if needed.")
+
+
 def cmd_uart(args) -> None:
     """Handle --uart-autobaud / --uart-sniff (RX-only UART capture)."""
     from .usb_bridge import (UsbBridgeAdapter, list_bridge_ports,
@@ -642,6 +719,9 @@ Examples:
     group.add_argument("--uart-autobaud", action="store_true",
                        help="Measure the UART line's baud through a "
                             "connected board and print it (no sniffing)")
+    group.add_argument("--board-update", action="store_true",
+                       help="Update a connected board's firmware from the "
+                            "latest GitHub release (auto-detects the board)")
     group.add_argument("--interactive", "-i", action="store_true",
                        help="Interactive mode (default if no command given)")
 
@@ -652,6 +732,10 @@ Examples:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     args = parser.parse_args()
+
+    # Handle --board-update
+    if args.board_update:
+        cmd_board_update(args)
 
     # Handle --uart-autobaud / --uart-sniff
     if args.uart_autobaud or args.uart_sniff:
