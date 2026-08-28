@@ -20,6 +20,7 @@ a = Analysis(
         'cd3217_analyzer.otp',
         'cd3217_analyzer.spi_adapter',
         'cd3217_analyzer.spi_bridge',
+        'cd3217_analyzer.updater',
         'cd3217_analyzer.flash',
         'cd3217_analyzer.flash_board',
         'cd3217_analyzer.usb_bridge',

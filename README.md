@@ -72,6 +72,18 @@ Double-click `build.bat`. Takes ~1 minute. Output goes to `dist\CD3217B12_Analyz
 [Inno Setup 6](https://jrsoftware.org/isinfo.php) installed you can also
 compile the proper installer: `ISCC.exe installer.iss`.
 
+## Updating
+
+The app checks GitHub for new releases automatically at startup (silent) —
+or use the **Check updates** button in the top bar. When a new version is
+found, one click downloads and applies it:
+
+- **Installed**: the new installer runs silently, closes the app, replaces
+  it and restarts it (per-user install, no admin prompt).
+- **Portable**: the app downloads the new package, replaces its own folder
+  and restarts itself.
+- **From source**: the releases page opens in your browser.
+
 ## GUI Usage
 
 Double-click `CD3217_Analyzer.bat` or run `python gui.py`:

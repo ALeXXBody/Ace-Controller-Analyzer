@@ -104,6 +104,8 @@ class Application(ctk.CTk):
 
         self._build_ui()
         self.after(400, self._auto_detect)
+        # silent background update check (fails silently when offline)
+        self.after(3000, self._auto_update_check)
 
     def _set_window_icon(self):
         """Set the taskbar / title-bar icon (skip silently if unavailable)."""
@@ -246,6 +248,139 @@ class Application(ctk.CTk):
             command=self._flash_board,
         )
         self.flash_btn.grid(row=1, column=5, padx=(6, 4))
+
+        self.update_btn = ctk.CTkButton(
+            controls,
+            text="Check updates",
+            width=120,
+            height=32,
+            fg_color=C["btn"],
+            hover_color=C["btn_hover"],
+            text_color=C["text"],
+            command=self._manual_update_check,
+        )
+        self.update_btn.grid(row=1, column=6, padx=(6, 4))
+
+    # ─── Self-update ──────────────────────────────────────────────────────
+
+    def _ui(self, fn):
+        """Run fn on the UI thread (safe to call from workers)."""
+        try:
+            self.after(0, fn)
+        except Exception:
+            pass
+
+    def _manual_update_check(self):
+        self.log("Checking for updates...")
+        self.update_btn.configure(state="disabled")
+
+        def work():
+            from cd3217_analyzer.updater import check_for_update
+            rel = check_for_update(__version__)
+            self._ui(lambda: self._on_update_checked(rel, manual=True))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _auto_update_check(self):
+        """Silent startup check: log + re-style the button if newer exists."""
+        def work():
+            from cd3217_analyzer.updater import check_for_update
+            rel = check_for_update(__version__)
+            self._ui(lambda: self._on_update_checked(rel, manual=False))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_update_checked(self, rel, manual):
+        self.update_btn.configure(state="normal")
+        if rel:
+            self.update_btn.configure(
+                text=f"Update to {rel['version']}",
+                fg_color=C["accent"], hover_color=C["accent_dim"],
+                text_color="#06121e",
+                command=lambda: self._confirm_update(rel))
+            self.log(f"Update available: v{rel['version']} "
+                     f"(current v{__version__})", "ok")
+            if manual:
+                self._confirm_update(rel)
+        else:
+            self.log("Up to date" if manual else
+                     "Up to date (no newer release found)")
+            if manual:
+                messagebox.showinfo(
+                    "No update",
+                    f"You are running the latest version (v{__version__}).")
+
+    def _confirm_update(self, rel):
+        from cd3217_analyzer.updater import install_mode
+        mode = install_mode()
+        mode_txt = {
+            "installed": "The installer will run and restart the app.",
+            "portable": "The app will download and replace itself, "
+                        "then restart.",
+            "source": "Running from source — the releases page will open.",
+        }.get(mode, "")
+        if not messagebox.askyesno(
+                "Update available",
+                f"A new version is available: v{rel['version']} "
+                f"(current v{__version__}).\n\n{mode_txt}\n\n"
+                "Download and update now?"):
+            return
+        self._run_update(rel)
+
+    def _run_update(self, rel):
+        from cd3217_analyzer.updater import apply_update
+        self._updating = True
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Updating")
+        dlg.geometry("420x150")
+        dlg.resizable(False, False)
+        dlg.attributes("-topmost", True)
+        dlg.grab_set()
+        ctk.CTkLabel(dlg, text=f"Downloading v{rel['version']}...",
+                     font=F["heading"]).pack(pady=(22, 8))
+        bar = ctk.CTkProgressBar(dlg, width=360, height=16)
+        bar.pack(pady=4)
+        bar.set(0)
+        info = ctk.CTkLabel(dlg, text="", font=F["small"], text_color=C["dim"])
+        info.pack(pady=4)
+
+        def progress(done, total):
+            def upd():
+                if total:
+                    bar.set(min(1.0, done / total))
+                    info.configure(text=f"{done/1048576:.1f} / "
+                                         f"{total/1048576:.1f} MB")
+                else:
+                    info.configure(text=f"{done/1048576:.1f} MB")
+            self._ui(upd)
+
+        def work():
+            try:
+                result = apply_update(rel, progress)
+                self._ui(lambda: self._on_update_applied(dlg, result))
+            except Exception as e:
+                err = str(e)
+                self._ui(lambda: self._on_update_failed(dlg, err))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_update_applied(self, dlg, result):
+        action = result.get("action")
+        if action == "swap-launched":
+            self.log("Update staged — restarting to finish...", "ok")
+            self.destroy()
+            return
+        # setup-launched / browser: Inno (or the browser) takes over
+        dlg.destroy()
+        if action == "setup-launched":
+            self.log("Installer launched — follow the Setup window. "
+                     "The app will be closed and restarted by Setup.", "ok")
+
+    def _on_update_failed(self, dlg, err):
+        dlg.destroy()
+        self.log(f"Update failed: {err}", "err")
+        messagebox.showerror("Update failed", str(err))
 
     def _build_device_panel(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")

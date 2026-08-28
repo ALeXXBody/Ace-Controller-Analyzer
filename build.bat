@@ -50,6 +50,7 @@ pyinstaller ^
     --hidden-import cd3217_analyzer.flash_board ^
     --hidden-import cd3217_analyzer.usb_bridge
           --hidden-import cd3217_analyzer.spi_bridge ^
+    --hidden-import cd3217_analyzer.updater ^
     --hidden-import cd3217_analyzer.cli ^
     --hidden-import serial ^
     --hidden-import serial.tools ^
