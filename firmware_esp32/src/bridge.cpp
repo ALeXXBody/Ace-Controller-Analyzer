@@ -271,7 +271,10 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
 #ifdef ARDUINO_ARCH_RP2040
           break;
 #else
-          if (dlen > 0 && Update.write(data, dlen) == dlen) ok = 0x00;
+          if (dlen > 0 &&
+              Update.write(const_cast<uint8_t *>(data), dlen) == dlen) {
+            ok = 0x00;
+          }
           break;
 #endif
         }
