@@ -13,6 +13,7 @@ Requires: pyserial
 Install:  pip install pyserial
 """
 
+import struct
 import sys
 import time
 from typing import List, Optional
@@ -31,6 +32,9 @@ CMD_READ = 0x02
 CMD_WRITE = 0x03
 CMD_PING = 0x04
 CMD_INFO = 0x05
+CMD_UART_SETUP = 0x20      # [baud LE32][pin] -> [status]; baud 0 = stop
+CMD_UART_READ = 0x21       # -> [n][n bytes]
+CMD_UART_AUTOBAUD = 0x24   # [pin] -> [status][width_us LE32]
 RESP_OK = 0x00
 
 
@@ -192,7 +196,7 @@ class UsbBridgeAdapter(I2CAdapter):
         blen = resp[0]
         out["board"] = bytes(resp[1:1 + blen]).decode("utf-8", "replace")
         fields = ("sda", "scl", "spi_sck", "spi_miso", "spi_mosi",
-                  "spi_cs", "hw")
+                  "spi_cs", "hw", "uart_rx")
         for i, name in enumerate(fields):
             idx = 1 + blen + i
             out[name] = resp[idx] if len(resp) > idx else None
@@ -230,6 +234,59 @@ class UsbBridgeAdapter(I2CAdapter):
             return bool(resp) and resp[0] == 0x51
         except Exception:
             return False
+
+    # ---- UART RX sniffing ---------------------------------------------------
+
+    def uart_setup(self, baud: int, pin: Optional[int] = None) -> None:
+        """Start (baud>0) or stop (baud=0) listen-only UART sniffing."""
+        pl = struct.pack("<I", baud & 0xFFFFFFFF) + bytes(
+            [0xFF if pin is None else pin])
+        resp = self._transact(CMD_UART_SETUP, pl)
+        if not resp or resp[0] != 0x00:
+            raise IOError(f"UART setup failed (status "
+                          f"0x{resp[0]:02X})" if resp else
+                          "UART setup: no response")
+
+    def uart_read(self) -> bytes:
+        """Pop sniffed UART bytes (up to 240 per call)."""
+        resp = self._transact(CMD_UART_READ)
+        if not resp:
+            raise IOError("UART read: no response")
+        n = resp[0]
+        return bytes(resp[1:1 + n])
+
+    def uart_autobaud(self, pin: Optional[int] = None) -> Optional[int]:
+        """Measure the line's baud (~1.5s). Returns snapped baud or None.
+
+        Blocks for the measurement window — call before uart_setup().
+        """
+        pl = bytes([0xFF if pin is None else pin])
+        resp = self._transact(CMD_UART_AUTOBAUD, pl, retries=0)
+        if not resp or resp[0] != 0x00:
+            return None
+        if len(resp) < 5:
+            return None
+        width_us = struct.unpack("<I", bytes(resp[1:5]))[0]
+        if width_us == 0:
+            return None
+        # pulseIn truncates to whole µs, so the true width is in
+        # [width, width+1) — use the midpoint before estimating the baud.
+        return snap_baud(1_000_000.0 / (width_us + 0.5))
+
+
+STANDARD_BAUDS = (9600, 19200, 38400, 57600, 115200, 230400, 460800,
+                  921600, 1000000, 1500000, 2000000, 3000000)
+
+
+def snap_baud(estimated: float) -> int:
+    """Snap a measured baud to the nearest standard rate (±8% tolerance).
+
+    Outside tolerance, round to a sane value instead of failing.
+    """
+    for b in STANDARD_BAUDS:
+        if abs(estimated - b) / b <= 0.08:
+            return b
+    return max(300, int(round(estimated / 100.0)) * 100)
 
 
 def _verify_ck(body: bytes, plen: int):

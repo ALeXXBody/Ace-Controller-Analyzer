@@ -15,7 +15,7 @@ HW_ESP32 = 0x02
 
 class BoardInfo:
     def __init__(self, key, name, family, hw, i2c, spi, notes,
-                 spi_label="SPI", i2c_label="I2C", image=None):
+                 spi_label="SPI", i2c_label="I2C", image=None, uart_rx=None):
         self.key = key
         self.name = name            # human name
         self.family = family        # "RP2040/RP2350" / "ESP32"
@@ -26,6 +26,7 @@ class BoardInfo:
         self.spi_label = spi_label
         self.i2c_label = i2c_label
         self.image = image          # pinout diagram (assets/boards/<file>)
+        self.uart_rx = uart_rx or {}  # {"rx": (gpio, "GP1 (pin 2)")}
 
 
 BOARDS: Dict[str, BoardInfo] = {
@@ -36,7 +37,9 @@ BOARDS: Dict[str, BoardInfo] = {
          "mosi": (15, "GP15 (pin 20)"), "cs": (13, "GP13 (pin 17)")},
         ["Power: VSYS/3V3(OUT) — 3.3V logic (no 1.8V without a shifter)",
          "SPI uses the SPI1 block — SPI0 stays free (not used on Pico 1)",
-         "Same SPI1 pin block as the whole Pico family: one shield fits all"],
+         "Same SPI1 pin block as the whole Pico family: one shield fits all",
+         "UART sniff: RX on GP1 (pin 2)"],
+        uart_rx={"rx": (1, "GP1 (pin 2)")},
         image="pico.png",
     ),
     "pico2": BoardInfo(
@@ -47,6 +50,7 @@ BOARDS: Dict[str, BoardInfo] = {
         ["Power: VSYS/3V3(OUT) — 3.3V logic (no 1.8V without a shifter)",
          "SPI uses the SPI1 block — SPI0 stays free",
          "Same SPI1 pin block as the whole Pico family: one shield fits all"],
+        uart_rx={"rx": (1, "GP1 (pin 2)")},
         image="pico.png",
     ),
     "pico-w": BoardInfo(
@@ -57,6 +61,7 @@ BOARDS: Dict[str, BoardInfo] = {
         ["Power: VSYS/3V3(OUT) — 3.3V logic",
          "WiFi radio occupies SPI0 — flash backend uses SPI1 (no conflict)",
          "Web UI: join 'cd3217-analyzer' AP → http://192.168.4.1"],
+        uart_rx={"rx": (1, "GP1 (pin 2)")},
         image="pico.png",
     ),
     "pico2-w": BoardInfo(
@@ -67,6 +72,7 @@ BOARDS: Dict[str, BoardInfo] = {
         ["Power: VSYS/3V3(OUT) — 3.3V logic",
          "WiFi radio occupies SPI0 — flash backend uses SPI1 (no conflict)",
          "Web UI: join 'cd3217-analyzer' AP → http://192.168.4.1"],
+        uart_rx={"rx": (1, "GP1 (pin 2)")},
         image="pico.png",
     ),
     "rp2040-zero": BoardInfo(
@@ -77,7 +83,9 @@ BOARDS: Dict[str, BoardInfo] = {
         ["Power: 5V pin or USB — 3.3V logic",
          "I2C (GP4/GP5) on the right edge; SPI (GP12-GP15) wraps the "
          "bottom-left corner and bottom edge — see diagram",
-         "Same SPI1 pin block as the Pico family: one shield fits all"],
+         "Same SPI1 pin block as the Pico family: one shield fits all",
+         "UART sniff: RX on GP1 (right edge)"],
+        uart_rx={"rx": (1, "GP1")},
         image="rp2040_zero.png",
     ),
     "esp32-s3-devkitc-1": BoardInfo(
@@ -87,7 +95,9 @@ BOARDS: Dict[str, BoardInfo] = {
          "mosi": (11, "GPIO11"), "cs": (10, "GPIO10")},
         ["Power: 5V pin or USB — 3.3V logic",
          "SPI on the FSPI peripheral (default SPI pins)",
+         "UART sniff: RX on GPIO4",
          "Web UI: join 'cd3217-analyzer' AP → http://192.168.4.1"],
+        uart_rx={"rx": (4, "GPIO4")},
         image="esp32s3.png",
     ),
     "esp32-c3-supermini": BoardInfo(
@@ -97,7 +107,9 @@ BOARDS: Dict[str, BoardInfo] = {
          "mosi": (5, "GPIO5"), "cs": (7, "GPIO7")},
         ["Power: 5V pin or USB — 3.3V logic",
          "I2C stays on GPIO8/9; SPI on GPIO4-7",
+         "UART sniff: RX on GPIO1",
          "Web UI: join 'cd3217-analyzer' AP → http://192.168.4.1"],
+        uart_rx={"rx": (1, "GPIO1")},
         image="esp32c3_supermini.png",
     ),
     "esp32-devkit": BoardInfo(
@@ -107,7 +119,9 @@ BOARDS: Dict[str, BoardInfo] = {
          "mosi": (23, "GPIO23 (VSPI MOSI)"), "cs": (5, "GPIO5 (VSPI CS)")},
         ["Power: 5V (VIN) or USB — 3.3V logic",
          "SPI on the VSPI peripheral (classic ESP32 default SPI pins)",
+         "UART sniff: RX on GPIO16 (labeled RX2)",
          "Web UI: join 'cd3217-analyzer' AP → http://192.168.4.1"],
+        uart_rx={"rx": (16, "GPIO16 (RX2)")},
         image="esp32_devkit.png",
     ),
     "esp32-c6-zero": BoardInfo(
@@ -116,9 +130,11 @@ BOARDS: Dict[str, BoardInfo] = {
         {"sck": (21, "GPIO21"), "miso": (20, "GPIO20"),
          "mosi": (19, "GPIO19"), "cs": (18, "GPIO18")},
         ["Power: 5V pin or USB — 3.3V logic",
+         "UART sniff: RX on GPIO1 (left edge)",
          "Pins follow the official Waveshare C6-Zero map (SDA=14 SCL=15, "
          "SPI 18-21) — all on the right edge of the board",
          "Web UI: join 'cd3217-analyzer' AP → http://192.168.4.1"],
+        uart_rx={"rx": (1, "GPIO1")},
         image="esp32c6_zero.png",
     ),
 }
@@ -158,8 +174,12 @@ def board_from_info(info: dict) -> Optional[BoardInfo]:
             spi[role] = (v, f"GPIO{v}")
     if not i2c and not spi:
         return None
+    uart = {}
+    if info.get("uart_rx") is not None:
+        uart = {"rx": (info["uart_rx"], f"GPIO{info['uart_rx']}")}
     return BoardInfo(
         name or "unknown", name or "Unknown board", fam,
         info.get("hw") or 0, i2c, spi,
         ["Pins reported live by the board firmware (unknown board type)"],
+        uart_rx=uart,
     )

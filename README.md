@@ -72,6 +72,25 @@ Double-click `build.bat`. Takes ~1 minute. Output goes to `dist\CD3217B12_Analyz
 [Inno Setup 6](https://jrsoftware.org/isinfo.php) installed you can also
 compile the proper installer: `ISCC.exe installer.iss`.
 
+## UART Sniffing (ACE2 firmware bus)
+
+Every board can passively listen to a UART line — RX-only, never driving the
+target. Main use: the ACE2 Master→Slave **firmware-download bus** on MacBook
+boards (`UPC_TA_UART_TX/RX` test points): no traffic at power-on = master
+side problem; traffic but dead port = slave chip. Also captures the firmware
+payload slaves receive.
+
+- **App**: connect the board → **UART** tab → baud or **Auto-detect** →
+  Start; save the log to file
+- **CLI**: `--uart-autobaud` / `--uart-sniff auto|BAUD`
+- **WiFi boards**: web UI → **UART Sniff** tab — fully standalone
+- **RX pins**: Pico family GP1, ESP32-S3 GPIO4, C3/C6 GPIO1, classic GPIO16
+  (amber in the Board tab diagram)
+
+⚠ The ACE2 UART bus is expected to be 1.8V — sniff through a level shifter.
+See **[docs/uart-sniff.md](docs/uart-sniff.md)** for test points, wiring and
+the diagnosis table.
+
 ## Updating
 
 The app checks GitHub for new releases automatically at startup (silent) —

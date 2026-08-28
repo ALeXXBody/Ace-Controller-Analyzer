@@ -4,6 +4,7 @@
 
 #include "bridge.h"
 #include "spi_flash.h"
+#include "uart_sniff.h"
 
 // Max SPI full-duplex payload: response = status + rx, must fit 1-byte plen.
 #define BRIDGE_SPI_MAX 240
@@ -149,11 +150,11 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
     case 0x03: runWrite_(pl, plen); break;
     case 0x04: { uint8_t r = 0x51; sendResp_(0x04, &r, 1); break; }
     case 0x05: {
-      // INFO: [boardlen][board][sda][scl][spi_sck][spi_miso][spi_mosi][spi_cs]
-      // (older firmware sends only the first 3 fields; host tolerates both)
+      // INFO: [boardlen][board][sda][scl][spi_sck][spi_miso][spi_mosi]
+      //       [spi_cs][hw][uart_rx]  (older firmware sends fewer fields)
       const char *name = CD3217_BOARD;
       uint8_t blen = (uint8_t)strlen(name);
-      uint8_t resp[8 + 16];
+      uint8_t resp[10 + 16];
       resp[0] = blen;
       memcpy(resp + 1, name, blen);
       resp[1 + blen] = I2C_SDA_GPIO;
@@ -167,7 +168,8 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
 #else
       resp[7 + blen] = 0x02;   // hw: ESP32 family
 #endif
-      sendResp_(0x05, resp, 8 + blen);
+      resp[8 + blen] = PIN_UART_RX;
+      sendResp_(0x05, resp, 9 + blen);
       break;
     }
     case 0x10: {
@@ -183,6 +185,48 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
       resp[0] = 0x00;
       memcpy(resp + 1, rxbuf, plen);
       sendResp_(0x10, resp, (size_t)plen + 1);
+      break;
+    }
+    case 0x20: {
+      // UART_SETUP: [baud LE32][pin] — baud 0 stops sniffing. resp [status]
+      if (plen < 5) {
+        uint8_t r = 0xFF;
+        sendResp_(0x20, &r, 1);
+        break;
+      }
+      uint32_t baud = (uint32_t)pl[0] | ((uint32_t)pl[1] << 8) |
+                      ((uint32_t)pl[2] << 16) | ((uint32_t)pl[3] << 24);
+      uint8_t pin = pl[4];
+      bool ok = UartSniff::begin(baud, pin);
+      uint8_t r = ok ? 0x00 : 0xFF;
+      sendResp_(0x20, &r, 1);
+      break;
+    }
+    case 0x21: {
+      // UART_READ: pop sniffed bytes. resp = [n][bytes...]
+      static uint8_t rbuf[BRIDGE_SPI_MAX];
+      size_t n = UartSniff::read(rbuf, BRIDGE_SPI_MAX);
+      uint8_t resp[1 + BRIDGE_SPI_MAX];
+      resp[0] = (uint8_t)n;
+      memcpy(resp + 1, rbuf, n);
+      sendResp_(0x21, resp, n + 1);
+      break;
+    }
+    case 0x24: {
+      // UART_AUTOBAUD: [pin] -> [status][width_us LE32] (0 = no activity)
+      if (plen < 1) {
+        uint8_t r = 0xFF;
+        sendResp_(0x24, &r, 1);
+        break;
+      }
+      uint32_t w = UartSniff::autoBaud(pl[0]);
+      uint8_t resp[5];
+      resp[0] = 0x00;
+      resp[1] = w & 0xFF;
+      resp[2] = (w >> 8) & 0xFF;
+      resp[3] = (w >> 16) & 0xFF;
+      resp[4] = (w >> 24) & 0xFF;
+      sendResp_(0x24, resp, 5);
       break;
     }
     default: break;

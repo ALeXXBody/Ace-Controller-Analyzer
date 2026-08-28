@@ -286,6 +286,76 @@ def cmd_otp_import(filepath: str) -> None:
     print(format_dump_table(dump, show_zeros=True))
 
 
+def cmd_uart(args) -> None:
+    """Handle --uart-autobaud / --uart-sniff (RX-only UART capture)."""
+    from .usb_bridge import (UsbBridgeAdapter, list_bridge_ports,
+                             normalize_port)
+
+    port = normalize_port(args.port) if getattr(args, "port", None) else None
+    if not port:
+        ports = list_bridge_ports()
+        if not ports:
+            print("ERROR: no serial port found; plug in the board or use "
+                  "--port COMx")
+            sys.exit(1)
+        port = ports[0]
+    adapter = UsbBridgeAdapter(port=port)
+    adapter.open()
+    if not adapter.handshake():
+        adapter.close()
+        print(f"ERROR: board on {port} did not answer PING")
+        sys.exit(1)
+
+    try:
+        if args.uart_autobaud:
+            print("Measuring UART baud (~1.5s)...")
+            baud = adapter.uart_autobaud()
+            if not baud:
+                print("No UART activity detected on the RX pin — check "
+                      "wiring/pull-up and that the target is transmitting.")
+                sys.exit(1)
+            print(f"Detected baud: {baud}")
+            return
+
+        # --uart-sniff BAUD
+        baud = str(args.uart_sniff).lower()
+        if baud == "auto":
+            print("Auto-detecting baud (~1.5s)...")
+            detected = adapter.uart_autobaud()
+            if not detected:
+                print("No UART activity detected — set the baud explicitly "
+                      "(--uart-sniff 115200).")
+                sys.exit(1)
+            baud = detected
+            print(f"Detected baud: {baud}")
+        else:
+            baud = int(baud)
+        adapter.uart_setup(baud)
+        print(f"Sniffing UART on {port} at {baud} baud (Ctrl+C to stop)...")
+        total = 0
+        import time as _t
+        try:
+            while True:
+                data = adapter.uart_read()
+                if data:
+                    total += len(data)
+                    sys.stdout.write("".join(
+                        "\n" if c == 10 else "" if c == 13 else
+                        (f"<{c:02X}>" if c < 32 or c > 126 else chr(c))
+                        for c in data))
+                    sys.stdout.flush()
+                else:
+                    _t.sleep(0.05)
+        except KeyboardInterrupt:
+            print(f"\nStopped — {total} bytes captured")
+    finally:
+        try:
+            adapter.uart_setup(0)
+        except Exception:
+            pass
+        adapter.close()
+
+
 def cmd_flash(args) -> None:
     """Handle flash commands (detect, read, write, erase, restore).
 
@@ -564,6 +634,14 @@ Examples:
     group.add_argument("--list-ports", action="store_true",
                        help="List serial ports with device names and exit (helps "
                             "identify which COM is the Pico 2 / RP2040 board)")
+    group.add_argument("--uart-sniff", metavar="BAUD",
+                       help="Sniff (listen-only) a UART line through a "
+                            "connected board; BAUD is a number or 'auto'. "
+                            "Streams to stdout until Ctrl+C. Optionally "
+                            "combined with --port.")
+    group.add_argument("--uart-autobaud", action="store_true",
+                       help="Measure the UART line's baud through a "
+                            "connected board and print it (no sniffing)")
     group.add_argument("--interactive", "-i", action="store_true",
                        help="Interactive mode (default if no command given)")
 
@@ -574,6 +652,10 @@ Examples:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     args = parser.parse_args()
+
+    # Handle --uart-autobaud / --uart-sniff
+    if args.uart_autobaud or args.uart_sniff:
+        cmd_uart(args)
 
     # Handle --list-ports
     if args.list_ports:

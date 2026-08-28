@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -488,6 +489,7 @@ class Application(ctk.CTk):
         self.tab_straps = self.tabs.add("Straps")
         self.tab_otp = self.tabs.add("OTP")
         self.tab_flash = self.tabs.add("Flash")
+        self.tab_uart = self.tabs.add("UART")
         self.tab_log = self.tabs.add("Log")
 
         self._build_board_tab()
@@ -497,6 +499,7 @@ class Application(ctk.CTk):
         self._build_strap_tab()
         self._build_otp_tab()
         self._build_flash_tab()
+        self._build_uart_tab()
         self._build_log_tab()
 
     # ─── Board tab ────────────────────────────────────────────────────────
@@ -552,6 +555,13 @@ class Application(ctk.CTk):
             self.spi_card, "SPI — flash (via level shifter)", C["accent"],
             [("SCK", "sck"), ("MISO", "miso"), ("MOSI", "mosi"),
              ("CS", "cs")])
+
+        self.uart_card = ctk.CTkFrame(left, fg_color=C["card"],
+                                      corner_radius=12)
+        self.uart_card.pack(fill="x", pady=(8, 0))
+        self._build_pin_summary(
+            self.uart_card, "UART — sniff bus (RX only)", C["yellow"],
+            [("RX (listen)", "uart_rx")])
 
         # ── pinout diagram (right column, spans the full height of the stack)
         diag_card = ctk.CTkFrame(body, fg_color=C["card"], corner_radius=12)
@@ -671,7 +681,8 @@ class Application(ctk.CTk):
             self.board_sub_label.configure(
                 text="Connect via USB Bridge (board) to see the live pinout, "
                      "or pick a board above.")
-            for key in ("sda", "scl", "sck", "miso", "mosi", "cs"):
+            for key in ("sda", "scl", "sck", "miso", "mosi", "cs",
+                        "uart_rx"):
                 getattr(self, f"_pin_lbl_{key}").configure(text="—")
             self.board_notes_label.configure(
                 text="Wiring basics: I2C needs SDA+SCL (+2.2kΩ pull-ups to "
@@ -694,6 +705,8 @@ class Application(ctk.CTk):
             v = board.spi.get(key)
             getattr(self, f"_pin_lbl_{key}").configure(
                 text=v[1] if v else "—")
+        v = board.uart_rx.get("rx")
+        getattr(self, "_pin_lbl_uart_rx").configure(text=v[1] if v else "—")
 
     def _refresh_board_tab_live(self):
         """Update the Board tab from the connected board's INFO frame."""
@@ -1052,6 +1065,175 @@ class Application(ctk.CTk):
             hv, fg_color=C["entry"], font=F["mono_small"], state="disabled"
         )
         self.flash_hex_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+    # ─── UART sniff tab ───────────────────────────────────────────────────
+
+    def _build_uart_tab(self):
+        tab = self.tab_uart
+        self._uart_active = False
+        self._uart_bytes = 0
+
+        card = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=12)
+        card.pack(fill="x", padx=12, pady=12)
+        box = ctk.CTkFrame(card, fg_color="transparent")
+        box.pack(fill="x", padx=14, pady=12)
+
+        ctk.CTkLabel(box, text="Baud:", text_color=C["dim"],
+                     font=F["body"]).pack(side="left", padx=(0, 6))
+        self.uart_baud_var = ctk.StringVar(value="Auto-detect")
+        baud_menu = ctk.CTkOptionMenu(
+            box, variable=self.uart_baud_var, width=130,
+            values=["Auto-detect"] + [str(b) for b in (
+                9600, 19200, 38400, 57600, 115200, 230400, 460800,
+                921600, 1000000, 1500000, 2000000, 3000000)],
+            fg_color=C["entry"], button_color=C["btn"],
+            button_hover_color=C["btn_hover"], text_color=C["text"],
+            dropdown_fg_color=C["panel"])
+        baud_menu.pack(side="left", padx=(0, 10))
+
+        self.uart_start_btn = ctk.CTkButton(
+            box, text="Start", width=80, height=30, fg_color=C["green"],
+            hover_color="#16a34a", text_color="#04120a",
+            command=self._uart_start)
+        self.uart_start_btn.pack(side="left", padx=4)
+        self.uart_stop_btn = ctk.CTkButton(
+            box, text="Stop", width=70, height=30, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._uart_stop,
+            state="disabled")
+        self.uart_stop_btn.pack(side="left", padx=4)
+        self.uart_clear_btn = ctk.CTkButton(
+            box, text="Clear", width=70, height=30, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._uart_clear)
+        self.uart_clear_btn.pack(side="left", padx=4)
+        self.uart_save_btn = ctk.CTkButton(
+            box, text="Save log", width=90, height=30, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._uart_save)
+        self.uart_save_btn.pack(side="left", padx=4)
+
+        self.uart_status = ctk.CTkLabel(
+            box, text="Idle — connect a board first", text_color=C["dim"],
+            font=F["small"])
+        self.uart_status.pack(side="right")
+
+        self.uart_output = ctk.CTkTextbox(
+            tab, fg_color=C["entry"], corner_radius=10, font=F["mono"],
+            wrap="word", height=460)
+        self.uart_output.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+    def _uart_adapter(self):
+        """The connected USB bridge adapter, or None with a log message."""
+        if not (self.connected and isinstance(self.adapter, UsbBridgeAdapter)):
+            self.log("UART sniffing needs a board connected via "
+                     "USB Bridge (board)", "warn")
+            return None
+        return self.adapter
+
+    def _uart_start(self):
+        adapter = self._uart_adapter()
+        if not adapter:
+            return
+        baud = self.uart_baud_var.get()
+        self.uart_start_btn.configure(state="disabled")
+        self._uart_bytes = 0
+
+        def work():
+            if baud == "Auto-detect":
+                self._ui(lambda: self.uart_status.configure(
+                    text="Auto-detecting baud (~1.5s)..."))
+                try:
+                    detected = adapter.uart_autobaud()
+                except Exception as e:
+                    detected = None
+                    self.log(f"UART auto-baud failed: {e}", "err")
+                if not detected:
+                    self._ui(lambda: (
+                        self.uart_status.configure(
+                            text="No UART activity detected", ),
+                        self.uart_start_btn.configure(state="normal")))
+                    self.log("UART auto-baud: no activity on the RX pin — "
+                             "check wiring/pull-up and that the target is "
+                             "transmitting", "warn")
+                    return
+                use_baud = detected
+                self.log(f"UART auto-baud: detected {detected} baud", "ok")
+            else:
+                use_baud = int(baud)
+            try:
+                adapter.uart_setup(use_baud)
+            except Exception as e:
+                self.log(f"UART setup failed: {e}", "err")
+                self._ui(lambda: self.uart_start_btn.configure(
+                    state="normal"))
+                return
+            def go():
+                self._uart_active = True
+                self.uart_stop_btn.configure(state="normal")
+                self.uart_status.configure(
+                    text=f"Sniffing at {use_baud} baud (RX only)")
+                self.after(150, self._uart_poll)
+            self._ui(go)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _uart_stop(self, silent=False):
+        self._uart_active = False
+        adapter = (self.adapter if isinstance(self.adapter, UsbBridgeAdapter)
+                   else None)
+        if adapter:
+            try:
+                adapter.uart_setup(0)
+            except Exception:
+                pass
+        self.uart_stop_btn.configure(state="disabled")
+        self.uart_start_btn.configure(state="normal")
+        self.uart_status.configure(
+            text=f"Stopped — {self._uart_bytes} bytes captured")
+        if not silent:
+            self.log(f"UART sniffing stopped ({self._uart_bytes} bytes)")
+
+    def _uart_poll(self):
+        if not self._uart_active:
+            return
+        if not (self.connected and
+                isinstance(self.adapter, UsbBridgeAdapter)):
+            self._uart_stop(silent=True)
+            return
+        try:
+            data = self.adapter.uart_read()
+        except Exception:
+            self._uart_stop(silent=True)
+            return
+        if data:
+            self._uart_bytes += len(data)
+            text = "".join(
+                "\n" if c == 10 else
+                "" if c == 13 else
+                (f"<{c:02X}>" if c < 32 or c > 126 else chr(c))
+                for c in data)
+            self.uart_output.insert("end", text)
+            self.uart_output.see("end")
+            self.uart_status.configure(
+                text=f"Sniffing — {self._uart_bytes} bytes")
+        self.after(150, self._uart_poll)
+
+    def _uart_clear(self):
+        self.uart_output.delete("1.0", "end")
+        self._uart_bytes = 0
+
+    def _uart_save(self):
+        content = self.uart_output.get("1.0", "end")
+        if not content.strip():
+            self.log("UART log is empty", "warn")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Save UART log", defaultextension=".txt",
+            filetypes=[("Text log", "*.txt"), ("All files", "*.*")],
+            initialfile=f"uart_sniff_{time.strftime('%Y%m%d_%H%M%S')}.txt")
+        if not path:
+            return
+        with open(path, "w", encoding="utf-8", errors="replace") as f:
+            f.write(content)
+        self.log(f"UART log saved: {path}", "ok")
 
     def _build_log_tab(self):
         tab = self.tab_log

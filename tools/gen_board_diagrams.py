@@ -43,10 +43,12 @@ COL_CHIP_TXT = (150, 160, 180, 255)
 COL_BTN = (60, 70, 90, 255)
 COL_I2C = (34, 197, 94, 255)        # green
 COL_SPI = (56, 189, 248, 255)       # cyan
+COL_UART = (250, 190, 60, 255)      # amber
 COL_BOARD_EDGE = (255, 255, 255, 60)
 
 I2C_TAGS = {"sda": "SDA", "scl": "SCL"}
 SPI_TAGS = {"sck": "SCK", "miso": "MISO", "mosi": "MOSI", "cs": "CS"}
+UART_TAGS = {"uart_rx": "UART RX"}
 
 
 # ─── fonts ───────────────────────────────────────────────────────────────────
@@ -93,6 +95,7 @@ BOARDS = [
             "GP4": ("i2c", "sda"), "GP5": ("i2c", "scl"),
             "GP12": ("spi", "miso"), "GP13": ("spi", "cs"),
             "GP14": ("spi", "sck"), "GP15": ("spi", "mosi"),
+            "GP1": ("uart", "uart_rx"),
         },
         buttons=["BOOTSel", "RESET"],
     ),
@@ -111,6 +114,7 @@ BOARDS = [
             "GP4": ("i2c", "sda"), "GP5": ("i2c", "scl"),
             "GP12": ("spi", "miso"), "GP13": ("spi", "cs"),
             "GP14": ("spi", "sck"), "GP15": ("spi", "mosi"),
+            "GP1": ("uart", "uart_rx"),
         },
         buttons=["BOOT", "RESET"],
     ),
@@ -132,6 +136,7 @@ BOARDS = [
             "8": ("i2c", "sda"), "9": ("i2c", "scl"),
             "10": ("spi", "cs"), "11": ("spi", "mosi"),
             "12": ("spi", "sck"), "13": ("spi", "miso"),
+            "4": ("uart", "uart_rx"),
         },
         buttons=["BOOT", "RST"],
         antenna=True,
@@ -150,6 +155,7 @@ BOARDS = [
             "8": ("i2c", "sda"), "9": ("i2c", "scl"),
             "4": ("spi", "sck"), "5": ("spi", "mosi"),
             "6": ("spi", "miso"), "7": ("spi", "cs"),
+            "1": ("uart", "uart_rx"),
         },
         buttons=["BOOT", "RST"],
         antenna=True,
@@ -170,6 +176,7 @@ BOARDS = [
             "21": ("i2c", "sda"), "22": ("i2c", "scl"),
             "18": ("spi", "sck"), "19": ("spi", "miso"),
             "23": ("spi", "mosi"), "5": ("spi", "cs"),
+            "RX2": ("uart", "uart_rx"),
         },
         buttons=["EN", "BOOT"],
         antenna=True,
@@ -191,6 +198,7 @@ BOARDS = [
             "14": ("i2c", "sda"), "15": ("i2c", "scl"),
             "18": ("spi", "cs"), "19": ("spi", "mosi"),
             "20": ("spi", "miso"), "21": ("spi", "sck"),
+            "1": ("uart", "uart_rx"),
         },
         buttons=["BOOT", "RST"],
         antenna=True,
@@ -306,7 +314,7 @@ def draw_diagram(bd):
         role, tag = bd["highlights"].get(label, (None, None))
         pads[label] = (cx, cy, role)
         r = pad_rect(cx, cy, horizontal=(side == "bottom"))
-        col = {"i2c": COL_I2C, "spi": COL_SPI}.get(role)
+        col = {"i2c": COL_I2C, "spi": COL_SPI, "uart": COL_UART}.get(role)
         if col:
             # glow ring
             glow = [r[0] - 10, r[1] - 10, r[2] + 10, r[3] + 10]
@@ -330,7 +338,8 @@ def draw_diagram(bd):
             # side pads: ONE line — "GP4 SDA" (number + role together).
             # bottom pads: stacked — number on top, role letter(s) below
             # (bottom pads sit close together; a combined line would overlap).
-            tag_txt = (I2C_TAGS if role == "i2c" else SPI_TAGS)[tag]
+            tags = {"i2c": I2C_TAGS, "spi": SPI_TAGS, "uart": UART_TAGS}.get(role, {})
+            tag_txt = tags[tag] if tag in tags else (SPI_TAGS.get(tag) or I2C_TAGS.get(tag, ""))
             if side == "bottom":
                 d.text((cx, r[3] + 21), label, font=f_bot, fill=col,
                        anchor="mm")
@@ -360,12 +369,15 @@ def draw_diagram(bd):
 
     # legend
     ly = H - FOOTER_H + 30
-    d.ellipse([W // 2 - 330, ly, W // 2 - 296, ly + 34], fill=COL_I2C)
-    d.text((W // 2 - 284, ly + 17), "I2C  (SDA / SCL)", font=f_label,
+    d.ellipse([W // 2 - 460, ly, W // 2 - 426, ly + 34], fill=COL_I2C)
+    d.text((W // 2 - 414, ly + 17), "I2C  (SDA / SCL)", font=f_label,
            fill=COL_TEXT, anchor="lm")
-    d.ellipse([W // 2 + 40, ly, W // 2 + 74, ly + 34], fill=COL_SPI)
-    d.text((W // 2 + 86, ly + 17), "SPI  (SCK / MISO / MOSI / CS)",
+    d.ellipse([W // 2 - 170, ly, W // 2 - 136, ly + 34], fill=COL_SPI)
+    d.text((W // 2 - 124, ly + 17), "SPI  (SCK/MISO/MOSI/CS)",
            font=f_label, fill=COL_TEXT, anchor="lm")
+    d.ellipse([W // 2 + 160, ly, W // 2 + 194, ly + 34], fill=COL_UART)
+    d.text((W // 2 + 206, ly + 17), "UART RX (sniff)", font=f_label,
+           fill=COL_TEXT, anchor="lm")
 
     if bd.get("footnote"):
         d.text((W // 2, ly + 64), bd["footnote"], font=f_note,
@@ -385,7 +397,8 @@ def self_check(bd, img, pads, geom):
     for label, (role, _tag) in bd["highlights"].items():
         cx, cy, got_role = pads[label]
         r, g, b, a = px[cx, cy]
-        want = COL_I2C if role == "i2c" else COL_SPI
+        want = {"i2c": COL_I2C, "spi": COL_SPI,
+                "uart": COL_UART}.get(role)
         if got_role != role or abs(r - want[0]) > 12 or \
            abs(g - want[1]) > 12 or abs(b - want[2]) > 12:
             print(f"  !! {bd['key']}: {label} highlight wrong "

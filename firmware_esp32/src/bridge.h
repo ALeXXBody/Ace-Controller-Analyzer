@@ -18,6 +18,11 @@
  *   0x10 SPIXFR req: [tx bytes...] (≤240) resp: [status][rx bytes...]
  *                                       full-duplex SPI exchange with CS
  *                                       wrapped around it (SPI flash backend)
+ *   0x20 UART_SETUP req: [baud LE32][pin] (pin 0xFF=default; baud 0=stop)
+ *                       resp: [status]          — start/stop RX-only sniffing
+ *   0x21 UART_READ  req: -                     resp: [n][n bytes]  (n≤240)
+ *   0x24 UART_AUTOBAUD req: [pin]              resp: [status][width_us LE32]
+ *                                       shortest start-bit pulse (0=silent)
  *   status: 0x00 = OK, 0xFF = error (e.g. NACK/timeout)
  */
 

@@ -24,6 +24,7 @@
 #include <ArduinoJson.h>
 #include "bridge.h"
 #include "spi_flash.h"
+#include "uart_sniff.h"
 
 #ifdef CD3217_HAS_WIFI
 #include <WiFi.h>
@@ -94,6 +95,7 @@ static const char index_html[] PROGMEM = R"rawliteral(
 <div class="tabs">
   <div class="tab active" id="tab-i2c" onclick="showTab('i2c')">I2C Scan</div>
   <div class="tab" id="tab-spi" onclick="showTab('spi')">SPI Flash</div>
+  <div class="tab" id="tab-uart" onclick="showTab('uart')">UART Sniff</div>
 </div>
 
 <div id="panel-i2c">
@@ -130,6 +132,28 @@ static const char index_html[] PROGMEM = R"rawliteral(
   </div>
 </div>
 
+<div id="panel-uart" style="display:none">
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:8px">UART RX sniff (listen-only)</div>
+    <select id="uartBaud">
+      <option value="0">Auto-detect</option>
+      <option>9600</option><option>19200</option><option>38400</option>
+      <option>57600</option><option selected>115200</option><option>230400</option>
+      <option>460800</option><option>921600</option><option>1000000</option>
+      <option>1500000</option><option>2000000</option><option>3000000</option>
+    </select>
+    <button id="uartStartBtn" onclick="uartStart()">Start sniffing</button>
+    <button id="uartStopBtn" onclick="uartStop()" disabled>Stop</button>
+    <button onclick="uartClear()">Clear</button>
+    <button onclick="uartSave()">Save log</button>
+    <span id="uartInfo" class="info"></span>
+  </div>
+  <div class="card">
+    <pre id="uartOut" style="max-height:420px;overflow:auto;white-space:pre-wrap;
+         word-break:break-all;font-size:12px;margin:0;color:#9fd59f"></pre>
+  </div>
+</div>
+
 <script>
 function $(id){return document.getElementById(id);}
 function setBar(id,pct){$(id).style.width=Math.min(100,pct).toFixed(1)+'%';}
@@ -138,8 +162,10 @@ function showStatus(m){$('status').textContent=m;}
 function showTab(t){
   $('panel-i2c').style.display = t==='i2c'?'block':'none';
   $('panel-spi').style.display = t==='spi'?'block':'none';
+  $('panel-uart').style.display = t==='uart'?'block':'none';
   $('tab-i2c').classList.toggle('active', t==='i2c');
   $('tab-spi').classList.toggle('active', t==='spi');
+  $('tab-uart').classList.toggle('active', t==='uart');
 }
 
 // ── I2C scan ──────────────────────────────────────────────────────────────
@@ -274,6 +300,69 @@ async function spiWriteFile(){
     else info.textContent='OK — wrote '+data.length+' bytes, verified clean.';
   }catch(e){info.textContent='Write failed: '+e;info.classList.add('err');setBar('writeBar',0);}
   btn.disabled=false;
+}
+
+// ── UART sniff ─────────────────────────────────────────────────────────────
+let uartTimer=null, uartBytes=0, uartLog='';
+
+function uartAppend(txt){
+  uartLog += txt;
+  if (uartLog.length > 200000) uartLog = uartLog.slice(-100000);
+  const el=$('uartOut');
+  el.textContent = uartLog;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function uartStart(){
+  const info=$('uartInfo'); info.classList.remove('err');
+  let baud=parseInt($('uartBaud').value,10);
+  if(!baud){
+    info.textContent='Auto-detecting baud (1.5s)...';
+    try{
+      const j=await (await fetch('/api/uart/autobaud')).json();
+      if(!j.baud){info.textContent='No UART activity detected — check wiring/pull-up.';info.classList.add('err');return;}
+      baud=j.baud;
+      info.textContent='Detected ~'+baud+' baud. ';
+    }catch(e){info.textContent='Auto-baud failed: '+e;info.classList.add('err');return;}
+  }
+  const j=await (await fetch('/api/uart/setup?baud='+baud)).json();
+  if(!j.ok){info.textContent='Setup failed.';info.classList.add('err');return;}
+  info.textContent += 'Sniffing at '+baud+' baud.'; uartBytes=0;
+  $('uartStartBtn').disabled=true; $('uartStopBtn').disabled=false;
+  uartTimer=setInterval(uartPoll,250);
+}
+
+async function uartPoll(){
+  try{
+    const r=await fetch('/api/uart/read');
+    if(!r.ok) return;
+    const buf=new Uint8Array(await r.arrayBuffer());
+    if(!buf.length) return;
+    uartBytes+=buf.length;
+    let s='';
+    for(let i=0;i<buf.length;i++){
+      const c=buf[i];
+      s += (c===10)?'\n' : (c===13)?'' : (c<32||c>126)?('<'+c.toString(16).padStart(2,'0').toUpperCase()+'>') : String.fromCharCode(c);
+    }
+    uartAppend(s);
+  }catch(e){ uartStop(); }
+}
+
+function uartStop(){
+  if(uartTimer){clearInterval(uartTimer);uartTimer=null;}
+  fetch('/api/uart/setup?baud=0');
+  $('uartStartBtn').disabled=false; $('uartStopBtn').disabled=true;
+  $('uartInfo').textContent='Stopped. '+uartBytes+' bytes captured.';
+}
+
+function uartClear(){uartLog='';$('uartOut').textContent='';}
+
+function uartSave(){
+  const blob=new Blob([uartLog],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='uart_sniff_'+Date.now()+'.txt';
+  a.click(); URL.revokeObjectURL(a.href);
 }
 
 async function spiEraseChip(){
@@ -421,6 +510,50 @@ static void apiSpiErase() {
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
+// ---- UART sniff endpoints ---------------------------------------------
+
+static void apiUartSetup() {
+  uint32_t baud = strtoul(server.arg("baud").c_str(), nullptr, 10);
+  uint8_t pin = PIN_UART_RX;
+  if (server.hasArg("pin")) {
+    int p = atoi(server.arg("pin").c_str());
+    if (p >= 0 && p < 255) pin = (uint8_t)p;
+  }
+  bool ok = UartSniff::begin(baud, pin);   // baud 0 = stop
+  JsonDocument doc;
+  doc["ok"] = ok;
+  doc["baud"] = baud;
+  doc["pin"] = pin;
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+
+static void apiUartRead() {
+  static uint8_t buf[4096];
+  size_t n = UartSniff::read(buf, sizeof(buf));
+  server.setContentLength(n);
+  server.send(200, "application/octet-stream", "");
+  server.sendContent((const char *)buf, n);
+}
+
+static void apiUartAutoBaud() {
+  uint8_t pin = PIN_UART_RX;
+  if (server.hasArg("pin")) {
+    int p = atoi(server.arg("pin").c_str());
+    if (p >= 0 && p < 255) pin = (uint8_t)p;
+  }
+  // NOTE: autoBaud blocks for ~1.5s (pulseIn sampling window).
+  uint32_t w = UartSniff::autoBaud(pin);
+  JsonDocument doc;
+  doc["ok"] = true;
+  doc["width_us"] = w;
+  doc["baud"] = (w > 0) ? (uint32_t)(1000000.0 / w) : 0;
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+
 static void apiSpiStatus() {
   JsonDocument doc;
   doc["busy"] = SpiFlash::busy();
@@ -464,6 +597,8 @@ void setup() {
   // ---- SPI (flash backend) --------------------------------------------------
   SpiFlash::begin();
   Serial.println("[spi] flash backend ready (2MHz mode0)");
+  Serial.printf("[uart] sniff backend ready (RX pin=%d, cmd 0x20/0x21/0x24)\n",
+                PIN_UART_RX);
 
 #ifdef CD3217_HAS_WIFI
   // ---- WiFi SoftAP ----------------------------------------------------------
@@ -492,6 +627,9 @@ void setup() {
   server.on("/api/spi/write", HTTP_POST, apiSpiWrite);
   server.on("/api/spi/erase", HTTP_POST, apiSpiErase);
   server.on("/api/spi/status", HTTP_GET, apiSpiStatus);
+  server.on("/api/uart/setup", HTTP_GET, apiUartSetup);
+  server.on("/api/uart/read", HTTP_GET, apiUartRead);
+  server.on("/api/uart/autobaud", HTTP_GET, apiUartAutoBaud);
   server.begin();
   Serial.println("[http] server up (I2C scan + SPI flash tools)");
 #else
@@ -501,6 +639,7 @@ void setup() {
 
 void loop() {
   bridge.poll();                       // USB-CDC bridge (all boards)
+  UartSniff::poll();                   // RX-only UART sniffer
 #ifdef CD3217_HAS_WIFI
   server.handleClient();
 #endif
