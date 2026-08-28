@@ -149,15 +149,25 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
     case 0x03: runWrite_(pl, plen); break;
     case 0x04: { uint8_t r = 0x51; sendResp_(0x04, &r, 1); break; }
     case 0x05: {
-      // INFO: [boardlen][board][sda][scl]
+      // INFO: [boardlen][board][sda][scl][spi_sck][spi_miso][spi_mosi][spi_cs]
+      // (older firmware sends only the first 3 fields; host tolerates both)
       const char *name = CD3217_BOARD;
       uint8_t blen = (uint8_t)strlen(name);
-      uint8_t resp[2 + 16];
+      uint8_t resp[8 + 16];
       resp[0] = blen;
       memcpy(resp + 1, name, blen);
       resp[1 + blen] = I2C_SDA_GPIO;
       resp[2 + blen] = I2C_SCL_GPIO;
-      sendResp_(0x05, resp, 3 + blen);
+      resp[3 + blen] = PIN_SPI_SCK;
+      resp[4 + blen] = PIN_SPI_MISO;
+      resp[5 + blen] = PIN_SPI_MOSI;
+      resp[6 + blen] = PIN_SPI_CS;
+#ifdef ARDUINO_ARCH_RP2040
+      resp[7 + blen] = 0x01;   // hw: RP2040/RP2350 (SPI1 block)
+#else
+      resp[7 + blen] = 0x02;   // hw: ESP32 family
+#endif
+      sendResp_(0x05, resp, 8 + blen);
       break;
     }
     case 0x10: {

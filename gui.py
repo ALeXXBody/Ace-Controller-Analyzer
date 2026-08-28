@@ -68,6 +68,16 @@ def resource_path(rel: str) -> str:
     return os.path.join(base, rel)
 
 
+_PIN_LABELS = {
+    "sda": "SDA (data)",
+    "scl": "SCL (clock)",
+    "sck": "SCK (clock)",
+    "miso": "MISO (board reads)",
+    "mosi": "MOSI (board writes)",
+    "cs": "CS (chip select)",
+}
+
+
 class Application(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -334,6 +344,7 @@ class Application(ctk.CTk):
         )
         self.tabs.pack(fill="both", expand=True, padx=10, pady=10)
 
+        self.tab_board = self.tabs.add("Board")
         self.tab_overview = self.tabs.add("Overview")
         self.tab_registers = self.tabs.add("Registers")
         self.tab_batch = self.tabs.add("Batch")
@@ -342,6 +353,7 @@ class Application(ctk.CTk):
         self.tab_flash = self.tabs.add("Flash")
         self.tab_log = self.tabs.add("Log")
 
+        self._build_board_tab()
         self._build_overview_tab()
         self._build_register_tab()
         self._build_batch_tab()
@@ -349,6 +361,159 @@ class Application(ctk.CTk):
         self._build_otp_tab()
         self._build_flash_tab()
         self._build_log_tab()
+
+    # ─── Board tab ────────────────────────────────────────────────────────
+
+    def _build_board_tab(self):
+        tab = self.tab_board
+        from cd3217_analyzer.boards import BOARDS, get_board_info
+
+        # ── connected board card ────────────────────────────────────────────
+        card = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=12)
+        card.pack(fill="x", padx=12, pady=12)
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="x", padx=18, pady=16)
+
+        self.board_status_dot = ctk.CTkLabel(
+            inner, text="●", font=F["score"], text_color=C["dim"], width=30)
+        self.board_status_dot.pack(side="left", padx=(0, 14))
+
+        vbox = ctk.CTkFrame(inner, fg_color="transparent")
+        vbox.pack(side="left", fill="x", expand=True)
+        self.board_name_label = ctk.CTkLabel(
+            vbox, text="No board connected", font=F["heading"])
+        self.board_name_label.pack(anchor="w")
+        self.board_sub_label = ctk.CTkLabel(
+            vbox, text="Connect via USB Bridge (board) to see its pinout, "
+                       "or pick a board below.",
+            text_color=C["dim"], font=F["body"], justify="left", wraplength=640)
+        self.board_sub_label.pack(anchor="w", pady=(2, 0))
+
+        # ── pinout cards ───────────────────────────────────────────────────
+        grid = ctk.CTkFrame(tab, fg_color="transparent")
+        grid.pack(fill="x", padx=12, pady=(0, 6))
+        grid.grid_columnconfigure((0, 1), weight=1)
+
+        self.i2c_card = ctk.CTkFrame(grid, fg_color=C["card"], corner_radius=12)
+        self.i2c_card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        self.spi_card = ctk.CTkFrame(grid, fg_color=C["card"], corner_radius=12)
+        self.spi_card.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+
+        self._build_pin_card(
+            self.i2c_card, "I2C — connect to the CD3217",
+            [("SDA (data)", "sda"), ("SCL (clock)", "scl")])
+        self._build_pin_card(
+            self.spi_card, "SPI — flash chip (via level shifter)",
+            [("SCK (clock)", "sck"), ("MISO (board reads)", "miso"),
+             ("MOSI (board writes)", "mosi"), ("CS (chip select)", "cs")])
+
+        # ── wiring notes ───────────────────────────────────────────────────
+        notes_card = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=12)
+        notes_card.pack(fill="x", padx=12, pady=6)
+        self.board_notes_label = ctk.CTkLabel(
+            notes_card, text="", font=F["small"], text_color=C["dim"],
+            justify="left", wraplength=700)
+        self.board_notes_label.pack(anchor="w", padx=18, pady=12)
+        self._board_notes_frame = notes_card
+
+        # ── board picker (works without a board connected) ─────────────────
+        picker_card = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=12)
+        picker_card.pack(fill="x", padx=12, pady=6)
+        box = ctk.CTkFrame(picker_card, fg_color="transparent")
+        box.pack(fill="x", padx=18, pady=12)
+        ctk.CTkLabel(box, text="Browse a board's pinout:",
+                     font=F["body"], text_color=C["dim"]).pack(side="left")
+        self.board_picker_var = ctk.StringVar(value="")
+        picker = ctk.CTkOptionMenu(
+            box, variable=self.board_picker_var, values=[""] + sorted(
+                b.name for b in BOARDS.values()),
+            command=self._on_board_picked, width=260,
+            fg_color=C["entry"], button_color=C["btn"],
+            button_hover_color=C["btn_hover"], text_color=C["text"],
+            dropdown_fg_color=C["panel"])
+        picker.pack(side="left", padx=12)
+
+        # initialize with the empty state
+        self._show_board_info(None)
+
+    def _build_pin_card(self, parent, title, roles):
+        ctk.CTkLabel(
+            parent, text=title, font=F["heading"],
+            text_color=C["accent"]).pack(anchor="w", padx=18, pady=(14, 4))
+        for _, key in roles:
+            row = ctk.CTkFrame(parent, fg_color="transparent")
+            row.pack(fill="x", padx=18, pady=3)
+            ctk.CTkLabel(row, text=_PIN_LABELS[key], font=F["body"],
+                         text_color=C["dim"], width=150, anchor="w"
+                         ).pack(side="left")
+            lbl = ctk.CTkLabel(row, text="—", font=F["mono"],
+                               text_color=C["text"])
+            lbl.pack(side="left")
+            setattr(self, f"_pin_lbl_{key}", lbl)
+
+    def _on_board_picked(self, name):
+        from cd3217_analyzer.boards import BOARDS
+        for b in BOARDS.values():
+            if b.name == name:
+                self._show_board_info(b)
+                return
+        self._show_board_info(None)
+
+    def _show_board_info(self, board):
+        """Render a BoardInfo (or None) into the Board tab."""
+        from cd3217_analyzer.boards import BoardInfo
+        if board is None:
+            self.board_status_dot.configure(text_color=C["dim"])
+            self.board_name_label.configure(text="No board selected")
+            self.board_sub_label.configure(
+                text="Connect via USB Bridge (board) to see the live pinout, "
+                     "or pick a board above.")
+            for key in _PIN_LABELS:
+                getattr(self, f"_pin_lbl_{key}").configure(text="—")
+            self.board_notes_label.configure(
+                text="Wiring basics: I2C needs SDA+SCL (+2.2kΩ pull-ups to "
+                     "3.3V, GND). SPI flash needs SCK/MISO/MOSI/CS + GND, "
+                     "and the target chip powered at its own voltage — "
+                     "level-shift for 1.8V targets.")
+            return
+
+        self.board_name_label.configure(text=board.name)
+        self.board_notes_label.configure(text="\n".join(
+            f"•  {n}" for n in board.notes))
+        self.board_sub_label.configure(text=(
+            f"{board.family} family  ·  {board.i2c_label} on dedicated pins  "
+            f"·  {board.spi_label} on "
+            f"{'SPI1' if board.hw == 1 else 'its SPI peripheral'}"))
+        for role, key in (("sda", "sda"), ("scl", "scl")):
+            v = board.i2c.get(role)
+            getattr(self, f"_pin_lbl_{key}").configure(
+                text=v[1] if v else "—")
+        for key in ("sck", "miso", "mosi", "cs"):
+            v = board.spi.get(key)
+            getattr(self, f"_pin_lbl_{key}").configure(
+                text=v[1] if v else "—")
+
+    def _refresh_board_tab_live(self):
+        """Update the Board tab from the connected board's INFO frame."""
+        from cd3217_analyzer.boards import board_from_info
+        try:
+            info = self.adapter.info()
+        except Exception:
+            info = {}
+        board = board_from_info(info)
+        if board:
+            self.board_status_dot.configure(text_color=C["green"])
+            self._show_board_info(board)
+            live = info.get("spi_sck") is not None
+            self.board_sub_label.configure(text=(
+                f"Connected  ·  pins reported "
+                f"{'live by firmware' if live else 'from the board table'}"))
+        else:
+            self.board_status_dot.configure(text_color=C["red"])
+            self.board_name_label.configure(text="Board did not report pins")
+            self.board_sub_label.configure(
+                text="Connected, but the firmware did not answer INFO — "
+                     "re-flash with the latest firmware for pin reporting.")
 
     def _build_overview_tab(self):
         tab = self.tab_overview
@@ -836,12 +1001,18 @@ class Application(ctk.CTk):
                              "Is the board running CD3217 firmware?", "err")
                     return
                 # Log which firmware the board is actually running so a wrong
-                # flash (e.g. pico2 firmware on a Pico 1) is obvious.
+                # flash (e.g. pico2 firmware on a Pico 1) is obvious, and
+                # populate the Board tab with its live pinout.
                 try:
                     b = adapter.info()
                     if b and b.get("board"):
                         self.log(f"Board firmware: {b['board']} "
-                                 f"(SDA={b.get('sda')} SCL={b.get('scl')})", "ok")
+                                 f"(SDA={b.get('sda')} SCL={b.get('scl')})",
+                                 "ok")
+                except Exception:
+                    pass
+                try:
+                    self._refresh_board_tab_live()
                 except Exception:
                     pass
             else:
@@ -918,6 +1089,10 @@ class Application(ctk.CTk):
         self.selected_address = None
         self._update_conn_status(False)
         self._clear_devices()
+        try:
+            self.board_status_dot.configure(text_color=C["dim"])
+        except Exception:
+            pass
         self.log("Disconnected")
 
     def _update_conn_status(self, connected: bool):

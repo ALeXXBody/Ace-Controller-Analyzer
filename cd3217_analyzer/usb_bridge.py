@@ -179,14 +179,24 @@ class UsbBridgeAdapter(I2CAdapter):
 
     # ---- extra (not in ABC, used by GUI) -----------------------------------
     def info(self) -> dict:
+        """Read the board INFO frame.
+
+        Payload: [boardlen][board][sda][scl][spi_sck][spi_miso][spi_mosi]
+                 [spi_cs][hw]  — fields after scl are optional (older
+        firmware sends only board/sda/scl; missing fields are None).
+        """
         resp = self._transact(CMD_INFO)
         if not resp:
             return {}
+        out = {}
         blen = resp[0]
-        board = bytes(resp[1:1 + blen]).decode("utf-8", "replace")
-        sda = resp[1 + blen] if len(resp) > 1 + blen else None
-        scl = resp[2 + blen] if len(resp) > 2 + blen else None
-        return {"board": board, "sda": sda, "scl": scl}
+        out["board"] = bytes(resp[1:1 + blen]).decode("utf-8", "replace")
+        fields = ("sda", "scl", "spi_sck", "spi_miso", "spi_mosi",
+                  "spi_cs", "hw")
+        for i, name in enumerate(fields):
+            idx = 1 + blen + i
+            out[name] = resp[idx] if len(resp) > idx else None
+        return out
 
     def handshake(self) -> bool:
         """Confirm the device responds, retrying until it's ready.
