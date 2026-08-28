@@ -898,17 +898,30 @@ class Application(ctk.CTk):
         v = board.uart_rx.get("rx")
         getattr(self, "_pin_lbl_uart_rx").configure(text=v[1] if v else "—")
 
-    def _refresh_board_tab_live(self):
-        """Update the Board tab from the connected board's INFO frame."""
+    def _refresh_board_tab_live(self, adapter=None):
+        """Update the Board tab from the connected board's INFO frame.
+
+        Recognizes the board by its INFO name, auto-selects it in the board
+        picker, and renders its pinout from the boards table (live pin
+        numbers when the firmware reports them).
+        """
         from cd3217_analyzer.boards import board_from_info
+        adapter = adapter or self.adapter
+        if adapter is None:
+            return
         try:
-            info = self.adapter.info()
+            info = adapter.info()
         except Exception:
             info = {}
         board = board_from_info(info)
         if board:
             self.board_status_dot.configure(text_color=C["green"])
             self._show_board_info(board)
+            # auto-select the recognized board in the picker dropdown
+            try:
+                self.board_picker_var.set(board.name)
+            except Exception:
+                pass
             live = info.get("spi_sck") is not None
             fw = info.get("version")
             self.board_sub_label.configure(text=(
@@ -1621,7 +1634,7 @@ class Application(ctk.CTk):
         except Exception:
             pass
         try:
-            self._refresh_board_tab_live()
+            self._refresh_board_tab_live(adapter)
         except Exception:
             pass
         # offer a firmware update when the board is outdated
