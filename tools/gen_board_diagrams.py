@@ -222,8 +222,12 @@ def draw_diagram(bd):
     if bottom:
         board_h = max(board_h, len(bottom) * pitch + 60)
 
+    # Bottom pads draw their labels BELOW the board edge; reserve room so
+    # they never touch the legend (rp2040-zero / c6-zero previously collided).
+    bot_label_room = 64 if bottom else 0
+
     W = LABEL_MARGIN * 2 + board_w + PAD_W * 2 + 60
-    H = HEADER_H + board_h + PAD_H * 2 + FOOTER_H + \
+    H = HEADER_H + board_h + PAD_H * 2 + FOOTER_H + bot_label_room + \
         (40 if bd.get("footnote") else 0)
 
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -322,27 +326,22 @@ def draw_diagram(bd):
             tx, ty = cx, r[3] + 14
             anchor = "ma"
         if col:
-            d.text((tx, ty), label, font=f_label, fill=col, anchor=anchor)
-            tag_txt = " " + (I2C_TAGS if role == "i2c" else SPI_TAGS)[tag]
+            # draw each element exactly once: label above the pad line,
+            # role tag below (bottom pads: single combined line under the pad)
+            tag_txt = (I2C_TAGS if role == "i2c" else SPI_TAGS)[tag]
             if side == "left":
-                d.text((tx, ty), tag_txt[1:], font=f_tag, fill=col,
-                       anchor="rm")
-                # move label above, tag below for legibility
                 d.text((tx, ty - 20), label, font=f_label, fill=col,
                        anchor="rm")
-                d.text((tx, ty + 18), (I2C_TAGS if role == "i2c" else
-                                       SPI_TAGS)[tag], font=f_tag, fill=col,
+                d.text((tx, ty + 18), tag_txt, font=f_tag, fill=col,
                        anchor="rm")
             elif side == "right":
                 d.text((tx, ty - 20), label, font=f_label, fill=col,
                        anchor="lm")
-                d.text((tx, ty + 18), (I2C_TAGS if role == "i2c" else
-                                       SPI_TAGS)[tag], font=f_tag, fill=col,
+                d.text((tx, ty + 18), tag_txt, font=f_tag, fill=col,
                        anchor="lm")
-            else:
-                d.text((tx, ty + 18), label + " " +
-                       (I2C_TAGS if role == "i2c" else SPI_TAGS)[tag],
-                       font=f_tag, fill=col, anchor="ma")
+            else:  # bottom
+                d.text((tx, ty), label + " " + tag_txt, font=f_tag,
+                       fill=col, anchor="ma")
         else:
             d.text((tx, ty), label, font=f_label, fill=COL_DIM, anchor=anchor)
 
@@ -372,11 +371,13 @@ def draw_diagram(bd):
         d.text((W // 2, ly + 64), bd["footnote"], font=f_note,
                fill=COL_DIM, anchor="ma")
 
-    return img, pads
+    geom = {"by1": by1, "legend_y": ly, "has_bottom": bool(bottom)}
+    return img, pads, geom
 
 
-def self_check(bd, img, pads):
-    """Verify every highlighted pad actually rendered in its color."""
+def self_check(bd, img, pads, geom):
+    """Verify every highlighted pad rendered in its color, and that
+    bottom-pad labels can't touch the legend (past overlap bug)."""
     px = img.load()
     ok = True
     for label, (role, _tag) in bd["highlights"].items():
@@ -388,6 +389,13 @@ def self_check(bd, img, pads):
             print(f"  !! {bd['key']}: {label} highlight wrong "
                   f"(got rgba{r,g,b,a} role={got_role}, want {want})")
             ok = False
+    if geom["has_bottom"]:
+        # bottom pad: edge +15, label top +14, label height ~30, margin 8
+        label_bottom = geom["by1"] + 15 + 14 + 30
+        if geom["legend_y"] < label_bottom + 8:
+            print(f"  !! {bd['key']}: bottom labels (to y={label_bottom}) "
+                  f"collide with legend (y={geom['legend_y']})")
+            ok = False
     return ok
 
 
@@ -395,10 +403,10 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     all_ok = True
     for bd in BOARDS:
-        img, pads = draw_diagram(bd)
+        img, pads, geom = draw_diagram(bd)
         path = os.path.join(OUT_DIR, bd["key"] + ".png")
         img.save(path)
-        ok = self_check(bd, img, pads)
+        ok = self_check(bd, img, pads, geom)
         all_ok = all_ok and ok
         n_hl = len(bd["highlights"])
         print(f"{bd['key']:20s} {img.size[0]}x{img.size[1]}  "

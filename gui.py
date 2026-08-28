@@ -597,20 +597,21 @@ class Application(ctk.CTk):
         self._show_board_info(None)
 
     def _build_pin_summary(self, parent, title, color, roles):
-        """Compact card: title + one 'SDA GP4 · SCL GP5' style line."""
-        head = ctk.CTkFrame(parent, fg_color="transparent")
-        head.pack(fill="x", padx=14, pady=(10, 2))
-        ctk.CTkLabel(head, text=title, font=F["small"], text_color=C["dim"]
-                     ).pack(side="left")
-        line = ctk.CTkLabel(
-            parent, text="—", font=F["mono"], text_color=color,
-            wraplength=290, justify="left")
-        line.pack(anchor="w", padx=14, pady=(0, 10))
-        setattr(self, f"_pin_line_{roles[0][1] if len(roles) <= 2 else 'spi'}",
-                line)
-        # keep per-role label refs for compatibility (all point to the line)
-        for _, key in roles:
-            setattr(self, f"_pin_lbl_{key}", line)
+        """Vertical card: one description row per pin.
+
+        Pin NUMBERS are intentionally not shown here — the diagram next to
+        the card is the visual reference for where each pin is; these rows
+        explain what each signal does.
+        """
+        ctk.CTkLabel(parent, text=title, font=F["heading"],
+                     text_color=color).pack(anchor="w", padx=14, pady=(12, 4))
+        for label, _key in roles:
+            row = ctk.CTkFrame(parent, fg_color="transparent")
+            row.pack(anchor="w", padx=14, pady=(0, 7))
+            ctk.CTkLabel(row, text="●", text_color=color, font=F["small"],
+                         width=18).pack(side="left", padx=(0, 8))
+            ctk.CTkLabel(row, text=label, font=F["body"],
+                         text_color=C["dim"]).pack(side="left")
 
     def _on_board_picked(self, name):
         from cd3217_analyzer.boards import BOARDS
@@ -666,8 +667,6 @@ class Application(ctk.CTk):
             self.board_sub_label.configure(
                 text="Connect via USB Bridge (board) to see the live pinout, "
                      "or pick a board above.")
-            self._pin_line_sda.configure(text="—")
-            self._pin_line_spi.configure(text="—")
             self.board_notes_label.configure(
                 text="Wiring basics: I2C needs SDA+SCL (+2.2kΩ pull-ups to "
                      "3.3V, GND). SPI flash needs SCK/MISO/MOSI/CS + GND, "
@@ -679,16 +678,8 @@ class Application(ctk.CTk):
         self.board_notes_label.configure(text="\n".join(
             f"•  {n}" for n in board.notes))
         self.board_sub_label.configure(text=(
-            f"{board.family}  ·  {'SPI1' if board.hw == 1 else 'hw SPI'}"))
-        i2c_txt = " · ".join(
-            f"{tag.upper()} {board.i2c[k][1]}" if k in board.i2c else ""
-            for tag, k in (("sda", "sda"), ("scl", "scl")))
-        self._pin_line_sda.configure(text=i2c_txt or "—")
-        spi_txt = " · ".join(
-            f"{tag} {board.spi[k][1]}" if k in board.spi else ""
-            for tag, k in (("sck", "sck"), ("miso", "miso"),
-                           ("mosi", "mosi"), ("cs", "cs")))
-        self._pin_line_spi.configure(text=spi_txt or "—")
+            f"{board.family}  ·  {'SPI1' if board.hw == 1 else 'hw SPI'}  ·  "
+            f"pins shown highlighted in the diagram"))
 
     def _refresh_board_tab_live(self):
         """Update the Board tab from the connected board's INFO frame."""
