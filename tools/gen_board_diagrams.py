@@ -200,7 +200,7 @@ BOARDS = [
 
 # ─── drawing ─────────────────────────────────────────────────────────────────
 PAD_W, PAD_H = 46, 30          # pad size (side pads: w x h)
-LABEL_MARGIN = 300             # room for labels on each side
+LABEL_MARGIN = 170             # room for labels on each side
 HEADER_H = 170
 FOOTER_H = 150
 
