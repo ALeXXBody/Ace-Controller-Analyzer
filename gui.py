@@ -407,6 +407,17 @@ class Application(ctk.CTk):
             [("SCK (clock)", "sck"), ("MISO (board reads)", "miso"),
              ("MOSI (board writes)", "mosi"), ("CS (chip select)", "cs")])
 
+        # ── pinout diagram ──────────────────────────────────────────────────
+        diag_card = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=12)
+        diag_card.pack(fill="x", padx=12, pady=6)
+        ctk.CTkLabel(
+            diag_card, text="Board pinout — connect the highlighted pins",
+            font=F["heading"], text_color=C["accent"]
+        ).pack(anchor="w", padx=18, pady=(14, 2))
+        self.board_diagram_label = ctk.CTkLabel(diag_card, text="")
+        self.board_diagram_label.pack(padx=18, pady=(4, 16))
+        self._board_diagram_img = None   # keep a reference (GC safety)
+
         # ── wiring notes ───────────────────────────────────────────────────
         notes_card = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=12)
         notes_card.pack(fill="x", padx=12, pady=6)
@@ -459,9 +470,42 @@ class Application(ctk.CTk):
                 return
         self._show_board_info(None)
 
+    def _show_board_diagram(self, board):
+        """Load and display the board's pinout diagram (if any)."""
+        self._board_diagram_img = None
+        path = None
+        if board is not None and board.image:
+            cand = resource_path(os.path.join("assets", "boards", board.image))
+            if os.path.exists(cand):
+                path = cand
+        if not path:
+            self.board_diagram_label.configure(
+                image=None, text="No diagram available for this board")
+            return
+        try:
+            from PIL import Image
+        except ImportError:
+            self.board_diagram_label.configure(
+                image=None,
+                text=f"Diagram: assets/boards/{board.image} (install "
+                     f"Pillow to display)")
+            return
+        try:
+            img = Image.open(path)
+            disp_w = 640
+            disp_h = int(img.height * disp_w / img.width)
+            self._board_diagram_img = ctk.CTkImage(
+                light_image=img, dark_image=img, size=(disp_w, disp_h))
+            self.board_diagram_label.configure(
+                image=self._board_diagram_img, text="")
+        except Exception:
+            self.board_diagram_label.configure(
+                image=None, text="Could not load diagram")
+
     def _show_board_info(self, board):
         """Render a BoardInfo (or None) into the Board tab."""
         from cd3217_analyzer.boards import BoardInfo
+        self._show_board_diagram(board)
         if board is None:
             self.board_status_dot.configure(text_color=C["dim"])
             self.board_name_label.configure(text="No board selected")

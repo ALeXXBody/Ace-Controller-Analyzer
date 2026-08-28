@@ -62,6 +62,27 @@ class TestBoardTable(unittest.TestCase):
             for role in ("sck", "miso", "mosi", "cs"):
                 self.assertIn(role, b.spi, f"{key}.{role}")
 
+    def test_all_boards_have_diagram(self):
+        import os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for key, b in BOARDS.items():
+            self.assertTrue(b.image, f"{key} has no diagram")
+            path = os.path.join(root, "assets", "boards", b.image)
+            self.assertTrue(os.path.exists(path),
+                            f"{key}: missing {b.image}")
+
+    def test_c6_zero_uses_real_board_pins(self):
+        # The Waveshare C6-Zero exposes SDA=14 SCL=15 SPI 18-21 (right edge);
+        # the old config (SDA=6 SCL=7 SPI 10-13) used pins the board
+        # doesn't break out.
+        b = BOARDS["esp32-c6-zero"]
+        self.assertEqual(b.i2c["sda"][0], 14)
+        self.assertEqual(b.i2c["scl"][0], 15)
+        self.assertEqual(b.spi["sck"][0], 21)
+        self.assertEqual(b.spi["miso"][0], 20)
+        self.assertEqual(b.spi["mosi"][0], 19)
+        self.assertEqual(b.spi["cs"][0], 18)
+
     def test_lookup_by_firmware_name(self):
         for key in ("pico1", "pico2", "pico-w", "pico2-w", "rp2040-zero",
                     "esp32-s3-devkitc-1", "esp32-c3-supermini",

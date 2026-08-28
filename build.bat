@@ -18,7 +18,7 @@ if errorlevel 1 (
 
 REM === Check/install build tools ===
 echo  [1/4] Installing build tools...
-pip install pyinstaller customtkinter smbus2 pyserial --quiet --disable-pip-version-check 2>nul
+pip install pyinstaller customtkinter smbus2 pyserial pillow --quiet --disable-pip-version-check 2>nul
 
 REM === Clean previous builds ===
 echo  [2/4] Cleaning previous builds...
@@ -54,6 +54,8 @@ pyinstaller ^
     --hidden-import serial ^
     --hidden-import serial.tools ^
     --hidden-import serial.tools.list_ports ^
+    --hidden-import PIL ^
+    --hidden-import PIL.Image ^
     gui.py
 
 if errorlevel 1 (

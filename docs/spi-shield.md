@@ -28,7 +28,7 @@ and rebuild if your wiring differs.
 | ESP32-S3 DevKit  | 12  | 13   | 11   | 10  | FSPI |
 | ESP32-C3 SuperMini | 4 | 6    | 5    | 7   | I2C stays on 8/9 |
 | ESP32 classic    | 18  | 19   | 23   | 5   | VSPI |
-| ESP32-C6-Zero    | 12  | 13   | 11   | 10  | |
+| ESP32-C6-Zero    | 21  | 20   | 19   | 18  | SDA=14 SCL=15 (right edge) |
 
 I2C (SDA/SCL) is unchanged — SPI is additional wiring, and both can be used
 through the same USB connection.

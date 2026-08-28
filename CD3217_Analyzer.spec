@@ -27,6 +27,8 @@ a = Analysis(
         'serial',
         'serial.tools',
         'serial.tools.list_ports',
+        'PIL',
+        'PIL.Image',
     ],
     hookspath=[],
     hooksconfig={},
