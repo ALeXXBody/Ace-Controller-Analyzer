@@ -20,6 +20,10 @@ import subprocess
 import sys
 from typing import List, Optional
 
+# Windows: don't flash a console window for every subprocess spawned from
+# the windowed exe (CREATE_NO_WINDOW; harmless no-op flag elsewhere).
+_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
 
 # ---- Pico / RP2040: UF2 mass-storage drag-and-drop --------------------------
 
@@ -56,14 +60,20 @@ def find_bootsel_drives() -> List[str]:
 
 
 def _win_volume_label(letter: str) -> Optional[str]:
-    """Best-effort Windows volume label via PowerShell (no extra deps)."""
-    cmd = [
-        "powershell", "-NoProfile", "-Command",
-        f"(Get-Volume -DriveLetter '{letter}').FileSystemLabel",
-    ]
+    """Windows volume label via the kernel32 API.
+
+    Deliberately no subprocess: the BOOTSEL polling loop calls this several
+    times a second during board updates, and each `powershell` spawn from a
+    windowed exe flashes a console window (and costs ~100ms+ per drive).
+    GetVolumeInformationW does the same job instantly and silently.
+    """
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        return out.stdout.strip()
+        import ctypes
+        name = ctypes.create_unicode_buffer(261)
+        fs = ctypes.create_unicode_buffer(261)
+        ok = ctypes.windll.kernel32.GetVolumeInformationW(
+            f"{letter}:\\", name, len(name), None, None, None, fs, len(fs))
+        return name.value if ok and name.value else None
     except Exception:
         return None
 
@@ -149,10 +159,12 @@ def flash_esptool(bin_path: str, port: str,
     ]
     if erase:
         erase_cmd = [tool, "--chip", chip, "--port", port, "erase_flash"]
-        subprocess.run(erase_cmd, check=True, timeout=120)
+        subprocess.run(erase_cmd, check=True, timeout=120,
+                   creationflags=_NO_WINDOW)
     # Combined binary goes at offset 0x0.
     cmd += ["0x0", bin_path]
-    subprocess.run(cmd, check=True, timeout=180)
+    subprocess.run(cmd, check=True, timeout=180,
+                   creationflags=_NO_WINDOW)
     return f"Flashed {os.path.basename(bin_path)} to ESP32 on {port}."
 
 
