@@ -224,7 +224,7 @@ def draw_diagram(bd):
 
     # Bottom pads draw stacked labels BELOW the board edge (number, then role);
     # reserve room so they never touch the legend.
-    bot_label_room = 110 if bottom else 0
+    bot_label_room = 88 if bottom else 0
 
     W = LABEL_MARGIN * 2 + board_w + PAD_W * 2 + 60
     H = HEADER_H + board_h + PAD_H * 2 + FOOTER_H + bot_label_room + \
@@ -237,6 +237,7 @@ def draw_diagram(bd):
     f_sub = load_font(26, bold=False)
     f_label = load_font(26)
     f_tag = load_font(24)
+    f_bot = load_font(19)          # small text for tight bottom pads
     f_chip = load_font(28)
     f_btn = load_font(20)
     f_note = load_font(22, bold=False)
@@ -331,9 +332,9 @@ def draw_diagram(bd):
             # (bottom pads sit close together; a combined line would overlap).
             tag_txt = (I2C_TAGS if role == "i2c" else SPI_TAGS)[tag]
             if side == "bottom":
-                d.text((cx, r[3] + 26), label, font=f_tag, fill=col,
+                d.text((cx, r[3] + 21), label, font=f_bot, fill=col,
                        anchor="mm")
-                d.text((cx, r[3] + 54), tag_txt, font=f_tag, fill=col,
+                d.text((cx, r[3] + 41), tag_txt, font=f_bot, fill=col,
                        anchor="mm")
             elif side == "left":
                 d.text((tx, ty), label + " " + tag_txt, font=f_label,
@@ -391,9 +392,9 @@ def self_check(bd, img, pads, geom):
                   f"(got rgba{r,g,b,a} role={got_role}, want {want})")
             ok = False
     if geom["has_bottom"]:
-        # stacked bottom labels: number centered at by1+26, role at by1+54,
-        # each ~24px tall -> ink bottom ≈ by1+66; keep 10px clear of legend
-        label_bottom = geom["by1"] + 66
+        # small stacked labels: number at by1+21, role at by1+41 (~19px font)
+        # -> ink bottom ≈ by1+51; keep 10px clear of legend
+        label_bottom = geom["by1"] + 51
         if geom["legend_y"] < label_bottom + 10:
             print(f"  !! {bd['key']}: bottom labels (to y={label_bottom}) "
                   f"collide with legend (y={geom['legend_y']})")
@@ -403,8 +404,8 @@ def self_check(bd, img, pads, geom):
         if n_bot >= 2:
             spacing = geom["board_w"] / n_bot
             widest = max(len(l) for l in bd["bottom"])
-            # ~14px per char at 24px bold font + padding
-            text_w = widest * 14 + 8
+            # ~11px per char at 19px bold font + padding
+            text_w = widest * 11 + 8
             if text_w > spacing:
                 print(f"  !! {bd['key']}: bottom labels {text_w:.0f}px "
                       f"wider than pad spacing {spacing:.0f}px — overlap")
