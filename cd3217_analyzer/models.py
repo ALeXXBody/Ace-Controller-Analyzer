@@ -156,9 +156,9 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
             CD3217Position("UB400", 0x3C, "strap", "GND", 1,
                            notes="ACE TB — right rear port (I2C_UPC_T)"),
         ],
-        notes=("Verified schematic + boardview (820-01700): CD3215A (ACE1) gen. "
+        notes=("Verified schematic + boardview (820-01700): CD3217B12 (ACE2). "
                "U3100=XA@0x38, U3200=XB@0x3F, UB300=TA@0x3B, UB400=TB@0x3C "
-               "(write 0x70/7E/76/78). No 0x6B broadcast on this gen."),
+               "(write 0x70/7E/76/78)."),
     ),
     "A2159": MacBookModel(
         model_id="A2159",
