@@ -68,6 +68,13 @@ KNOWN_ACE2_ADDRESSES = {
 I2C_SCAN_RANGE = list(range(0x08, 0x78))
 
 
+# ACE2 all-call / broadcast address. All CD3217/CD3218 on a bank listen here;
+# reading a register returns garbled data (all chips drive the bus at once),
+# so it must NOT be treated as a device. Some schematics label it "BANK ALL
+# CALL @0x6B".
+ACE2_BROADCAST_ADDRESS = 0x6B
+
+
 @dataclass
 class RegisterDef:
     """Definition of a single register."""
@@ -88,8 +95,11 @@ REGISTERS = {
     # --- Identification Registers ---
     0x00: RegisterDef(
         offset=0x00, length=4, name="VID",
-        description="Vendor ID (TI = 0x0451)",
-        expected_values={0x0451: "Texas Instruments"},
+        description="Vendor ID (TI = 0x0451; Apple ACE2 = 0x2804)",
+        expected_values={
+            0x0451: "Texas Instruments",
+            0x2804: "Apple ACE2 (CD3217/CD3218)",
+        },
     ),
     0x01: RegisterDef(
         offset=0x01, length=4, name="DID",
@@ -294,9 +304,17 @@ def decode_vid(value: int) -> str:
     known_vids = {
         0x0451: "Texas Instruments",
         0x0483: "STMicroelectronics",
+        0x2804: "Apple (ACE2 CD3217/CD3218 custom)",
     }
     name = known_vids.get(value, "Unknown")
     return f"0x{value:04X} ({name})"
+
+
+# Vendor IDs that are valid for an ACE2/CD3217 controller. Apple's custom
+# parts report 0x2804 (seen on real MacBook CD3217/CD3218 boards) and are
+# NOT a fault, even though the stock part is a TI 0x0451.
+VALID_ACE2_VIDS = {0x0451, 0x2804}
+
 
 
 def decode_did(value: int) -> str:

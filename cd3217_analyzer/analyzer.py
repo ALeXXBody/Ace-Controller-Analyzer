@@ -18,8 +18,10 @@ from typing import Dict, List, Optional, Tuple
 
 from .adapters import I2CAdapter
 from .registers import (
+    ACE2_BROADCAST_ADDRESS,
     KNOWN_ACE2_ADDRESSES,
     REGISTERS,
+    VALID_ACE2_VIDS,
     PortMode,
     decode_mode_reg,
     decode_type_reg,
@@ -123,8 +125,14 @@ class CD3217Analyzer:
         self.addresses = addresses or list(KNOWN_ACE2_ADDRESSES.keys())
 
     def scan_bus(self, start: int = 0x08, end: int = 0x77) -> List[int]:
-        """Scan the entire I2C bus and return all responding addresses."""
-        return self.adapter.scan(start, end)
+        """Scan the entire I2C bus and return all responding addresses.
+
+        The ACE2 broadcast address (0x6B) is excluded: all chips answer it
+        simultaneously, so it always reads garbled and is not a device.
+        """
+        results = [a for a in self.adapter.scan(start, end)
+                   if a != ACE2_BROADCAST_ADDRESS]
+        return results
 
     def quick_scan(self, addresses: Optional[List[int]] = None) -> List[int]:
         """
@@ -210,10 +218,11 @@ class CD3217Analyzer:
         vid_reg = result.registers.get(0x00)
         if vid_reg:
             result.vendor_id = vid_reg.decoded or f"0x{vid_reg.raw_value:04X}"
-            if vid_reg.raw_value != 0x0451:
+            if vid_reg.raw_value not in VALID_ACE2_VIDS:
                 result.faults.append(FaultType.WRONG_VID)
                 result.fault_details.append(
-                    f"Vendor ID is 0x{vid_reg.raw_value:04X} (expected 0x0451 TI)"
+                    f"Vendor ID is 0x{vid_reg.raw_value:04X} (expected one of "
+                    f"{', '.join(f'0x{v:04X}' for v in sorted(VALID_ACE2_VIDS))})"
                 )
         else:
             result.faults.append(FaultType.I2C_ERROR)
@@ -230,7 +239,9 @@ class CD3217Analyzer:
             result.mode = mode_reg.decoded
             result.mode_raw = mode_reg.raw_value
             mode_str = mode_reg.decoded.upper()
-            if "APP" in mode_str:
+            # Known-good operating modes: APP (application), PPA (power-path
+            # active), PPS (programmable power supply), and their combinations.
+            if any(k in mode_str for k in ("APP", "PPA", "PPS", "PSU")):
                 pass  # Normal operating mode
             elif "BOOT" in mode_str:
                 result.faults.append(FaultType.BOOT_FAILED)
@@ -297,11 +308,12 @@ class CD3217Analyzer:
 
         # Vendor ID correct (15 points)
         vid_reg = result.registers.get(0x00)
-        if vid_reg and vid_reg.raw_value == 0x0451:
+        if vid_reg and vid_reg.raw_value in VALID_ACE2_VIDS:
             score += 15
 
-        # Mode is APP (20 points)
-        if result.mode and "APP" in result.mode.upper():
+        # Mode is APP / PPA (20 points)
+        if result.mode and any(k in result.mode.upper()
+                               for k in ("APP", "PPA", "PPS", "PSU")):
             score += 20
         elif result.mode and "BOOT" in result.mode.upper():
             score += 5  # Some credit for being alive
@@ -349,11 +361,11 @@ class CD3217Analyzer:
 
         # Step 4: Also check any unexpected addresses that might be ACE2s
         for addr in other_addrs:
-            # Try reading VID to see if it's a TI device
+            # Try reading VID to see if it's a TI/Apple ACE2 device
             vid_read = self.read_register(addr, 0x00, 4)
-            if vid_read and vid_read.raw_value == 0x0451:
+            if vid_read and vid_read.raw_value in VALID_ACE2_VIDS:
                 result = self.diagnose_device(addr)
-                result.notes = "Found TI device at non-standard ACE2 address"
+                result.notes = "Found ACE2 device at non-standard address"
                 report.devices.append(result)
 
         # Step 5: Generate summary

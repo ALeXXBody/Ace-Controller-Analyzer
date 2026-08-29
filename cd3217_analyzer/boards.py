@@ -368,13 +368,22 @@ _mac("a2442", model="MacBook Pro 14\" M1 Pro/Max 2021", board_nos=["820-02098", 
             "OTP strap resistors R5650 / R5508 / R5610 near the controllers"])
 
 _mac("a2485", model="MacBook Pro 16\" M1 Pro/Max 2021", board_nos=["820-02100", "820-02382"],
-     ports=4, ace="CD3217 (ACE2)", bus="AP I2C0 / SMC I2C1",
-     addresses="no pub. address map",
+     ports=4, ace="CD3217/CD3218 (ACE2)", bus="AP I2C0 / SMC I2C1",
+     addresses=(
+         "verified schematic map (820-02382): ACE2-0=UF400 @0x38; "
+         "ACE2-1=UF500 @0x3F; ACE2-2=UG400 @0x3B; ACE2-3=U5500 @0x3A; "
+         "BANK ALL CALL (broadcast, all four listen) @0x6B"),
      connect=[
-         "Thunderbolt ports: 4 (four CD3217 controllers)",
+         "Thunderbolt ports: 4 (four ACE2 controllers; U5500 is the CD3218B12 "
+         "system/charge controller, the rest are CD3217B12)",
          "Tap SDA/SCL + GND on a pull-up/series resistor of the AP I2C0 / "
-         "SMC I2C1 nets near a CD3217, or the CD3217 BGA pins (B5/A4, B7/A6)"],
-     notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups"])
+         "SMC I2C1 nets near a controller, or the CD3217 BGA pins (B5/A4, B7/A6)"],
+     notes=[
+         "3.3 V open-drain bus; high-Z probe, no extra pull-ups",
+         "0x6B is the all-call broadcast address (garbage/all-FF reads expected "
+         "there) -- not a fault; probe 0x38/0x3A/0x3B/0x3F for the 4 real chips",
+         "2 OTP-strapped (system/charge path) + 2 non-OTP (data port) "
+         "controllers; a non-OTP IC only replaces a non-OTP socket"])
 
 _mac("a2779", model="MacBook Air M2 2022", board_nos=["820-02167"],
      ports=2, ace="CD3217 (ACE2)", bus="I2C0 / I2C1",
