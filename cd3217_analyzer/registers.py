@@ -274,13 +274,34 @@ REGISTERS = {
 }
 
 
+KNOWN_MODE_4CC = ("APP", "PPA", "PPS", "PSU", "BOOT", "PTCH", "SAFE", "DFU")
+
+
+def complete_mode(chars: str) -> str:
+    """Complete a truncated 4CC mode against known modes.
+
+    The Mode/Type registers return [length][first 3 chars] of the 4CC, so
+    4-character modes lose their last character in a 4-byte read
+    (verified on live boards: 'BOO' = 'BOOT'). If the visible characters
+    are a unique prefix of exactly one known mode, return the full mode.
+    """
+    if not chars:
+        return chars
+    upper = chars.upper()
+    matches = [m for m in KNOWN_MODE_4CC if m.startswith(upper) and upper != m]
+    if len(matches) == 1:
+        return matches[0]
+    return chars
+
+
 def decode_mode_reg(value: int) -> str:
     """Decode a 4CC (Mode/Type) register.
 
     Real CD3217/CD3218 parts send the characters LSB-first on the wire
     (verified from board captures: wire bytes [0x04,'A','P','P'] = "APP",
-    [0x04,'I','2','C'] = "I2C"). Decode in wire order and skip
-    non-printable bytes (0x00 padding, 0xFF undrained bus, control bytes).
+    [0x04,'I','2','C'] = "I2C"). Decode in wire order, skip
+    non-printable bytes (0x00 padding, 0xFF undrained bus, length bytes),
+    and complete truncated modes ('BOO' -> 'BOOT').
     """
     if value == 0:
         return "Unknown/Zero"
@@ -292,7 +313,8 @@ def decode_mode_reg(value: int) -> str:
     for b in wire:
         if 0x20 <= b <= 0x7E:
             chars.append(chr(b))
-    return "".join(chars) if chars else "Empty"
+    text = "".join(chars) if chars else "Empty"
+    return complete_mode(text)
 
 
 def decode_type_reg(value: int) -> str:

@@ -338,7 +338,13 @@ class CD3217Analyzer:
             elif "BOOT" in mode_str:
                 result.faults.append(FaultType.BOOT_FAILED)
                 result.fault_details.append(
-                    "Device stuck in BOOT mode - may need ROM or VIN_3V3"
+                    "Device stuck in BOOT mode — firmware did not load. "
+                    "Check the controller's SPI flash ROM path (each port "
+                    "PAIR shares its own ROM) and VIN_3V3, then re-ball/"
+                    "replace the chip. Note: a chip in BOOT mode may answer "
+                    "at a loader default address instead of its strapped "
+                    "one — if another socket shows MISSING, this may be "
+                    "that chip, not the socket's own part"
                 )
             elif "PTCH" in mode_str:
                 result.fault_details.append(

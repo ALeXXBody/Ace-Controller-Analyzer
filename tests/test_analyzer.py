@@ -240,6 +240,33 @@ class TestAnalyzer(unittest.TestCase):
         self.assertEqual(decode_mode_reg(0x50504104), "APP")
         self.assertEqual(decode_mode_reg(0x43324904), "I2C")
 
+    def test_decode_mode_reg_completes_truncated_boot(self):
+        """The Mode register returns [len][first 3 chars], so the 4-char
+        'BOOT' mode truncates to 'BOO' (seen on a live 820-01700). The
+        decoder must complete it — a truncated BOOT was previously shown
+        as 'Unexpected mode: BOO' (WRONG_MODE) instead of BOOT_FAILED."""
+        self.assertEqual(decode_mode_reg(0x4F4F4204), "BOOT")  # [4,'B','O','O']
+        self.assertEqual(decode_mode_reg(0x48435450), "PTCH")  # [?, 'P','T','C']
+
+    def test_diagnose_truncated_boot_raises_boot_failed(self):
+        """A chip reporting truncated 'BOO' must be diagnosed BOOT_FAILED
+        (real fault), not WRONG_MODE."""
+        def mock_read_bytes(addr, reg, length):
+            if reg == 0x00:
+                return bytes([0x04, 0x28, 0x00, 0x00])       # Apple VID
+            if reg == 0x03:
+                return bytes([0x04, 0x42, 0x4F, 0x4F])       # [4,'B','O','O']
+            if reg == 0x04:
+                return bytes([0x20, 0x49, 0x32, 0x43])       # "I2C"
+            return bytes([0x5A, 0xA5, 0x00, 0x01])[:length]
+
+        self.mock_adapter.read_bytes.side_effect = mock_read_bytes
+        self.mock_adapter.ping.return_value = True
+        result = self.analyzer.diagnose_device(0x3C)
+        self.assertIn(FaultType.BOOT_FAILED, result.faults)
+        self.assertNotIn(FaultType.WRONG_MODE, result.faults)
+        self.assertEqual((result.mode or "").upper(), "BOOT")
+
     def test_scan_bus_excludes_broadcast_address(self):
         """The ACE2 all-call address (0x6B) must not be reported as a device."""
         self.mock_adapter.scan.return_value = [0x38, 0x3B, 0x3F, 0x6B]
