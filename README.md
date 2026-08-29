@@ -19,6 +19,8 @@ A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery co
 - **Decodes strap configuration** for ADDR/CNTL1/CNTL2 pin settings
 - **Logs results** to JSON/CSV for batch tracking
 - **GUI application** with dark theme, real-time register viewer, and batch testing
+- **Board tab (MacBook reference)**: per-model guide for where to connect
+  the adapter to each logic board's CD3217 I2C bus (Intel T2 + Apple Silicon)
 
 ## Requirements
 
@@ -85,7 +87,7 @@ payload slaves receive.
 - **CLI**: `--uart-autobaud` / `--uart-sniff auto|BAUD`
 - **WiFi boards**: web UI → **UART Sniff** tab — fully standalone
 - **RX pins**: Pico family GP1, ESP32-S3 GPIO4, C3/C6 GPIO1, classic GPIO16
-  (amber in the Board tab diagram)
+  (amber in the Adapter tab diagram)
 
 ⚠ The ACE2 UART bus is expected to be 1.8V — sniff through a level shifter.
 See **[docs/uart-sniff.md](docs/uart-sniff.md)** for test points, wiring and
@@ -107,7 +109,7 @@ found, one click downloads and applies it:
 
 ### Board firmware
 
-Boards report their firmware version on connect (Board tab shows it). When a
+Boards report their firmware version on connect (Adapter tab shows it). When a
 board runs an older firmware than the current release, the app pops up and
 offers to update it — the right image is downloaded automatically and
 flashed with no wiring changes:

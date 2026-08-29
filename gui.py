@@ -672,6 +672,7 @@ class Application(ctk.CTk):
         )
         self.tabs.pack(fill="both", expand=True, padx=10, pady=10)
 
+        self.tab_adapter = self.tabs.add("Adapter")
         self.tab_board = self.tabs.add("Board")
         self.tab_overview = self.tabs.add("Overview")
         self.tab_registers = self.tabs.add("Registers")
@@ -682,6 +683,7 @@ class Application(ctk.CTk):
         self.tab_uart = self.tabs.add("UART")
         self.tab_log = self.tabs.add("Log")
 
+        self._build_adapter_tab()
         self._build_board_tab()
         self._build_overview_tab()
         self._build_register_tab()
@@ -692,10 +694,10 @@ class Application(ctk.CTk):
         self._build_uart_tab()
         self._build_log_tab()
 
-    # ─── Board tab ────────────────────────────────────────────────────────
+    # ─── Adapter tab (your Pico/ESP32 analyzer board) ────────────────────
 
-    def _build_board_tab(self):
-        tab = self.tab_board
+    def _build_adapter_tab(self):
+        tab = self.tab_adapter
         from cd3217_analyzer.boards import BOARDS, get_board_info
 
         # ── layout: left column (stacked cards) + right column (diagram) ──
@@ -933,6 +935,122 @@ class Application(ctk.CTk):
             self.board_sub_label.configure(
                 text="Connected, but the firmware did not answer INFO — "
                      "re-flash with the latest firmware for pin reporting.")
+
+    # ─── Board tab (MacBook logic boards: where to connect) ──────────────
+
+    def _build_board_tab(self):
+        tab = self.tab_board
+        from cd3217_analyzer.boards import MAC_BOARDS
+
+        head = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=12)
+        head.pack(fill="x", padx=12, pady=(12, 6))
+        box = ctk.CTkFrame(head, fg_color="transparent")
+        box.pack(fill="x", padx=16, pady=12)
+        ctk.CTkLabel(
+            box, text="MacBook logic board — where to connect the "
+                      "adapter to its CD3217 bus",
+            font=F["heading"], text_color=C["accent"]
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            box,
+            text="Each USB-C power port is run by one CD3217 (ACE) "
+                 "controller. The analyzer talks to it on an onboard 3.3 V "
+                 "I2C bus (not the USB-C connector CC pins — those carry "
+                 "PD/SPI boot traffic). Pick a model for the recommended tap "
+                 "point.",
+            font=F["small"], text_color=C["dim"], justify="left",
+            wraplength=680,
+        ).pack(anchor="w", pady=(4, 0))
+
+        row = ctk.CTkFrame(head, fg_color="transparent")
+        row.pack(fill="x", pady=(8, 2))
+        ctk.CTkLabel(row, text="Model:",
+                     font=F["body"], text_color=C["dim"]).pack(side="left")
+        self.mac_picker_var = ctk.StringVar(value="")
+        picker = ctk.CTkOptionMenu(
+            row, variable=self.mac_picker_var,
+            values=[""] + sorted((b.model for b in MAC_BOARDS.values()),
+                                 key=str.lower),
+            command=self._on_mac_picked, width=380,
+            fg_color=C["entry"], button_color=C["btn"],
+            button_hover_color=C["btn_hover"], text_color=C["text"],
+            dropdown_fg_color=C["panel"])
+        picker.pack(side="left", padx=(8, 0))
+
+        # detail panel (scrollable so long notes stay readable)
+        bodyc = ctk.CTkFrame(tab, fg_color="transparent")
+        bodyc.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        bodyc.grid_columnconfigure(0, weight=1)
+        bodyc.grid_rowconfigure(0, weight=1)
+        sc = ctk.CTkScrollableFrame(
+            bodyc, fg_color=C["card"], corner_radius=12)
+        sc.grid(row=0, column=0, sticky="nsew")
+        sc.grid_columnconfigure(0, weight=1)
+        self.mac_detail = sc
+        self._show_mac_info(None)
+
+    def _on_mac_picked(self, name):
+        from cd3217_analyzer.boards import MAC_BOARDS
+        for b in MAC_BOARDS.values():
+            if b.model == name:
+                self._show_mac_info(b)
+                return
+        self._show_mac_info(None)
+
+    def _show_mac_info(self, mac):
+        """Render a MacBookInfo (or None) into the Board tab."""
+        sc = self.mac_detail
+        for w in sc.winfo_children():
+            w.destroy()
+        from cd3217_analyzer.boards import MAC_BOARDS
+        if mac is None:
+            ctk.CTkLabel(
+                sc, text="Select a MacBook model above to see where to "
+                         "connect the adapter.",
+                font=F["body"], text_color=C["dim"],
+                wraplength=680, justify="left",
+            ).grid(row=0, column=0, sticky="w", padx=8, pady=8)
+            return
+
+        r = 0
+        ctk.CTkLabel(sc, text=mac.model,
+                     font=F["title"], text_color=C["text"]
+                     ).grid(row=r, column=0, sticky="w", padx=8, pady=(4, 2)); r += 1
+        ctk.CTkLabel(
+            sc, text="Logic board " + " / ".join(mac.board_nos) +
+                     "   ·   " + str(mac.ports) + " USB-C power port(s)"
+                     "   ·   " + mac.ace + "    ·    " + mac.bus,
+            font=F["body"], text_color=C["dim"],
+        ).grid(row=r, column=0, sticky="w", padx=8, pady=(0, 8)); r += 1
+
+        self._mac_section(sc, r, "Where to connect (tap the I2C bus)",
+                          mac.connect, C["green"]); r += len(mac.connect) + 2
+        self._mac_section(sc, r, "Observed CD3217 addresses",
+                          [mac.addresses], C["yellow"]); r += 3
+        self._mac_section(sc, r, "Wiring notes", mac.notes, C["dim"])
+        r += len(mac.notes)
+
+        ctk.CTkLabel(
+            sc,
+            text="Apple does not publish test-point designators for these "
+                 "buses; the practical tap is a pull-up/series resistor on "
+                 "the named net, or the CD3217 BGA pins (Port1 SDA=B5 / "
+                 "SCL=A4, Port2 SDA=B7 / SCL=A6). Verify exact positions in "
+                 "the board's boardview (openboarddata / FlexBV) before "
+                 "soldering. Bus is 3.3 V open-drain.",
+            font=F["small"], text_color=C["dim"], justify="left",
+            wraplength=680,
+        ).grid(row=r + 1, column=0, sticky="w", padx=8, pady=(12, 4))
+
+    def _mac_section(self, sc, row, title, lines, color):
+        ctk.CTkLabel(sc, text=title, font=F["heading"],
+                     text_color=color).grid(
+            row=row, column=0, sticky="w", padx=8, pady=(10, 2))
+        for i, ln in enumerate(lines):
+            ctk.CTkLabel(
+                sc, text="•  " + ln, font=F["body"], text_color=C["text"],
+                justify="left", wraplength=680,
+            ).grid(row=row + 1 + i, column=0, sticky="w", padx=18, pady=1)
 
     def _build_overview_tab(self):
         tab = self.tab_overview
