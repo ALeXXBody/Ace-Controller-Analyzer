@@ -37,11 +37,12 @@ class I2CPort(IntEnum):
 # depending on OTP configuration and strap resistors.
 KNOWN_ACE2_ADDRESSES = {
     # Common addresses from repair community / schematics
-    0x38: "ACE2 Port1 (vanilla, ADDR=GND)",
-    0x3F: "ACE2 Port1 (vanilla, ADDR=float)",
-    0x3B: "ACE2 Port1 (OTP typical)",
-    0x3A: "ACE2 Port1 (OTP typical)",
-    0x3C: "ACE2 Port1 (OTP typical)",
+    # (labels verified against 820-02382 / 820-01700 schematics + boardviews)
+    0x38: "ACE2 (I2C_ADDR=GND) — A2485 UF400 / A2141 U3100 (XA)",
+    0x3F: "ACE2 (I2C_ADDR=float) — A2485 UF500 / A2141 U3200 (XB)",
+    0x3B: "ACE2 (I2C_ADDR=GND) — A2485 UG400 / A2141 UB300 (TA)",
+    0x3A: "CD3218 system/charge — A2485 U5500 (I2C_ADDR=float)",
+    0x3C: "ACE2 (I2C_ADDR=float) — A2141 UB400 (TB)",
     0x39: "ACE2 Port2 (strap typical)",
     0x2F: "ACE2 Port2 (vanilla, ADDR=float)",
     0x28: "ACE2 Port2 (vanilla, ADDR=GND)",
@@ -273,7 +274,12 @@ REGISTERS = {
 
 
 def decode_mode_reg(value: int) -> str:
-    """Decode the Mode register (0x03) from raw bytes (big-endian reading)."""
+    """Decode the Mode register (0x03) from raw bytes (big-endian reading).
+
+    0x00 and 0xFF bytes are skipped: a short register read leaves the
+    undriven bytes as 0x00/0xFF (open-drain bus released), so they carry
+    no 4CC character.
+    """
     if value == 0:
         return "Unknown/Zero"
     chars = []
@@ -282,8 +288,8 @@ def decode_mode_reg(value: int) -> str:
         b = (value >> (i * 8)) & 0xFF
         if 0x20 <= b <= 0x7E:
             chars.append(chr(b))
-        elif b == 0:
-            continue  # Skip null terminators
+        elif b in (0x00, 0xFF):
+            continue  # Skip undriven/termination bytes
         else:
             chars.append(f"0x{b:02X}")
     return "".join(chars) if chars else "Empty"

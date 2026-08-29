@@ -55,6 +55,18 @@ class TestMacBoards(unittest.TestCase):
         self.assertEqual(by_ref, {"U3100": 0x38, "U3200": 0x3F,
                                   "UB300": 0x3B, "UB400": 0x3C})
 
+    def test_verified_strap_maps(self):
+        """Straps verified in the boardviews (I2C_ADDR pin 111).
+        A2485: UF400 GND, UF500 float, UG400 GND (RG201), U5500 float.
+        A2141: primaries (U3100/UB300) GND, secondaries (U3200/UB400) float."""
+        from cd3217_analyzer.models import get_model
+        a2485 = {p.ref: p.addr_pin for p in get_model("A2485").positions}
+        self.assertEqual(a2485, {"UF400": "GND", "UF500": "float",
+                                 "UG400": "GND", "U5500": "float"})
+        a2141 = {p.ref: p.addr_pin for p in get_model("A2141").positions}
+        self.assertEqual(a2141, {"U3100": "GND", "U3200": "float",
+                                 "UB300": "GND", "UB400": "float"})
+
     def test_connect_mentions_tap_method(self):
         # every board should explain where/how to tap the bus
         for key, b in MAC_BOARDS.items():

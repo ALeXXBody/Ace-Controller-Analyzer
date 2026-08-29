@@ -189,6 +189,45 @@ class TestAnalyzer(unittest.TestCase):
         result = self.analyzer.diagnose_device(0x3A)
         self.assertNotIn(FaultType.WRONG_VID, result.faults)
 
+    def test_diagnose_retries_contaminated_mode_read(self):
+        """Reproduces 'diagnose-all faults but single diag passes': the first
+        reads after a NACKed dead address come back 0xFF-contaminated; the
+        analyzer must re-read and use the clean value."""
+        calls = {}
+
+        def mock_read_bytes(addr, reg, length):
+            calls[reg] = calls.get(reg, 0) + 1
+            first = calls[reg] == 1
+            if reg == 0x00:  # VID: first read contaminated, retry clean
+                if first:
+                    return bytes([0x04, 0x28, 0x00, 0xFF])   # 0xFF002804
+                return bytes([0x04, 0x28, 0x00, 0x00])       # 0x00002804
+            if reg == 0x03:  # Mode: first read contaminated, retry clean
+                if first:
+                    return bytes([0x50, 0x50, 0x41, 0xFF])   # "PP" + 0xFF junk
+                return bytes([0x20, 0x41, 0x50, 0x50])       # "PPA "
+            if reg == 0x04:
+                return bytes([0x20, 0x43, 0x32, 0x49])       # "I2C "
+            if reg == 0x2F:
+                return b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"[:length] \
+                    or b"\x00" * length
+            return bytes([0x5A, 0xA5, 0x00, 0x01])[:length]
+
+        self.mock_adapter.read_bytes.side_effect = mock_read_bytes
+        self.mock_adapter.ping.return_value = True
+        result = self.analyzer.diagnose_device(0x3F)
+        self.assertNotIn(FaultType.WRONG_VID, result.faults)
+        self.assertNotIn(FaultType.WRONG_MODE, result.faults)
+        self.assertIn("PPA", (result.mode or "").upper())
+        self.assertGreaterEqual(calls.get(0x00, 0), 2)  # VID was retried
+        self.assertGreaterEqual(calls.get(0x03, 0), 2)  # Mode was retried
+
+    def test_decode_mode_reg_skips_undriven_bytes(self):
+        """4CC decoding must skip 0x00/0xFF undriven bytes, not render them
+        as '0xFF' text that breaks mode matching."""
+        self.assertEqual(decode_mode_reg(0x50504120).strip(), "PPA")
+        self.assertEqual(decode_mode_reg(0xFF504120).strip(), "PA")
+
     def test_scan_bus_excludes_broadcast_address(self):
         """The ACE2 all-call address (0x6B) must not be reported as a device."""
         self.mock_adapter.scan.return_value = [0x38, 0x3B, 0x3F, 0x6B]

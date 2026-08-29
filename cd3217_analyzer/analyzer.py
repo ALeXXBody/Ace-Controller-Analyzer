@@ -178,15 +178,57 @@ class CD3217Analyzer:
         except Exception as e:
             return None
 
+    # Registers whose format is known well enough to detect a contaminated
+    # read (undriven bytes read back as 0xFF right after bus contention or
+    # a NACKed dead address).
+    _IDENTITY_REGS = {0x00, 0x03, 0x04}
+
+    @staticmethod
+    def _register_suspicious(offset: int, read: RegisterRead) -> bool:
+        """True when an identity-register read shows undriven-byte garbage."""
+        v = read.raw_value
+        if v == 0xFFFFFFFF:
+            return True
+        if offset == 0x00:
+            # VID is a 16-bit field; any high-byte content is garbage.
+            return (v & 0xFFFF0000) != 0
+        if offset in (0x03, 0x04):
+            # 4CC registers: every byte must be printable ASCII (or 0x00 pad).
+            for i in range(4):
+                b = (v >> (i * 8)) & 0xFF
+                if b != 0x00 and not (0x20 <= b <= 0x7E):
+                    return True
+            return False
+        return False
+
+    def _read_register_clean(self, address: int, offset: int,
+                             length: int = 4) -> Optional[RegisterRead]:
+        """Read a register, retrying once if the read looks contaminated.
+
+        Consecutive I2C transactions right after a NACKed address (e.g. a
+        dead CD3217 on the same bus) can return undriven bytes as 0xFF —
+        e.g. VID 0xFF002804 instead of 0x00002804, or a 4CC with 0xFF bytes.
+        A single re-read gives the bus time to settle and returns clean data.
+        """
+        read = self.read_register(address, offset, length)
+        if read is None or offset not in self._IDENTITY_REGS:
+            return read
+        if not self._register_suspicious(offset, read):
+            return read
+        retry = self.read_register(address, offset, length)
+        if retry is not None and not self._register_suspicious(offset, retry):
+            return retry
+        return retry if retry is not None else read
+
     def read_all_registers(self, address: int) -> Dict[int, RegisterRead]:
         """Read all important registers from a device."""
         results = {}
         for offset in self.DETAIL_REGS:
             reg_def = REGISTERS.get(offset)
             if reg_def:
-                read = self.read_register(address, offset, reg_def.length)
+                read = self._read_register_clean(address, offset, reg_def.length)
             else:
-                read = self.read_register(address, offset, 4)
+                read = self._read_register_clean(address, offset, 4)
             if read:
                 results[offset] = read
         return results

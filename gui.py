@@ -1979,9 +1979,14 @@ class Application(ctk.CTk):
         self.log("Scanning I2C bus (0x08–0x77)...")
 
         def work():
-            devices = self.adapter.scan(0x08, 0x77)
+            devices = [a for a in self.adapter.scan(0x08, 0x77)
+                       if a != ACE2_BROADCAST_ADDRESS]
             self.scan_results = devices
-            self.after(0, self._show_devices, devices)
+            if self.current_model:
+                expected = self._merge_expected(devices)
+                self.after(0, self._show_devices, expected, set(devices), True)
+            else:
+                self.after(0, self._show_devices, devices)
 
         self._run_bg(work, "Scan complete")
 
@@ -1995,9 +2000,20 @@ class Application(ctk.CTk):
         def work():
             found = [a for a in addrs if self.adapter.ping(a)]
             self.scan_results = found
-            self.after(0, self._show_devices, found)
+            if self.current_model:
+                expected = self._merge_expected(found)
+                self.after(0, self._show_devices, expected, set(found), True)
+            else:
+                self.after(0, self._show_devices, found)
 
         self._run_bg(work, "Quick scan complete")
+
+    def _merge_expected(self, found: List[int]) -> List[int]:
+        """Display list when a model is selected: the board's full address
+        map in board order, then any extra found addresses."""
+        model_addrs = [p.address for p in self.current_model.positions]
+        extras = [a for a in found if a not in model_addrs]
+        return model_addrs + extras
 
     def _model_scan(self):
         if not self._check_conn():
@@ -2006,17 +2022,13 @@ class Application(ctk.CTk):
             self.log("Select a MacBook model first", "warn")
             return
         addrs = [p.address for p in self.current_model.positions]
-        # Also list any broadcast/known addresses to flag if detected.
-        extra = [a for a in (ACE2_BROADCAST_ADDRESS,)
-                 if a not in addrs]
-        expected = addrs + extra
         self._set_busy(True, f"Scanning {self.current_model.model_id}...")
-        self.log(f"Model scan {self.current_model.model_id}: {', '.join(format_hex_addr(a) for a in expected)}")
+        self.log(f"Model scan {self.current_model.model_id}: {', '.join(format_hex_addr(a) for a in addrs)}")
 
         def work():
             found = [a for a in addrs if self.adapter.ping(a)]
             self.scan_results = found
-            self.after(0, self._show_devices, expected, set(found), True)
+            self.after(0, self._show_devices, addrs, set(found), True)
 
         self._run_bg(work, "Model scan complete")
 
