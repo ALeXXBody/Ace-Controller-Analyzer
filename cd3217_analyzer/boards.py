@@ -377,7 +377,8 @@ _mac("a2485", model="MacBook Pro 16\" M1 Pro/Max 2021", board_nos=["820-02100", 
          "Thunderbolt ports: 4 (four ACE2 controllers; U5500 is the CD3218B12 "
          "system/charge controller, the rest are CD3217B12)",
          "Tap SDA/SCL + GND on a pull-up/series resistor of the AP I2C0 / "
-         "SMC I2C1 nets near a controller, or the CD3217 BGA pins (B5/A4, B7/A6)"],
+         "SMC I2C1 nets near a controller, or the CD3217 BGA pins (B5/A4, B7/A6)",
+         "820-02382: SDA/SCL/GND easily accessed at test point JF200"],
      notes=[
          "3.3 V open-drain bus; high-Z probe, no extra pull-ups",
          "0x6B is the all-call broadcast address (garbage/all-FF reads expected "

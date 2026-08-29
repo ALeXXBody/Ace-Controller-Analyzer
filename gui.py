@@ -1004,9 +1004,26 @@ class Application(ctk.CTk):
 
     def _on_mac_picked(self, name):
         from cd3217_analyzer.boards import MAC_BOARDS
-        for b in MAC_BOARDS.values():
+        for key, b in MAC_BOARDS.items():
             if b.model == name:
                 self._show_mac_info(b)
+                mac_key = key.upper()  # e.g. "a2485" -> "A2485"
+                self.current_model = get_model(mac_key)
+                if self.current_model:
+                    self.log(
+                        f"Board: {self.current_model.name} — "
+                        + ", ".join(
+                            f"{p.ref}@0x{p.address:02X}"
+                            for p in self.current_model.positions))
+                    addrs = [format_hex_addr(p.address)
+                             for p in self.current_model.positions]
+                    self.batch_addr_var.set(",".join(addrs))
+                    if self.current_model.positions:
+                        self.quick_addr_var.set(
+                            format_hex_addr(self.current_model.positions[0].address))
+                else:
+                    self.log(f"No I2C address map for {mac_key} in models.py",
+                             "warn")
                 return
         self._show_mac_info(None)
 

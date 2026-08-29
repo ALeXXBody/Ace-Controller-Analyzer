@@ -95,15 +95,21 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2485": MacBookModel(
         model_id="A2485",
         name="MacBook Pro 16\" M1 Pro/Max (2021)",
-        board_id="820-02100",
+        board_id="820-02382",
         chip_count=4,
         positions=[
-            CD3217Position("UB300", 0x20, "otp", notes="Port 1 — Debug/TBT"),
-            CD3217Position("UB400", 0x74, "otp", notes="Port 1 — Debug/TBT"),
-            CD3217Position("UF500", 0x39, "strap", "GND", 2, "Port 2 — SMC"),
-            CD3217Position("UF600", 0x10, "strap", "GND", 2, "Port 2 — SMC"),
+            CD3217Position("UF400", 0x38, "strap", "GND", 1,
+                           notes="ACE2-0 — system power path (dead => stuck at 5V)"),
+            CD3217Position("UF500", 0x3F, "strap", "float", 1,
+                           notes="ACE2-1 — data port controller"),
+            CD3217Position("UG400", 0x3B, "strap", "float", 1,
+                           notes="ACE2-2 — data port controller"),
+            CD3217Position("U5500", 0x3A, "strap", "GND", 0,
+                           notes="ACE2-3 — CD3218B12 system/charge controller"),
         ],
-        notes="Same board design as A2442",
+        notes=("Verified schematic address map (820-02382): ACE2-0=UF400@0x38, "
+               "ACE2-1=UF500@0x3F, ACE2-2=UG400@0x3B, ACE2-3=U5500@0x3A; "
+               "all-call/broadcast @0x6B (not a device). Probe test point JF200."),
     ),
 
     # ── 4-port models (M2 Pro/Max) ────────────────────────────────
