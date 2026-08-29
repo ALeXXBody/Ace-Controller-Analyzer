@@ -123,6 +123,33 @@ CLI equivalent: `python -m cd3217_analyzer --board-update [--port COMx]`.
 Note: first-generation firmware (pre-0.6.1) doesn't report a version — it
 shows as "unknown" and is offered the update.
 
+### Export board data (for upstream analysis)
+
+The **Export data** button (top bar) collects the connected board's data into a
+single self-describing JSON bundle named after the MacBook/board model, saves
+it locally to `samples/<Name>.json`, and optionally pushes it to the project's
+GitHub repository on a dedicated `samples` branch so we can study these chips
+and improve the app.
+
+- **What it captures** (pick a checklist per export): device INFO frame,
+  full register dump, OTP scan, SPI flash ROM, UART capture, and the full
+  diagnostic report.
+- **GitHub push**: requires a Personal Access Token with `contents:write`
+  scope. The token is stored only locally (owner-only file, or the
+  `CD3217_GH_TOKEN` env var) — never embedded in the app. Pushing writes
+  `samples/<Name>.json` on the `samples` branch (auto-created if missing).
+
+CLI equivalent:
+
+```
+python -m cd3217_analyzer --export A2141 --with info,registers,otp,report
+python -m cd3217_analyzer --export A2141 --with info,registers --push
+python -m cd3217_analyzer --set-token ghp_xxx
+```
+
+> ⚠ Flash ROM / OTP dumps can contain board-specific firmware — export those
+> only when you intend to share the data.
+
 ## GUI Usage
 
 Double-click `CD3217_Analyzer.bat` or run `python gui.py`:

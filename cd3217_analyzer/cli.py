@@ -363,6 +363,89 @@ def cmd_board_update(args) -> None:
     print("Done. Reconnect with --adapter usb --port <port> if needed.")
 
 
+def cmd_export(args) -> None:
+    """Handle --export: collect board data and optionally push to GitHub.
+
+    Self-contained (builds its own I2C adapter + optional SPI bridge) so it
+    can run independently of the other device commands.
+    """
+    from .export_data import (
+        DATA_DEFAULT,
+        collect_bundle,
+        push_bundle,
+        write_bundle,
+    )
+
+    name = args.export
+    sources = ([s.strip() for s in args.with_sources.split(",") if s.strip()]
+               if args.with_sources else list(DATA_DEFAULT))
+    valid = {"info", "registers", "otp", "flash", "uart", "report"}
+    for s in sources:
+        if s not in valid:
+            print(f"Unknown source '{s}' — choose from: {', '.join(sorted(valid))}")
+            sys.exit(1)
+
+    adapter = create_adapter(args)
+
+    mac_model = None
+    try:
+        info = adapter.info()
+        mac_model = info.get("board")
+    except Exception:
+        pass
+
+    scan_results = []
+    try:
+        scan_results = CD3217Analyzer(adapter).scan_bus()
+    except Exception:
+        pass
+
+    flash = None
+    spi = None
+    if "flash" in sources:
+        if args.adapter in ("usb", "bridge", "board") or (
+                args.adapter == "auto" and args.port):
+            from .spi_bridge import make_bridge_flash
+            bridge, flash = make_bridge_flash(args.port)
+            spi = None
+            print(f"SPI via board USB bridge on {bridge.port}")
+        else:
+            from .spi_adapter import SPIAdapter
+            from .flash import SPIFlash
+            spi = SPIAdapter()
+            spi.open()
+            flash = SPIFlash(spi)
+
+    try:
+        with adapter:
+            print(f"Exporting {name} (sources: {', '.join(sources)}) ...")
+            bundle = collect_bundle(
+                adapter, sources, name,
+                scan_results=scan_results, flash=flash, mac_model=mac_model,
+                progress_cb=lambda m: print("  " + m))
+    finally:
+        if spi is not None:
+            try:
+                spi.close()
+            except Exception:
+                pass
+
+    local_path = write_bundle(bundle, name)
+    print(f"Local bundle: {local_path}")
+
+    if args.push:
+        print("Pushing to GitHub ...")
+        from .export_data import GitHubPushError
+        try:
+            url = push_bundle(bundle, name, repo=args.github_repo,
+                              progress_cb=lambda m: print("  " + m))
+            print(f"Pushed: {url}")
+        except GitHubPushError as e:
+            print(f"Push failed: {e}")
+            print(f"Bundle kept locally at {local_path}")
+            sys.exit(1)
+
+
 def cmd_uart(args) -> None:
     """Handle --uart-autobaud / --uart-sniff (RX-only UART capture)."""
     from .usb_bridge import (UsbBridgeAdapter, list_bridge_ports,
@@ -722,6 +805,24 @@ Examples:
     group.add_argument("--board-update", action="store_true",
                        help="Update a connected board's firmware from the "
                             "latest GitHub release (auto-detects the board)")
+    group.add_argument("--export", metavar="NAME",
+                       help="Export the board's data to a JSON bundle named "
+                            "NAME (MacBook or board model, e.g. 'A2141'). "
+                            "Use --with to pick sources.")
+    group.add_argument("--with", dest="with_sources",
+                       default=None,
+                       help="Comma list of sources for --export: "
+                            "info,registers,otp,flash,uart,report "
+                            "(default: info,registers,report)")
+    group.add_argument("--push", action="store_true",
+                       help="With --export: push the bundle to the GitHub "
+                            "data branch (needs a stored token)")
+    group.add_argument("--set-token", metavar="TOKEN",
+                       help="Store a GitHub Personal Access Token locally "
+                            "(needed for --push) and exit")
+    group.add_argument("--github-repo", default=None,
+                       help="Override GitHub repo for --push "
+                            "(default: ALeXXBody/cd3217-analyzer)")
     group.add_argument("--interactive", "-i", action="store_true",
                        help="Interactive mode (default if no command given)")
 
@@ -736,6 +837,13 @@ Examples:
     # Handle --board-update
     if args.board_update:
         cmd_board_update(args)
+
+    # Handle --set-token (no adapter needed)
+    if args.set_token:
+        from .export_data import store_token
+        store_token(args.set_token)
+        print("GitHub token stored locally (owner-only permissions).")
+        sys.exit(0)
 
     # Handle --uart-autobaud / --uart-sniff
     if args.uart_autobaud or args.uart_sniff:
@@ -792,6 +900,17 @@ Examples:
             or args.flash_erase or args.flash_restore:
         try:
             cmd_flash(args)
+        except KeyboardInterrupt:
+            print("\nAborted.")
+        except Exception as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        return
+
+    # --export builds its own adapter + optional SPI bridge
+    if args.export:
+        try:
+            cmd_export(args)
         except KeyboardInterrupt:
             print("\nAborted.")
         except Exception as e:

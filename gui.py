@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import threading
 import time
@@ -264,6 +265,18 @@ class Application(ctk.CTk):
             command=self._manual_update_check,
         )
         self.update_btn.grid(row=1, column=6, padx=(6, 4))
+
+        self.export_btn = ctk.CTkButton(
+            controls,
+            text="Export data",
+            width=110,
+            height=32,
+            fg_color=C["btn"],
+            hover_color=C["btn_hover"],
+            text_color=C["text"],
+            command=self._export_data,
+        )
+        self.export_btn.grid(row=1, column=7, padx=(6, 4))
 
     # ─── Self-update ──────────────────────────────────────────────────────
 
@@ -2713,6 +2726,210 @@ class Application(ctk.CTk):
         except Exception as e:
             self.log(f"Save error: {e}", "err")
 
+    # ─── Export data to GitHub (for upstream analysis) ────────────────────
+
+    def _export_default_name(self) -> str:
+        """Best name for the export: selected MacBook model, else the
+        connected adapter board, else a date-stamped generic name."""
+        from cd3217_analyzer.boards import MAC_BOARDS
+        mac = self.mac_picker_var.get()
+        if mac:
+            for b in MAC_BOARDS.values():
+                if b.model == mac:
+                    m = re.match(r"^(A\d{3,5})", b.model)
+                    return m.group(1) if m else mac
+        try:
+            if getattr(self, "board_name_label", None):
+                nm = self.board_name_label.cget("text")
+                if nm and nm != "No board selected":
+                    return re.match(r"^(A\d{3,5}|.*)", nm).group(1)
+        except Exception:
+            pass
+        return datetime.now().strftime("Board_%Y%m%d_%H%M%S")
+
+    def _export_data(self):
+        """Open the export dialog (checklist + optional GitHub push)."""
+        from cd3217_analyzer.export_data import (
+            DATA_SOURCES, DATA_DEFAULT, load_token)
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Export board data")
+        dlg.transient(self)
+        dlg.grab_set()
+        try:
+            dlg.attributes("-topmost", True)
+        except Exception:
+            pass
+        dlg.geometry("460x560")
+        dlg.configure(fg_color=C["bg"])
+
+        ctk.CTkLabel(
+            dlg, text="Export board data — for upstream analysis",
+            font=F["heading"], text_color=C["accent"]
+        ).pack(anchor="w", padx=18, pady=(16, 4))
+        ctk.CTkLabel(
+            dlg, text="Collect the board's data into a JSON bundle and "
+                      "optionally push it to the project's GitHub repo.",
+            font=F["small"], text_color=C["dim"], justify="left",
+            wraplength=420,
+        ).pack(anchor="w", padx=18, pady=(0, 8))
+
+        # name
+        namebox = ctk.CTkFrame(dlg, fg_color="transparent")
+        namebox.pack(fill="x", padx=18, pady=(8, 2))
+        ctk.CTkLabel(namebox, text="Name (MacBook/board model):",
+                     font=F["body"], text_color=C["dim"]).pack(side="left")
+        self.export_name_var = ctk.StringVar(value=self._export_default_name())
+        ctk.CTkEntry(
+            namebox, textvariable=self.export_name_var, width=200,
+            fg_color=C["entry"], text_color=C["text"],
+        ).pack(side="right")
+
+        # checklist
+        ctk.CTkLabel(dlg, text="Include:", font=F["body"],
+                     text_color=C["dim"]).pack(anchor="w", padx=18, pady=(8, 2))
+        self.export_checks: dict = {}
+        for key, desc in DATA_SOURCES:
+            var = ctk.BooleanVar(value=(key in DATA_DEFAULT) and
+                                 self._export_source_available(key))
+            self.export_checks[key] = var
+            row = ctk.CTkFrame(dlg, fg_color="transparent")
+            row.pack(fill="x", padx=24, pady=1)
+            ctk.CTkCheckBox(
+                row, text="", variable=var, width=22,
+                fg_color=C["accent"], hover_color=C["accent_dim"],
+            ).pack(side="left")
+            ctk.CTkLabel(row, text=desc, font=F["body"],
+                         text_color=C["text"], justify="left",
+                         wraplength=360).pack(side="left", padx=(4, 0))
+
+        # GitHub push
+        ctk.CTkLabel(dlg, text="GitHub:", font=F["body"],
+                     text_color=C["accent"]).pack(anchor="w", padx=18, pady=(12, 2))
+        self.export_push_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            dlg, text="Push to GitHub data branch (samples/NAME.json)",
+            variable=self.export_push_var, fg_color=C["accent"],
+            hover_color=C["accent_dim"], text_color=C["text"],
+        ).pack(anchor="w", padx=24, pady=2)
+        tokbox = ctk.CTkFrame(dlg, fg_color="transparent")
+        tokbox.pack(fill="x", padx=18, pady=(6, 2))
+        ctk.CTkLabel(tokbox, text="Token:", font=F["body"],
+                     text_color=C["dim"]).pack(side="left")
+        self.export_token_var = ctk.StringVar(value=load_token() or "")
+        ctk.CTkEntry(
+            tokbox, textvariable=self.export_token_var, show="*", width=260,
+            fg_color=C["entry"], text_color=C["text"],
+        ).pack(side="right")
+        ctk.CTkLabel(
+            dlg, text="Token needs contents:write scope on the repo. It is "
+                      "stored locally (owner-only).",
+            font=F["small"], text_color=C["dim"], justify="left",
+            wraplength=420,
+        ).pack(anchor="w", padx=18, pady=(0, 2))
+
+        # actions
+        act = ctk.CTkFrame(dlg, fg_color="transparent")
+        act.pack(fill="x", padx=18, pady=(14, 16))
+        self.export_progress = ctk.CTkLabel(
+            act, text="", font=F["small"], text_color=C["dim"])
+        self.export_progress.pack(anchor="w", pady=(0, 6))
+        ctk.CTkButton(
+            act, text="Export", width=110, height=32, fg_color=C["green"],
+            hover_color="#16a34a", text_color="#04120a",
+            command=lambda: self._run_export(dlg),
+        ).pack(side="right", padx=(6, 0))
+        ctk.CTkButton(
+            act, text="Cancel", width=90, height=32, fg_color=C["btn"],
+            hover_color=C["btn_hover"], text_color=C["text"],
+            command=dlg.destroy,
+        ).pack(side="right")
+
+    def _export_source_available(self, key: str) -> bool:
+        """Whether a source can actually be collected right now."""
+        if key in ("info", "registers", "otp", "report"):
+            return self.adapter is not None and self.connected
+        if key == "flash":
+            return self.flash is not None
+        if key == "uart":
+            try:
+                return bool(self.uart_output.get("1.0", "end").strip())
+            except Exception:
+                return False
+        return True
+
+    def _run_export(self, dlg):
+        """Collect the bundle, write locally, optionally push to GitHub."""
+        def ui(fn):
+            try:
+                self.after(0, fn)
+            except Exception:
+                pass
+
+        name = self.export_name_var.get().strip()
+        if not name:
+            self._ui(lambda: self.export_progress.configure(
+                text="Please enter a name."))
+            return
+        selected = [k for k, v in self.export_checks.items() if v.get()]
+        if not selected:
+            self._ui(lambda: self.export_progress.configure(
+                text="Select at least one data source."))
+            return
+
+        token = self.export_token_var.get().strip()
+        push = self.export_push_var.get()
+        from cd3217_analyzer.export_data import (
+            GitHubPushError, collect_bundle, store_token, write_bundle)
+
+        def work():
+            def prog(msg):
+                ui(lambda: self.export_progress.configure(text=msg))
+            try:
+                uart_text = None
+                selected_lower = selected
+                if "uart" in selected_lower:
+                    try:
+                        uart_text = self.uart_output.get("1.0", "end").strip()
+                    except Exception:
+                        uart_text = None
+                mac_model = None
+                if self.mac_picker_var.get():
+                    mac_model = self.mac_picker_var.get()
+                prog("Collecting data...")
+                bundle = collect_bundle(
+                    self.adapter, selected_lower, name,
+                    scan_results=list(self.scan_results or []),
+                    devices=self.devices,
+                    uart_text=uart_text,
+                    flash=self.flash,
+                    mac_model=mac_model,
+                    progress_cb=lambda m: prog(m))
+                local_path = write_bundle(bundle, name)
+                if push and token:
+                    store_token(token)
+                    prog("Pushing to GitHub...")
+                    from cd3217_analyzer.export_data import push_bundle
+                    url = push_bundle(bundle, name, token=token,
+                                      progress_cb=lambda m: prog(m))
+                    ui(lambda: self.log(
+                        f"Exported {name} — local: {local_path}; pushed: "
+                        f"{url}", "ok"))
+                    ui(lambda: dlg.destroy())
+                else:
+                    ui(lambda: self.log(
+                        f"Exported {name} — saved to {local_path}", "ok"))
+                    ui(lambda: dlg.destroy())
+            except GitHubPushError as e:
+                ui(lambda: self.export_progress.configure(
+                    text=f"Push failed: {e}"))
+                self.log(f"GitHub push failed: {e}", "err")
+            except Exception as e:
+                self.log(f"Export error: {e}", "err")
+                ui(lambda: self.export_progress.configure(text=str(e)))
+
+        t = threading.Thread(target=work, daemon=True)
+        t.start()
     def _save_csv(self):
         if not self.batch_results:
             self.log("No batch data", "warn")
