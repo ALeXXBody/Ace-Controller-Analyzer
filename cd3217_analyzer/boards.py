@@ -325,12 +325,22 @@ _mac("a2251", model="MacBook Pro 13\" 2020 Intel (4-port)", board_nos=["820-0194
 
 _mac("a2289", model="MacBook Pro 13\" 2020 Intel (2-port)", board_nos=["820-01987"],
      ports=2, ace="CD3217 (ACE2)", bus="SMC I2C1 / AP I2C0",
-     addresses="no pub. address map",
+     addresses="verified schematic + boardview (820-01987): "
+               "U3100=XA @0x38; U3200=XB @0x3F",
      connect=[
-         "USB-C ports: 2 (one CD3217 per port)",
-         "Tap SDA/SCL + GND on a pull-up/series resistor of SMC I2C1 / "
-         "AP I2C0 near a CD3217, or the CD3217 BGA pins (B5/A4, B7/A6)"],
-     notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups"])
+         "Thunderbolt ports: 2 (one CD3217B12 per port, both on the LEFT side)",
+         "Both ports route through the USB-C tongue flex (J3300, 821-01646) "
+         "-- a common failure point; inspect/replace the flex before "
+         "re-soldering the ACE chips",
+         "Tap SDA/SCL + GND on a pull-up/series resistor of the I2C_UPC "
+         "nets near U3100/U3200, or the CD3217 BGA pins (B5/A4, B7/A6)"],
+     notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups",
+            "Straps verified in boardview (I2C_ADDR pin 111): U3100 GND "
+            "(pair primary), U3200 float (secondary) -- 'GND I2C_ADDR on "
+            "primary only'",
+            "Donor classes: both sockets (0x38/0x3F) accept vanilla "
+            "CD3217B12 chips; CHIP_MISMATCH fires if a wrong-class chip "
+            "is installed"])
 
 # ────────────────────────────────────────────────────────────────────────
 # Apple Silicon (all ACE2 = CD3217)

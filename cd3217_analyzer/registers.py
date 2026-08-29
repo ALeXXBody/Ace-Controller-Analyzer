@@ -39,8 +39,8 @@ KNOWN_ACE2_ADDRESSES = {
     # Common addresses from repair community / schematics
     # (board positions verified against 820-02382 / 820-01700 schematics +
     # boardviews; OTP/vanilla = donor-chip class for that socket)
-    0x38: "ACE2 vanilla socket (ADDR=GND) — A2485 UF400 / A2141 U3100",
-    0x3F: "ACE2 vanilla socket (ADDR=float) — A2485 UF500 / A2141 U3200",
+    0x38: "ACE2 vanilla socket (ADDR=GND) — A2485 UF400 / A2141 U3100 / A2289 U3100",
+    0x3F: "ACE2 vanilla socket (ADDR=float) — A2485 UF500 / A2141 U3200 / A2289 U3200",
     0x3B: "ACE2 OTP socket — A2485 UG400 / A2141 UB300",
     0x3A: "CD3218 OTP socket — A2485 U5500 (system/charge)",
     0x3C: "ACE2 OTP socket — A2141 UB400 (TB)",

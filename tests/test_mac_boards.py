@@ -67,6 +67,21 @@ class TestMacBoards(unittest.TestCase):
         self.assertEqual(a2141, {"U3100": "GND", "U3200": "float",
                                  "UB300": "GND", "UB400": "float"})
 
+    def test_a2289_verified_map(self):
+        """820-01987 (MBP 13" 2020, 2-port): exactly two CD3217B12 —
+        U3100=XA@0x38 (GND strap), U3200=XB@0x3F (float), verified from
+        schematic I2C table (WRITE 0x70/7E) + boardview pin 111 nets."""
+        from cd3217_analyzer.models import get_model
+        m = get_model("A2289")
+        self.assertEqual(m.board_id, "820-01987")
+        self.assertEqual(len(m.positions), 2)
+        by_ref = {p.ref: (p.address, p.addr_pin, p.silicon, p.chip_class)
+                  for p in m.positions}
+        self.assertEqual(by_ref, {
+            "U3100": (0x38, "GND", "CD3217B12", "vanilla"),
+            "U3200": (0x3F, "float", "CD3217B12", "vanilla"),
+        })
+
     def test_connect_mentions_tap_method(self):
         # every board should explain where/how to tap the bus
         for key, b in MAC_BOARDS.items():

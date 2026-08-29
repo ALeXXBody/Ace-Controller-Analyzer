@@ -63,13 +63,26 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     ),
     "A2289": MacBookModel(
         model_id="A2289",
-        name="MacBook Pro 13\" i5 (2020, Intel)",
+        name="MacBook Pro 13\" i5 (2020, Intel, 2-port)",
         board_id="820-01987",
         chip_count=2,
         positions=[
-            CD3217Position("UF400", 0x38, "strap", "GND", 2),
-            CD3217Position("UF500", 0x3F, "strap", "float", 2),
+            CD3217Position("U3100", 0x38, "strap", "GND", 1,
+                           chip_class="vanilla", silicon="CD3217B12",
+                           notes="ACE XA, CD3217B12 — left-front port; "
+                                 "I2C_ADDR pin 111 to GND (pair primary)"),
+            CD3217Position("U3200", 0x3F, "strap", "float", 1,
+                           chip_class="vanilla", silicon="CD3217B12",
+                           notes="ACE XB, CD3217B12 — left-rear port; "
+                                 "I2C_ADDR pin 111 floating (pair secondary)"),
         ],
+        notes=("Verified from 820-01987 schematic + boardview (X1782, 2-port "
+               "Touch Bar): only 2 ACE controllers — U3100=XA@0x38 (write "
+               "0x70), U3200=XB@0x3F (write 0x7E), both CD3217B12 (BOM "
+               "353S02158). Both ports are on the LEFT side and connect "
+               "through one USB-C tongue flex (J3300 / 821-01646) — a common "
+               "failure point; check the flex before blaming the chips. "
+               "BOARD_ID=111011."),
     ),
     "A2251": MacBookModel(
         model_id="A2251",
@@ -80,6 +93,9 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
             CD3217Position("UF400", 0x38, "strap", "GND", 2),
             CD3217Position("UF500", 0x3F, "strap", "float", 2),
         ],
+        notes=("NOT YET VERIFIED against a schematic: the 4-port 2020 13\" "
+               "likely has four ACE controllers (two per side, cf. A2159/"
+               "A2141 layout) — refdeses/address map above are placeholders."),
     ),
 
     # ── 4-port models (M1 Pro/Max) ────────────────────────────────
