@@ -2808,7 +2808,7 @@ class Application(ctk.CTk):
                      text_color=C["accent"]).pack(anchor="w", padx=18, pady=(12, 2))
         self.export_push_var = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(
-            dlg, text="Push to GitHub data branch (samples/NAME.json)",
+            dlg, text="Push to GitHub samples/ folder (samples/NAME.json)",
             variable=self.export_push_var, fg_color=C["accent"],
             hover_color=C["accent_dim"], text_color=C["text"],
         ).pack(anchor="w", padx=24, pady=2)

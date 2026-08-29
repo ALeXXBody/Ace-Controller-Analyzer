@@ -128,8 +128,8 @@ shows as "unknown" and is offered the update.
 The **Export data** button (top bar) collects the connected board's data into a
 single self-describing JSON bundle named after the MacBook/board model, saves
 it locally to `samples/<Name>.json`, and optionally pushes it to the project's
-GitHub repository on a dedicated `samples` branch so we can study these chips
-and improve the app.
+GitHub repository under the top-level `samples/` folder (easy to browse) so we
+can study these chips and improve the app.
 
 - **What it captures** (pick a checklist per export): device INFO frame,
   full register dump, OTP scan, SPI flash ROM, UART capture, and the full
@@ -137,7 +137,7 @@ and improve the app.
 - **GitHub push**: requires a Personal Access Token with `contents:write`
   scope. The token is stored only locally (owner-only file, or the
   `CD3217_GH_TOKEN` env var) — never embedded in the app. Pushing writes
-  `samples/<Name>.json` on the `samples` branch (auto-created if missing).
+  `samples/<Name>.json` on the repo's main branch (in `samples/`).
 
 CLI equivalent:
 

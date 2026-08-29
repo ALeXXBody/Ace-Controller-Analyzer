@@ -3,8 +3,9 @@
 Collects whichever data sources the user opts into (device INFO, register
 dump, OTP scan, SPI flash ROM, UART capture, diagnostic report) into a single
 self-describing JSON bundle named after the MacBook model / board model, then
-optionally pushes that file into the project's GitHub repository on a
-dedicated ``samples`` branch using the GitHub Contents API.
+optionally pushes that file into the project's GitHub repository under the
+top-level ``samples/`` folder on the default (``main``) branch using the
+GitHub Contents API — easy to browse in the repo root.
 
 Security notes
 --------------
@@ -35,8 +36,8 @@ from typing import Callable, Dict, List, Optional
 from . import __version__ as APP_VERSION
 
 GITHUB_REPO = "ALeXXBody/cd3217-analyzer"
-DATA_BRANCH = "samples"
-DATA_DIR = "samples"
+DATA_BRANCH = "main"          # exports land in samples/ on the default branch
+DATA_DIR = "samples"          # top-level folder, easy to browse in the repo
 
 # Which data sources are available (used by both CLI and GUI checklists).
 DATA_SOURCES = [
@@ -356,29 +357,17 @@ def _base_url(repo: str) -> str:
 
 
 def ensure_data_branch(token: str, repo: str = GITHUB_REPO) -> str:
-    """Ensure the data branch exists (from default branch) and return its name.
+    """Resolve the branch to push exports to (the repo default branch).
 
-    If the branch is missing it is created from the repository default branch.
+    Exports now land in the top-level ``samples/`` folder on the default
+    branch so they're easy to browse. The default branch name is read live
+    (falling back to ``main``).
     """
     try:
-        _api(f"{_base_url(repo)}/branches/{DATA_BRANCH}", token)
+        rep = _api(f"{_base_url(repo)}", token)
+        return rep.get("default_branch", DATA_BRANCH)
+    except GitHubPushError:
         return DATA_BRANCH
-    except GitHubPushError as e:
-        if "404" not in str(e):
-            raise
-    # branch missing -> create from default branch head
-    rep = _api(f"{_base_url(repo)}", token)
-    default = rep.get("default_branch", "main")
-    # get the sha of the head commit on the default branch
-    ref = _api(
-        f"{_base_url(repo)}/git/ref/heads/{default}", token)
-    sha = ref["object"]["sha"]
-    _api(
-        f"{_base_url(repo)}/git/refs",
-        token,
-        {"ref": f"refs/heads/{DATA_BRANCH}", "sha": sha},
-    )
-    return DATA_BRANCH
 
 
 def push_bundle(bundle: Dict, name: str,
@@ -388,7 +377,7 @@ def push_bundle(bundle: Dict, name: str,
                 message: Optional[str] = None,
                 progress_cb: Optional[Callable[[str], None]] = None,
                 timeout: float = 60.0) -> str:
-    """Push a bundle to ``repo:samples/<Name>.json`` on the data branch.
+    """Push a bundle to ``repo:samples/<Name>.json`` on the default branch.
 
     Returns the URL of the committed file. Raises GitHubPushError on failure.
     """
