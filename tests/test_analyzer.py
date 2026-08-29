@@ -236,6 +236,45 @@ class TestAnalyzer(unittest.TestCase):
         self.assertIn(0x38, found)
         self.assertEqual(len(found), 3)
 
+    def test_diagnose_ping_retry_after_flaky_nack(self):
+        """Reproduces '0x3B NO_RESPONSE in diagnose-all but single diag
+        passes': the first ping right after a dead address NACK fails on a
+        healthy chip; the analyzer must retry before declaring NO_RESPONSE."""
+        def mock_read_bytes(addr, reg, length):
+            if reg == 0x00:
+                return bytes([0x04, 0x28, 0x00, 0x00])
+            if reg == 0x03:
+                return bytes([0x20, 0x41, 0x50, 0x50])  # "PPA "
+            if reg == 0x04:
+                return bytes([0x20, 0x43, 0x32, 0x49])  # "I2C "
+            return bytes([0x5A, 0xA5, 0x00, 0x01])[:length]
+
+        self.mock_adapter.read_bytes.side_effect = mock_read_bytes
+        self.mock_adapter.ping.side_effect = [False, False, True]  # 2 NACKs, then OK
+        result = self.analyzer.diagnose_device(0x3B)
+        self.assertTrue(result.responds)
+        self.assertNotIn(FaultType.NO_RESPONSE, result.faults)
+
+    def test_diagnose_garbled_mode_is_not_wrong_mode(self):
+        """A mode register that still reads garbage after retries (e.g.
+        '0x04' from byte-shifted bus noise) must NOT raise WRONG_MODE —
+        it is an I2C symptom, not a chip fault."""
+        def mock_read_bytes(addr, reg, length):
+            if reg == 0x00:
+                return bytes([0x04, 0x28, 0x00, 0x00])
+            if reg == 0x03:
+                return bytes([0x04, 0x00, 0x00, 0x00])  # garbage every retry
+            if reg == 0x04:
+                return bytes([0x04, 0x49, 0x00, 0x00])  # "I0x04" garbage
+            return bytes([0x5A, 0xA5, 0x00, 0x01])[:length]
+
+        self.mock_adapter.read_bytes.side_effect = mock_read_bytes
+        self.mock_adapter.ping.return_value = True
+        result = self.analyzer.diagnose_device(0x3F)
+        self.assertNotIn(FaultType.WRONG_MODE, result.faults)
+        self.assertTrue(any("unreadable" in d.lower()
+                            for d in result.fault_details))
+
     def test_health_score_zero_when_no_response(self):
         """Test health score is 0 when device doesn't respond."""
         self.mock_adapter.ping.return_value = False

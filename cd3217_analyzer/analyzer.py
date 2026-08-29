@@ -120,6 +120,15 @@ class CD3217Analyzer:
     # Registers to read for detailed analysis
     DETAIL_REGS = [0x00, 0x01, 0x03, 0x04, 0x0F, 0x06, 0x14, 0x15, 0x29, 0x2D, 0x2F]
 
+    # Bus settling: right after a NACKed address (dead chip) or bus
+    # contention, the next transactions can return garbage or fail. The
+    # adapters/bridges need a moment before data is trustworthy again.
+    PING_RETRIES = 2            # extra ping attempts when the first NACKs
+    PING_RETRY_DELAY = 0.05     # s between ping attempts
+    BUS_SETTLE_AFTER_NACK = 0.1  # s to let the bus settle after NO_RESPONSE
+    REG_RETRY_DELAY = 0.05      # s before re-reading a suspicious register
+    REG_RETRIES = 2             # re-read attempts for identity registers
+
     def __init__(self, adapter: I2CAdapter, addresses: Optional[List[int]] = None):
         self.adapter = adapter
         self.addresses = addresses or list(KNOWN_ACE2_ADDRESSES.keys())
@@ -178,6 +187,21 @@ class CD3217Analyzer:
         except Exception as e:
             return None
 
+    def _ping_with_retry(self, address: int) -> bool:
+        """Ping an address, retrying with a settle delay.
+
+        On a board with a dead CD3217, transactions against the dead address
+        leave the bus/bridge in a bad state for a short moment; the very
+        next ping can NACK even on a healthy chip. Retrying after a short
+        delay distinguishes 'flaky right after a NACK' from 'really dead'.
+        """
+        for attempt in range(1 + self.PING_RETRIES):
+            if self.adapter.ping(address):
+                return True
+            if attempt < self.PING_RETRIES:
+                time.sleep(self.PING_RETRY_DELAY)
+        return False
+
     # Registers whose format is known well enough to detect a contaminated
     # read (undriven bytes read back as 0xFF right after bus contention or
     # a NACKed dead address).
@@ -203,22 +227,27 @@ class CD3217Analyzer:
 
     def _read_register_clean(self, address: int, offset: int,
                              length: int = 4) -> Optional[RegisterRead]:
-        """Read a register, retrying once if the read looks contaminated.
+        """Read a register, retrying (with settle delays) if contaminated.
 
         Consecutive I2C transactions right after a NACKed address (e.g. a
-        dead CD3217 on the same bus) can return undriven bytes as 0xFF —
-        e.g. VID 0xFF002804 instead of 0x00002804, or a 4CC with 0xFF bytes.
-        A single re-read gives the bus time to settle and returns clean data.
+        dead CD3217 on the same bus) can return undriven bytes as 0xFF or
+        byte-shifted garbage — e.g. VID 0xFF002804 instead of 0x00002804,
+        or a 4CC like '0x04'/'I0x04'. Re-reading after a short delay gives
+        the bus time to settle and returns clean data.
         """
         read = self.read_register(address, offset, length)
         if read is None or offset not in self._IDENTITY_REGS:
             return read
         if not self._register_suspicious(offset, read):
             return read
-        retry = self.read_register(address, offset, length)
-        if retry is not None and not self._register_suspicious(offset, retry):
-            return retry
-        return retry if retry is not None else read
+        for _ in range(self.REG_RETRIES):
+            time.sleep(self.REG_RETRY_DELAY)
+            retry = self.read_register(address, offset, length)
+            if retry is not None and not self._register_suspicious(offset, retry):
+                return retry
+            if retry is not None:
+                read = retry
+        return read
 
     def read_all_registers(self, address: int) -> Dict[int, RegisterRead]:
         """Read all important registers from a device."""
@@ -240,17 +269,22 @@ class CD3217Analyzer:
         """
         result = DeviceResult(address=address, timestamp=datetime.now().isoformat())
 
-        # Step 1: Connectivity check
+        # Step 1: Connectivity check (retried: a single NACK right after
+        # another device failed does NOT mean the chip is dead)
         t0 = time.time()
-        result.responds = self.adapter.ping(address)
+        result.responds = self._ping_with_retry(address)
         result.scan_time_ms = (time.time() - t0) * 1000
 
         if not result.responds:
             result.health = HealthStatus.FAIL
             result.faults.append(FaultType.NO_RESPONSE)
             result.fault_details.append(
-                f"Device at 0x{address:02X} does not respond to I2C ping"
+                f"Device at 0x{address:02X} does not respond to I2C ping "
+                f"({1 + self.PING_RETRIES} attempts)"
             )
+            # Let the bus settle so the NEXT device is not affected by the
+            # dead address NACK storm.
+            time.sleep(self.BUS_SETTLE_AFTER_NACK)
             return result
 
         # Step 2: Read all registers
@@ -285,9 +319,18 @@ class CD3217Analyzer:
             result.mode = mode_reg.decoded
             result.mode_raw = mode_reg.raw_value
             mode_str = mode_reg.decoded.upper()
+            if "0X" in mode_str:
+                # Hex-escaped bytes survived decoding: the register read is
+                # still garbage after retries (bus contention). This is an
+                # I2C-level symptom, NOT a chip mode fault — faulting the
+                # chip here produced false WRONG_MODE failures.
+                result.fault_details.append(
+                    "Mode register unreadable (bus noise after NACK) — "
+                    "re-run diagnosis on this device alone"
+                )
             # Known-good operating modes: APP (application), PPA (power-path
             # active), PPS (programmable power supply), and their combinations.
-            if any(k in mode_str for k in ("APP", "PPA", "PPS", "PSU")):
+            elif any(k in mode_str for k in ("APP", "PPA", "PPS", "PSU")):
                 pass  # Normal operating mode
             elif "BOOT" in mode_str:
                 result.faults.append(FaultType.BOOT_FAILED)

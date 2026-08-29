@@ -37,12 +37,13 @@ class I2CPort(IntEnum):
 # depending on OTP configuration and strap resistors.
 KNOWN_ACE2_ADDRESSES = {
     # Common addresses from repair community / schematics
-    # (labels verified against 820-02382 / 820-01700 schematics + boardviews)
-    0x38: "ACE2 (I2C_ADDR=GND) — A2485 UF400 / A2141 U3100 (XA)",
-    0x3F: "ACE2 (I2C_ADDR=float) — A2485 UF500 / A2141 U3200 (XB)",
-    0x3B: "ACE2 (I2C_ADDR=GND) — A2485 UG400 / A2141 UB300 (TA)",
-    0x3A: "CD3218 system/charge — A2485 U5500 (I2C_ADDR=float)",
-    0x3C: "ACE2 (I2C_ADDR=float) — A2141 UB400 (TB)",
+    # (board positions verified against 820-02382 / 820-01700 schematics +
+    # boardviews; OTP/vanilla = donor-chip class for that socket)
+    0x38: "ACE2 vanilla socket (ADDR=GND) — A2485 UF400 / A2141 U3100",
+    0x3F: "ACE2 vanilla socket (ADDR=float) — A2485 UF500 / A2141 U3200",
+    0x3B: "ACE2 OTP socket — A2485 UG400 / A2141 UB300",
+    0x3A: "CD3218 OTP socket — A2485 U5500 (system/charge)",
+    0x3C: "ACE2 OTP socket — A2141 UB400 (TB)",
     0x39: "ACE2 Port2 (strap typical)",
     0x2F: "ACE2 Port2 (vanilla, ADDR=float)",
     0x28: "ACE2 Port2 (vanilla, ADDR=GND)",

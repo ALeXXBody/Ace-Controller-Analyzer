@@ -82,6 +82,22 @@ _PIN_LABELS = {
 # kept for backwards compatibility with saved UI-state code paths; the Board
 # tab now uses compact summary lines instead of per-pin rows.
 
+# Chip socket classes (repair-community classification): sockets at these
+# addresses need OTP-programmed donor chips ("Apple address") or accept
+# vanilla (unprogrammed) TI parts. Shown alongside the board-specific
+# refdes/strap data from models.py.
+OTP_SOCKET_ADDRS = {0x3A, 0x3B, 0x3C, 0x74, 0x76, 0x78, 0x79}
+VANILLA_SOCKET_ADDRS = {0x38, 0x3F, 0x2F, 0x28}
+
+
+def chip_class(addr: int) -> str:
+    """OTP vs vanilla socket classification for an address ('' if unknown)."""
+    if addr in OTP_SOCKET_ADDRS:
+        return "OTP-ed (Apple address)"
+    if addr in VANILLA_SOCKET_ADDRS:
+        return "Likely vanilla"
+    return ""
+
 
 class Application(ctk.CTk):
     def __init__(self):
@@ -1998,7 +2014,7 @@ class Application(ctk.CTk):
         self.log(f"Quick scanning {len(addrs)} known addresses...")
 
         def work():
-            found = [a for a in addrs if self.adapter.ping(a)]
+            found = [a for a in addrs if self._ping_stable(a)]
             self.scan_results = found
             if self.current_model:
                 expected = self._merge_expected(found)
@@ -2015,6 +2031,14 @@ class Application(ctk.CTk):
         extras = [a for a in found if a not in model_addrs]
         return model_addrs + extras
 
+    def _ping_stable(self, addr: int) -> bool:
+        """Ping with one retry — the first ping after a NACKed dead address
+        can fail on a healthy chip."""
+        if self.adapter.ping(addr):
+            return True
+        time.sleep(0.05)
+        return self.adapter.ping(addr)
+
     def _model_scan(self):
         if not self._check_conn():
             return
@@ -2026,7 +2050,7 @@ class Application(ctk.CTk):
         self.log(f"Model scan {self.current_model.model_id}: {', '.join(format_hex_addr(a) for a in addrs)}")
 
         def work():
-            found = [a for a in addrs if self.adapter.ping(a)]
+            found = [a for a in addrs if self._ping_stable(a)]
             self.scan_results = found
             self.after(0, self._show_devices, addrs, set(found), True)
 
@@ -2060,11 +2084,16 @@ class Application(ctk.CTk):
             self.log("No devices found", "warn")
 
     def _device_label(self, addr: int) -> str:
+        label = None
         if self.current_model:
             for p in self.current_model.positions:
                 if p.address == addr:
-                    return f"{p.ref} · {p.addressing}"
-        return KNOWN_ACE2_ADDRESSES.get(addr, "Unknown")[:28]
+                    label = f"{p.ref} · {p.addressing}"
+                    break
+        cls = chip_class(addr)
+        if label:
+            return f"{label} · {cls}" if cls else label
+        return KNOWN_ACE2_ADDRESSES.get(addr, "Unknown")[:44]
 
     def _add_device_row(self, addr, health, score, desc, is_ace2=True):
         row = ctk.CTkFrame(self.device_frame, fg_color=C["card"], corner_radius=8, height=42)
@@ -2131,17 +2160,37 @@ class Application(ctk.CTk):
                     self.devices[addr] = analyzer.diagnose_device(addr)
                 except Exception as e:
                     self.after(0, self.log, f"Error {format_hex_addr(addr)}: {e}", "err")
+                # brief pause between devices so a dead chip's NACK does not
+                # contaminate the reads of the next healthy chip
+                time.sleep(0.08)
             self.after(0, self._refresh_display)
 
         self._run_bg(work, "Diagnose all complete")
 
     def _refresh_display(self):
         self._clear_devices()
-        for addr, dev in sorted(self.devices.items()):
-            self._add_device_row(
-                addr, dev.health.value, dev.health_score,
-                self._device_label(addr), is_ace2_address(addr)
-            )
+        shown = list(self.devices.keys())
+        if self.current_model:
+            model_addrs = [p.address for p in self.current_model.positions]
+            shown = model_addrs + [a for a in shown if a not in model_addrs]
+        for addr in shown:
+            dev = self.devices.get(addr)
+            if dev is not None:
+                self._add_device_row(
+                    addr, dev.health.value, dev.health_score,
+                    self._device_label(addr), is_ace2_address(addr)
+                )
+            elif addr in self.scan_results:
+                self._add_device_row(
+                    addr, "?", "—", self._device_label(addr),
+                    is_ace2_address(addr)
+                )
+            else:
+                self._add_device_row(
+                    addr, "MISSING", "—",
+                    f"{self._device_label(addr)} · NOT FOUND",
+                    is_ace2_address(addr)
+                )
 
     # ─── Diagnosis ─────────────────────────────────────────────────────────
 
@@ -2203,18 +2252,16 @@ class Application(ctk.CTk):
         self.info_labels["type"].configure(text=result.device_type or "N/A")
         self.info_labels["time"].configure(text=f"{result.scan_time_ms:.1f} ms")
 
-        otp = {0x3A, 0x3B, 0x3C, 0x74, 0x76, 0x78, 0x79}
-        van = {0x38, 0x3F, 0x2F, 0x28}
-        if result.address in otp:
-            chip = "OTP-ed (Apple address)"
-        elif result.address in van:
-            chip = "Likely vanilla"
+        cls = chip_class(result.address)
+        if cls:
+            chip = cls
         else:
             chip = "Unknown type"
         if self.current_model:
             for p in self.current_model.positions:
                 if p.address == result.address:
-                    chip = f"{p.ref} · {p.addressing.upper()}"
+                    chip = f"{p.ref} · {p.addressing.upper()}" + \
+                           (f" · {cls}" if cls else "")
                     break
         self.info_labels["chip_type"].configure(text=chip)
 
@@ -2348,6 +2395,8 @@ class Application(ctk.CTk):
                         )
                     except Exception as e:
                         self.after(0, self.log, f"Batch error: {e}", "err")
+                    # let the bus settle between devices (dead-chip NACKs)
+                    time.sleep(0.08)
                     done += 1
                     self.after(0, self.batch_progress.set, done / total)
                     self.after(0, self.batch_status_var.set, f"{done}/{total}")
