@@ -37,8 +37,23 @@ class TestMacBoards(unittest.TestCase):
             self.assertTrue(b.notes, key)
 
     def test_ace2_models_use_cd3217(self):
-        for key in ("a2141", "a2337", "a2338", "a2442", "a2485"):
+        # Apple-Silicon (ACE2) boards use CD3217; the Intel T2 16" (A2141)
+        # is the earlier CD3215A (ACE1) generation.
+        for key in ("a2337", "a2338", "a2442", "a2485"):
             self.assertIn("CD3217", MAC_BOARDS[key].ace, key)
+
+    def test_a2141_is_cd3215a_ace1(self):
+        self.assertIn("CD3215A", MAC_BOARDS["a2141"].ace)
+
+    def test_a2141_verified_address_map(self):
+        from cd3217_analyzer.models import get_model
+        m = get_model("A2141")
+        self.assertIsNotNone(m)
+        self.assertEqual(m.board_id, "820-01700")
+        self.assertEqual(len(m.positions), 4)
+        by_ref = {p.ref: p.address for p in m.positions}
+        self.assertEqual(by_ref, {"U3100": 0x38, "U3200": 0x3F,
+                                  "UB300": 0x3B, "UB400": 0x3C})
 
     def test_connect_mentions_tap_method(self):
         # every board should explain where/how to tap the bus

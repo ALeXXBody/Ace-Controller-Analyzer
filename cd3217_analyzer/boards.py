@@ -294,18 +294,20 @@ _mac("a2159", model="MacBook Pro 13\" 2019/20 (2-port)", board_nos=["820-01598"]
             "ACE2 first appears 2019 (with A2141/A2159)"])
 
 _mac("a2141", model="MacBook Pro 16\" 2019", board_nos=["820-01700"],
-     ports=4, ace="CD3217 (ACE2)", bus="SMC I2C1 / AP I2C0",
-     addresses="0x38, 0x3F, 0x3A, 0x3B (per-port)",
+     ports=4, ace="CD3215A (ACE)", bus="SMC I2C1 / AP I2C0",
+     addresses="verified schematic + boardview (820-01700): "
+               "U3100=XA @0x38; U3200=XB @0x3F; UB300=TA @0x3B; UB400=TB @0x3C",
      connect=[
-         "USB-C/Thunderbolt ports: 4 (one CD3217 per port)",
-         "Best-documented Intel T2 board: tap a pull-up resistor on the "
-         "AP I2C0 / SMC I2C1 nets near the controllers (repair threads "
-         "probe the on-bus pull-up group), or the CD3217 BGA pins "
-         "(B5/A4, B7/A6)",
-         "4-port OTP-addressed ACE2s at UB300/UB400 are position-locked; "
-         "U3100/U3200 strap-configured"],
+         "USB-C/Thunderbolt ports: 4 (one CD3215A/ACE controller per port)",
+         "Pair labels: XA/XB = left (I2C_UPC_X), TA/TB = right (I2C_UPC_T); "
+         "all four hang on the shared AP I2C0 (I2C_UPC) bus",
+         "Tap SDA/SCL + GND on a pull-up/series resistor of the I2C_UPC "
+         "nets near a controller, or the CD3215A BGA pins"],
      notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups",
-            "Verify exact resistor positions in the 820-01700 boardview"])
+            "This is CD3215A (ACE1) generation -- NOT CD3217B12 (ACE2); "
+            "no 0x6B bank/all-call on this gen",
+            "Addresses verified from 820-01700 schematic I2C table "
+            "(WRITE 0x70/7E/76/78) + boardview pin nets"])
 
 _mac("a2251", model="MacBook Pro 13\" 2020 Intel (4-port)", board_nos=["820-01949"],
      ports=4, ace="CD3217 (ACE2)", bus="SMC I2C1 / AP I2C0",

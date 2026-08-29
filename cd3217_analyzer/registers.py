@@ -50,8 +50,8 @@ KNOWN_ACE2_ADDRESSES = {
     0x6B: "ACE2 All-call / Bank",
     # MacBook model maps (A2337/A2442/A2141 family)
     0x10: "ACE2 model map (UF600)",
-    0x30: "ACE2 model map (A2141 UB800)",
-    0x50: "ACE2 model map (A2141/A2159 UB300)",
+    0x30: "ACE2 model map (A2780 UB400 placeholder)",
+    0x50: "ACE2 model map (A2159 UB300 placeholder)",
     0x70: "ACE2 model map (A2337 UF400)",
     0x74: "ACE2 model map (UB400 OTP)",
     0x76: "ACE2 OTP typical",

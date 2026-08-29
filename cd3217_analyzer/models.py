@@ -144,15 +144,21 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2141": MacBookModel(
         model_id="A2141",
         name="MacBook Pro 16\" i9 (2019, T2)",
-        board_id="820-01997",
+        board_id="820-01700",
         chip_count=4,
         positions=[
-            CD3217Position("UB300", 0x50, "otp", notes="Port 1 — Left"),
-            CD3217Position("UB400", 0x28, "otp", notes="Port 1 — Left"),
-            CD3217Position("UB700", 0x3C, "otp", notes="Port 2 — Right"),
-            CD3217Position("UB800", 0x30, "otp", notes="Port 2 — Right"),
+            CD3217Position("U3100", 0x38, "strap", "GND", 1,
+                           notes="ACE XA — left front port (I2C_UPC_X)"),
+            CD3217Position("U3200", 0x3F, "strap", "float", 1,
+                           notes="ACE XB — left rear port (I2C_UPC_X)"),
+            CD3217Position("UB300", 0x3B, "strap", "float", 1,
+                           notes="ACE TA — right front port (I2C_UPC_T)"),
+            CD3217Position("UB400", 0x3C, "strap", "GND", 1,
+                           notes="ACE TB — right rear port (I2C_UPC_T)"),
         ],
-        notes="All OTP — addresses burned at factory. Cannot use strap-only scan.",
+        notes=("Verified schematic + boardview (820-01700): CD3215A (ACE1) gen. "
+               "U3100=XA@0x38, U3200=XB@0x3F, UB300=TA@0x3B, UB400=TB@0x3C "
+               "(write 0x70/7E/76/78). No 0x6B broadcast on this gen."),
     ),
     "A2159": MacBookModel(
         model_id="A2159",
