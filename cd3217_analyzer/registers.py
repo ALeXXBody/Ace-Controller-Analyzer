@@ -275,24 +275,23 @@ REGISTERS = {
 
 
 def decode_mode_reg(value: int) -> str:
-    """Decode the Mode register (0x03) from raw bytes (big-endian reading).
+    """Decode a 4CC (Mode/Type) register.
 
-    0x00 and 0xFF bytes are skipped: a short register read leaves the
-    undriven bytes as 0x00/0xFF (open-drain bus released), so they carry
-    no 4CC character.
+    Real CD3217/CD3218 parts send the characters LSB-first on the wire
+    (verified from board captures: wire bytes [0x04,'A','P','P'] = "APP",
+    [0x04,'I','2','C'] = "I2C"). Decode in wire order and skip
+    non-printable bytes (0x00 padding, 0xFF undrained bus, control bytes).
     """
     if value == 0:
         return "Unknown/Zero"
+    try:
+        wire = value.to_bytes(4, "little")
+    except OverflowError:
+        wire = value.to_bytes(8, "little")[-4:]
     chars = []
-    # Read bytes from MSB to LSB (big-endian order for 4CC codes)
-    for i in range(3, -1, -1):
-        b = (value >> (i * 8)) & 0xFF
+    for b in wire:
         if 0x20 <= b <= 0x7E:
             chars.append(chr(b))
-        elif b in (0x00, 0xFF):
-            continue  # Skip undriven/termination bytes
-        else:
-            chars.append(f"0x{b:02X}")
     return "".join(chars) if chars else "Empty"
 
 

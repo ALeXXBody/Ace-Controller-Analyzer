@@ -1309,6 +1309,18 @@ class Application(ctk.CTk):
         )
         self.otp_scan_btn.pack(side="left", padx=8, pady=10)
         ctk.CTkButton(
+            ctrl, text="Save Golden", width=110, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._otp_save_golden
+        ).pack(side="left", padx=4, pady=10)
+        ctk.CTkButton(
+            ctrl, text="Verify vs Golden", width=130, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._otp_verify_golden
+        ).pack(side="left", padx=4, pady=10)
+        ctk.CTkButton(
+            ctrl, text="Write OTP", width=100, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._otp_write_stub
+        ).pack(side="left", padx=4, pady=10)
+        ctk.CTkButton(
             ctrl, text="Import", width=70, fg_color=C["btn"], hover_color=C["btn_hover"],
             command=self._otp_import_file
         ).pack(side="left", padx=4, pady=10)
@@ -2157,7 +2169,9 @@ class Application(ctk.CTk):
             analyzer = CD3217Analyzer(self.adapter)
             for addr in addrs:
                 try:
-                    self.devices[addr] = analyzer.diagnose_device(addr)
+                    result = analyzer.diagnose_device(addr)
+                    self._apply_socket_expectations(analyzer, result)
+                    self.devices[addr] = result
                 except Exception as e:
                     self.after(0, self.log, f"Error {format_hex_addr(addr)}: {e}", "err")
                 # brief pause between devices so a dead chip's NACK does not
@@ -2216,12 +2230,24 @@ class Application(ctk.CTk):
         self.log(f"Diagnosing {format_hex_addr(address)}...")
 
         def work():
-            result = CD3217Analyzer(self.adapter).diagnose_device(address)
+            analyzer = CD3217Analyzer(self.adapter)
+            result = analyzer.diagnose_device(address)
+            self._apply_socket_expectations(analyzer, result)
             self.devices[address] = result
             self.after(0, self._show_result, result)
             self.after(0, self._refresh_display)
 
         self._run_bg(work, f"{format_hex_addr(address)} done")
+
+    def _apply_socket_expectations(self, analyzer: CD3217Analyzer,
+                                   result: DeviceResult) -> None:
+        """Validate the chip against the selected board's socket data."""
+        if not self.current_model:
+            return
+        for p in self.current_model.positions:
+            if p.address == result.address:
+                analyzer.apply_socket_expectations(result, p)
+                break
 
     def _show_result(self, result: DeviceResult):
         score = result.health_score
@@ -2253,15 +2279,22 @@ class Application(ctk.CTk):
         self.info_labels["time"].configure(text=f"{result.scan_time_ms:.1f} ms")
 
         cls = chip_class(result.address)
-        if cls:
+        measured = ("Vanilla TI (VID 0x0451)" if result.is_vanilla
+                    else "Apple OTP-ed (VID 0x2804)"
+                    if result.is_vanilla is False else "")
+        if measured:
+            chip = measured
+        elif cls:
             chip = cls
         else:
             chip = "Unknown type"
         if self.current_model:
             for p in self.current_model.positions:
                 if p.address == result.address:
+                    want = f"needs {p.chip_class.upper()} chip" if p.chip_class else ""
                     chip = f"{p.ref} · {p.addressing.upper()}" + \
-                           (f" · {cls}" if cls else "")
+                           (f" · {want}" if want else "") + \
+                           (f" · installed: {measured}" if measured else "")
                     break
         self.info_labels["chip_type"].configure(text=chip)
 
@@ -2386,6 +2419,7 @@ class Application(ctk.CTk):
                 for addr in addrs:
                     try:
                         result = analyzer.diagnose_device(addr)
+                        self._apply_socket_expectations(analyzer, result)
                         self.batch_results.append(result)
                         faults = "; ".join(f.value for f in result.faults)
                         self.after(
@@ -2548,6 +2582,75 @@ class Application(ctk.CTk):
         self.otp_current_dump = dump
         self._show_otp_dump(dump)
         self.log(f"Imported: {dump.label} ({dump.filled_count} regs)", "ok")
+
+    def _otp_socket_context(self):
+        """(model, position) for the current OTP address, if a model with
+        verified socket data is selected."""
+        addr = self._parse_addr_field(self.otp_addr_var.get())
+        if addr is None or not self.current_model:
+            return None, None
+        for p in self.current_model.positions:
+            if p.address == addr:
+                return self.current_model, p
+        return self.current_model, None
+
+    def _otp_save_golden(self):
+        from cd3217_analyzer.otp_profile import save_profile
+        if self.otp_current_dump is None:
+            self.log("Scan OTP first — nothing to save", "warn")
+            return
+        model, pos = self._otp_socket_context()
+        if not model:
+            self.log("Select the board model first (Adapter/Board tab)", "warn")
+            return
+        if pos is None:
+            self.log(
+                f"0x{self.otp_current_dump.address:02X} is not a known socket "
+                f"of {model.model_id} — cannot save a golden profile", "warn")
+            return
+        try:
+            path = save_profile(
+                self.otp_current_dump, model.model_id, pos.ref,
+                silicon=pos.silicon, chip_class=pos.chip_class,
+                source=model.name)
+        except OSError as e:
+            self.log(f"Could not save golden profile: {e}", "err")
+            return
+        self.log(f"Golden profile saved: {path.name} "
+                 f"({pos.ref} @0x{pos.address:02X})", "ok")
+        self.otp_status_var.set(f"Golden saved: {model.model_id}/{pos.ref}")
+
+    def _otp_verify_golden(self):
+        from cd3217_analyzer.otp_profile import load_profile, verify_dump
+        if self.otp_current_dump is None:
+            self.log("Scan OTP first — nothing to verify", "warn")
+            return
+        model, pos = self._otp_socket_context()
+        if not model or pos is None:
+            self.log("Select the board model and a known socket address", "warn")
+            return
+        profile = load_profile(model.model_id, pos.ref)
+        if profile is None:
+            self.log(
+                f"No golden profile for {model.model_id}/{pos.ref} yet — "
+                "scan a healthy chip and 'Save Golden'", "warn")
+            return
+        lines = verify_dump(self.otp_current_dump, profile)
+        self.otp_diff_text.configure(state="normal")
+        self.otp_diff_text.delete("1.0", "end")
+        self.otp_diff_text.insert("end", "\n".join(lines))
+        self.otp_diff_text.configure(state="disabled")
+        verdict_ok = lines[0].split(":")[-1].strip().startswith("MATCH") \
+            and "MISMATCH" not in lines[0]
+        self.otp_status_var.set(
+            f"Verify {model.model_id}/{pos.ref}: "
+            + ("OK" if verdict_ok else "MISMATCH"))
+        self.log(lines[0], "ok" if verdict_ok else "warn")
+
+    def _otp_write_stub(self):
+        from cd3217_analyzer.otp_profile import OTP_WRITE_STATUS
+        messagebox.showinfo("Write OTP — not yet available", OTP_WRITE_STATUS)
+        self.log(OTP_WRITE_STATUS, "warn")
 
     def _otp_diff_dialog(self):
         file_a = filedialog.askopenfilename(

@@ -307,6 +307,9 @@ _mac("a2141", model="MacBook Pro 16\" 2019", board_nos=["820-01700"],
             "Straps verified in boardview (I2C_ADDR pin 111): U3100/UB300 "
             "(pair primaries) strapped GND, U3200/UB400 floating -- schematic "
             "note 'GND I2C_ADDR on primary only'",
+            "Donor classes: U3100/U3200 (0x38/0x3F) accept vanilla chips; "
+            "UB300/UB400 (0x3B/0x3C) need OTP-ed Apple donors -- the app "
+            "flags wrong-class installs as CHIP_MISMATCH at diagnose",
             "Addresses verified from 820-01700 schematic I2C table "
             "(WRITE 0x70/7E/76/78) + boardview pin nets"])
 
@@ -389,7 +392,11 @@ _mac("a2485", model="MacBook Pro 16\" M1 Pro/Max 2021", board_nos=["820-02100", 
          "there) -- not a fault; probe 0x38/0x3A/0x3B/0x3F for the 4 real chips",
          "Straps verified in boardview: UF400 GND, UF500 float, UG400 GND "
          "(via RG201), U5500 float -- all on I2C_ADDR pin 111; match the strap "
-         "when swapping a donor chip"])
+         "when swapping a donor chip",
+         "Donor classes: UF400/UF500 (0x38/0x3F) accept vanilla chips; "
+         "UG400 (0x3B) needs an OTP-ed Apple CD3217; U5500 (0x3A) needs the "
+         "CD3218B12 system/charge part -- the app flags wrong-class installs "
+         "as CHIP_MISMATCH at diagnose"])
 
 _mac("a2779", model="MacBook Air M2 2022", board_nos=["820-02167"],
      ports=2, ace="CD3217 (ACE2)", bus="I2C0 / I2C1",

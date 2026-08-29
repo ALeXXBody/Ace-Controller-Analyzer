@@ -13,6 +13,9 @@ class CD3217Position:
     addr_pin: Optional[str] = None  # "GND", "VCC", "float", etc.
     i2c_port: int = 1
     notes: str = ""
+    # Verified socket expectations (schematic/boardview + repair data):
+    chip_class: str = ""   # "otp" = needs OTP-ed Apple donor, "vanilla" = strap-addressed TI part OK
+    silicon: str = ""      # e.g. "CD3217B12", "CD3218B12"
 
 
 @dataclass(frozen=True)
@@ -99,15 +102,19 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
         chip_count=4,
         positions=[
             CD3217Position("UF400", 0x38, "strap", "GND", 1,
+                           chip_class="vanilla", silicon="CD3217B12",
                            notes="ACE2-0, CD3217B12 — system power path "
                                  "(dead => stuck at 5V); I2C_ADDR pin 111 to GND"),
             CD3217Position("UF500", 0x3F, "strap", "float", 1,
+                           chip_class="vanilla", silicon="CD3217B12",
                            notes="ACE2-1, CD3217B12 — data port controller; "
                                  "I2C_ADDR pin 111 floating (NC)"),
             CD3217Position("UG400", 0x3B, "strap", "GND", 1,
+                           chip_class="otp", silicon="CD3217B12",
                            notes="ACE2-2, CD3217B12 — data port controller; "
                                  "I2C_ADDR pin 111 to GND via RG201"),
             CD3217Position("U5500", 0x3A, "strap", "float", 0,
+                           chip_class="otp", silicon="CD3218B12",
                            notes="ACE2-5, CD3218B12 — system/charge controller; "
                                  "I2C_ADDR pin 111 floating (NC)"),
         ],
@@ -154,15 +161,19 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
         chip_count=4,
         positions=[
             CD3217Position("U3100", 0x38, "strap", "GND", 1,
+                           chip_class="vanilla", silicon="CD3217B12",
                            notes="ACE XA, CD3217B12 — left pair primary; "
                                  "I2C_ADDR pin 111 to GND"),
             CD3217Position("U3200", 0x3F, "strap", "float", 1,
+                           chip_class="vanilla", silicon="CD3217B12",
                            notes="ACE XB, CD3217B12 — left pair secondary; "
                                  "I2C_ADDR pin 111 floating (NC)"),
             CD3217Position("UB300", 0x3B, "strap", "GND", 1,
+                           chip_class="otp", silicon="CD3217B12",
                            notes="ACE TA, CD3217B12 — right pair primary; "
                                  "I2C_ADDR pin 111 to GND"),
             CD3217Position("UB400", 0x3C, "strap", "float", 1,
+                           chip_class="otp", silicon="CD3217B12",
                            notes="ACE TB, CD3217B12 — right pair secondary; "
                                  "I2C_ADDR pin 111 floating (NC)"),
         ],

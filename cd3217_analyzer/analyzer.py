@@ -50,6 +50,7 @@ class FaultType(Enum):
     WRONG_ADDRESS = "WRONG_ADDRESS"
     BOOT_FAILED = "BOOT_FAILED"
     ROM_MISSING = "ROM_MISSING"
+    CHIP_MISMATCH = "CHIP_MISMATCH"
 
 
 @dataclass
@@ -298,6 +299,8 @@ class CD3217Analyzer:
             # 0xFF002804 for Apple 0x2804), so mask to 16 bits before comparing.
             vid = vid_reg.raw_value & 0xFFFF
             result.vendor_id = vid_reg.decoded or f"0x{vid:04X}"
+            # VID 0x0451 = stock TI silicon (vanilla); 0x2804 = Apple-programmed
+            result.is_vanilla = vid == 0x0451
             if vid not in VALID_ACE2_VIDS:
                 result.faults.append(FaultType.WRONG_VID)
                 result.fault_details.append(
@@ -319,8 +322,8 @@ class CD3217Analyzer:
             result.mode = mode_reg.decoded
             result.mode_raw = mode_reg.raw_value
             mode_str = mode_reg.decoded.upper()
-            if "0X" in mode_str:
-                # Hex-escaped bytes survived decoding: the register read is
+            if mode_str in ("EMPTY", "UNKNOWN/ZERO") or "0X" in mode_str:
+                # No printable 4CC survived decoding: the register read is
                 # still garbage after retries (bus contention). This is an
                 # I2C-level symptom, NOT a chip mode fault — faulting the
                 # chip here produced false WRONG_MODE failures.
@@ -384,6 +387,87 @@ class CD3217Analyzer:
             result.health = HealthStatus.WARN
 
         return result
+
+    # ── Socket expectations (chip-placement validation) ────────────────
+    # Verified board data (models.py) says what belongs in each socket:
+    # donor-chip class (OTP-ed Apple vs vanilla TI) and silicon family
+    # (CD3217B12 vs CD3218B12). VID/DID reveal what is actually installed.
+
+    @staticmethod
+    def parse_silicon(device_id: Optional[str]) -> str:
+        """Extract the silicon family from a decoded Device ID.
+
+        Real Apple parts spell the family in the DID (verified on live
+        boards): 0xCD321804 -> 'CD3218', 0xCD321704 -> 'CD3217'.
+        Returns '' when the DID doesn't match the known pattern.
+        """
+        if not device_id:
+            return ""
+        did = device_id.upper()
+        for fam in ("CD3218", "CD3217", "CD3215"):
+            if f"0X{fam}" in did:
+                return fam
+        return ""
+
+    def apply_socket_expectations(self, result: DeviceResult, position) -> None:
+        """Validate the diagnosed chip against the board's socket data.
+
+        `position` is a cd3217_analyzer.models.CD3217Position with verified
+        chip_class ('otp' / 'vanilla') and silicon fields. Appends
+        CHIP_MISMATCH faults when the installed chip is the wrong class
+        (e.g. a vanilla TI part in an OTP socket) or wrong silicon family
+        (e.g. a CD3217 in the CD3218 system/charge socket).
+        """
+        if not result.responds or position is None:
+            return
+
+        vid_reg = result.registers.get(0x00)
+        vid = (vid_reg.raw_value & 0xFFFF) if vid_reg else None
+        # VID 0x0451 = stock TI silicon (vanilla); 0x2804 = Apple-programmed
+        if vid is not None:
+            result.is_vanilla = vid == 0x0451
+
+        installed_silicon = self.parse_silicon(result.device_id)
+
+        if getattr(position, "chip_class", "") == "otp":
+            if vid is not None and vid == 0x0451:
+                result.faults.append(FaultType.CHIP_MISMATCH)
+                result.fault_details.append(
+                    f"Vanilla TI chip (VID 0x0451) in OTP socket {position.ref} "
+                    f"@0x{position.address:02X} — this socket needs an OTP-ed "
+                    "Apple CD3217 donor; a vanilla chip will not take the "
+                    "board-specific address/config"
+                )
+            elif vid is not None and vid == 0x2804:
+                result.fault_details.append(
+                    f"{position.ref}: Apple OTP-ed chip (VID 0x2804) as expected"
+                )
+        elif getattr(position, "chip_class", "") == "vanilla":
+            if vid is not None and vid == 0x0451:
+                result.fault_details.append(
+                    f"{position.ref}: vanilla TI chip in vanilla socket "
+                    "(OK — strap supplies the address)"
+                )
+            elif vid is not None and vid == 0x2804:
+                result.fault_details.append(
+                    f"{position.ref}: Apple OTP-ed chip in vanilla socket "
+                    "(works only if its burned address matches this socket)"
+                )
+
+        expected_silicon = getattr(position, "silicon", "") or ""
+        if expected_silicon and installed_silicon:
+            want = expected_silicon[:6]  # 'CD3217B12' -> 'CD3217'
+            if want != installed_silicon:
+                result.faults.append(FaultType.CHIP_MISMATCH)
+                result.fault_details.append(
+                    f"{position.ref}: wrong silicon — board expects "
+                    f"{expected_silicon}, installed chip reports "
+                    f"{installed_silicon} (DID {result.device_id})"
+                )
+
+        if FaultType.CHIP_MISMATCH in result.faults:
+            if result.health == HealthStatus.PASS:
+                result.health = HealthStatus.WARN
 
     def _calculate_health_score(self, result: DeviceResult) -> int:
         """Calculate a 0-100 health score for a device."""

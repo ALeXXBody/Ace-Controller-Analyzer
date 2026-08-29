@@ -29,19 +29,22 @@ class TestRegisters(unittest.TestCase):
         self.assertFalse(is_ace2_address(0x00))
 
     def test_decode_mode_reg_app(self):
-        """Test Mode register decoding for APP mode."""
-        # 0x41505020 = 'APP ' in MSB-first 4CC
-        result = decode_mode_reg(0x41505020)
-        self.assertEqual(result, "APP ")
+        """Test Mode register decoding for APP mode.
+
+        4CC characters arrive LSB-first on the wire (verified from real
+        board captures): wire bytes [0x04,'A','P','P'] = value 0x50504104.
+        """
+        result = decode_mode_reg(0x50504104)
+        self.assertEqual(result, "APP")
 
     def test_decode_mode_reg_boot(self):
-        """Test Mode register decoding for BOOT mode."""
-        result = decode_mode_reg(0x424F4F54)
+        """Test Mode register decoding for BOOT mode (wire-order bytes)."""
+        result = decode_mode_reg(0x544F4F42)  # wire 'B','O','O','T'
         self.assertEqual(result, "BOOT")
 
     def test_decode_mode_reg_ptch(self):
-        """Test Mode register decoding for PTCH mode."""
-        result = decode_mode_reg(0x50544348)
+        """Test Mode register decoding for PTCH mode (wire-order bytes)."""
+        result = decode_mode_reg(0x48435450)  # wire 'P','T','C','H'
         self.assertEqual(result, "PTCH")
 
     def test_decode_mode_reg_zero(self):
@@ -218,15 +221,24 @@ class TestAnalyzer(unittest.TestCase):
         result = self.analyzer.diagnose_device(0x3F)
         self.assertNotIn(FaultType.WRONG_VID, result.faults)
         self.assertNotIn(FaultType.WRONG_MODE, result.faults)
-        self.assertIn("PPA", (result.mode or "").upper())
+        self.assertIn("APP", (result.mode or "").upper())
         self.assertGreaterEqual(calls.get(0x00, 0), 2)  # VID was retried
         self.assertGreaterEqual(calls.get(0x03, 0), 2)  # Mode was retried
 
     def test_decode_mode_reg_skips_undriven_bytes(self):
-        """4CC decoding must skip 0x00/0xFF undriven bytes, not render them
-        as '0xFF' text that breaks mode matching."""
-        self.assertEqual(decode_mode_reg(0x50504120).strip(), "PPA")
-        self.assertEqual(decode_mode_reg(0xFF504120).strip(), "PA")
+        """4CC decoding must skip non-printable bytes (0x00/0xFF undriven),
+        not render them as '0xFF' text that breaks mode matching."""
+        # wire ['P','P',0xFF,'A'] -> value 0x41FF5050 -> "PPA"
+        self.assertEqual(decode_mode_reg(0x41FF5050), "PPA")
+        # wire [0xFF,'P','A',0x00] -> value 0x004150FF -> "PA"
+        self.assertEqual(decode_mode_reg(0x004150FF), "PA")
+
+    def test_decode_4cc_wire_order_from_real_capture(self):
+        """Real captures (samples/820-02382.json): wire bytes are
+        [0x04,'A','P','P'] -> 'APP' and [0x04,'I','2','C'] -> 'I2C'.
+        The decoder must read 4CC characters LSB-first (wire order)."""
+        self.assertEqual(decode_mode_reg(0x50504104), "APP")
+        self.assertEqual(decode_mode_reg(0x43324904), "I2C")
 
     def test_scan_bus_excludes_broadcast_address(self):
         """The ACE2 all-call address (0x6B) must not be reported as a device."""
@@ -274,6 +286,68 @@ class TestAnalyzer(unittest.TestCase):
         self.assertNotIn(FaultType.WRONG_MODE, result.faults)
         self.assertTrue(any("unreadable" in d.lower()
                             for d in result.fault_details))
+
+    def _diagnose_with_regs(self, addr, vid_bytes, did_bytes):
+        def mock_read_bytes(a, reg, length):
+            if reg == 0x00:
+                return vid_bytes
+            if reg == 0x01:
+                return did_bytes
+            if reg == 0x03:
+                return bytes([0x20, 0x41, 0x50, 0x50])  # "PPA"
+            if reg == 0x04:
+                return bytes([0x20, 0x49, 0x32, 0x43])  # "I2C"
+            if reg == 0x2F:
+                return b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"[:length] \
+                    or b"\x00" * length
+            return bytes([0x5A, 0xA5, 0x00, 0x01])[:length]
+
+        self.mock_adapter.read_bytes.side_effect = mock_read_bytes
+        self.mock_adapter.ping.return_value = True
+        return self.analyzer.diagnose_device(addr)
+
+    def test_chip_mismatch_vanilla_in_otp_socket(self):
+        """Vanilla TI chip (VID 0x0451) in an OTP socket (UG400@0x3B on
+        A2485) must be flagged CHIP_MISMATCH."""
+        from cd3217_analyzer.models import get_model
+        pos = {p.address: p for p in get_model("A2485").positions}[0x3B]
+        result = self._diagnose_with_regs(
+            0x3B, bytes([0x51, 0x04, 0x00, 0x00]),   # TI VID 0x0451
+            bytes([0x04, 0x17, 0x32, 0xCD]))          # DID 0xCD321704
+        self.analyzer.apply_socket_expectations(result, pos)
+        self.assertIn(FaultType.CHIP_MISMATCH, result.faults)
+        self.assertTrue(result.is_vanilla)
+        self.assertTrue(any("Vanilla" in d for d in result.fault_details))
+
+    def test_chip_mismatch_not_raised_for_correct_otp_chip(self):
+        """Apple OTP-ed chip (VID 0x2804, DID CD3218) in U5500@0x3A on
+        A2485 is the correct part — no CHIP_MISMATCH."""
+        from cd3217_analyzer.models import get_model
+        pos = {p.address: p for p in get_model("A2485").positions}[0x3A]
+        result = self._diagnose_with_regs(
+            0x3A, bytes([0x04, 0x28, 0x00, 0x00]),   # Apple VID 0x2804
+            bytes([0x04, 0x18, 0x32, 0xCD]))          # DID 0xCD321804
+        self.analyzer.apply_socket_expectations(result, pos)
+        self.assertNotIn(FaultType.CHIP_MISMATCH, result.faults)
+        self.assertFalse(result.is_vanilla)
+
+    def test_chip_mismatch_wrong_silicon(self):
+        """A CD3217 in the CD3218 system/charge socket (U5500@0x3A) must be
+        flagged CHIP_MISMATCH even with the right VID."""
+        from cd3217_analyzer.models import get_model
+        pos = {p.address: p for p in get_model("A2485").positions}[0x3A]
+        result = self._diagnose_with_regs(
+            0x3A, bytes([0x04, 0x28, 0x00, 0x00]),   # Apple VID
+            bytes([0x04, 0x17, 0x32, 0xCD]))          # DID 0xCD321704 (CD3217!)
+        self.analyzer.apply_socket_expectations(result, pos)
+        self.assertIn(FaultType.CHIP_MISMATCH, result.faults)
+        self.assertTrue(any("wrong silicon" in d for d in result.fault_details))
+
+    def test_parse_silicon(self):
+        self.assertEqual(self.analyzer.parse_silicon("0xCD321804"), "CD3218")
+        self.assertEqual(self.analyzer.parse_silicon("0xCD321704"), "CD3217")
+        self.assertEqual(self.analyzer.parse_silicon("0x00000000"), "")
+        self.assertEqual(self.analyzer.parse_silicon(None), "")
 
     def test_health_score_zero_when_no_response(self):
         """Test health score is 0 when device doesn't respond."""
