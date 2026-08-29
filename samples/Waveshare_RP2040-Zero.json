@@ -1,0 +1,554 @@
+{
+  "format": "cd3217-analyzer/board-export",
+  "format_version": 1,
+  "name": "Waveshare RP2040-Zero",
+  "generated_utc": "2026-08-29T11:50:03Z",
+  "app_version": "0.6.7",
+  "adapter_type": "UsbBridgeAdapter",
+  "mac_model": null,
+  "sources": [
+    "info",
+    "otp",
+    "registers",
+    "report"
+  ],
+  "data": {
+    "info": {
+      "board": "rp2040-zero",
+      "sda": 4,
+      "scl": 5,
+      "spi_sck": 14,
+      "spi_miso": 12,
+      "spi_mosi": 15,
+      "spi_cs": 13,
+      "hw": 1,
+      "uart_rx": 1,
+      "version": "0.6.7"
+    },
+    "register_dump": {
+      "0x3A": {
+        "0x00": {
+          "name": "VID",
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Unknown)"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "041832cd",
+          "value": "0xCD321804",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "PPA0x04"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "C2I0x04"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "04007021",
+          "value": "0x21700004",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "0000000000000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PowerStatus",
+          "raw": "3f600003",
+          "value": "0x300603F",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "12810700170f1afe4b9f66c2",
+          "value": "0xC2669F4BFE1A0F1700078112",
+          "decoded": ""
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "404344333231382020204857303032322046573030322e3137302e30302052414345322d4a33313650355520202020",
+          "value": "0x202020205535503631334A2D32454341522030302E3037312E32303057462032323030574820202038313233444340",
+          "decoded": ""
+        }
+      },
+      "0x3B": {
+        "0x00": {
+          "name": "VID",
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Unknown)"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "041732cd",
+          "value": "0xCD321704",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "PPA0x04"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "C2I0x04"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "04007021",
+          "value": "0x21700004",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "0000000000000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PowerStatus",
+          "raw": "3f2a1103",
+          "value": "0x3112A3F",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "1281070017001bfe6f9f66b2",
+          "value": "0xB2669F6FFE1B001700078112",
+          "decoded": ""
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "404344333231372020204857303032322046573030322e3137302e3030205a414345322d4a33313650325020202020",
+          "value": "0x202020205032503631334A2D324543415A2030302E3037312E32303057462032323030574820202037313233444340",
+          "decoded": ""
+        }
+      },
+      "0x3F": {
+        "0x00": {
+          "name": "VID",
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Unknown)"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "041732cd",
+          "value": "0xCD321704",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "PPA0x04"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "C2I0x04"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "04007021",
+          "value": "0x21700004",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "0000000000000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PowerStatus",
+          "raw": "3f280103",
+          "value": "0x301283F",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "12810700171f1f2a009366b2",
+          "value": "0xB26693002A1F1F1700078112",
+          "decoded": ""
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "404344333231372020204857303032322046573030322e3137302e3030205a414345322d4a33313650303150202020",
+          "value": "0x202020503130503631334A2D324543415A2030302E3037312E32303057462032323030574820202037313233444340",
+          "decoded": ""
+        }
+      },
+      "0x6B": {
+        "0x00": {
+          "name": "VID",
+          "raw": "7f5f7f5f",
+          "value": "0x5F7F5F7F",
+          "decoded": "0x5F7F5F7F (Unknown)"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "ffffffff",
+          "value": "0xFFFFFFFF",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "ffffffff",
+          "value": "0xFFFFFFFF",
+          "decoded": "0xFF0xFF0xFF0xFF"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "7f5f7f5f",
+          "value": "0x5F7F5F7F",
+          "decoded": "_0x7F_0x7F"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "ffffffff",
+          "value": "0xFFFFFFFF",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "ffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFF",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "ffffffffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFFFFFFFF",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "ffffffffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFFFFFFFF",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PowerStatus",
+          "raw": "ffffffff",
+          "value": "0xFFFFFFFF",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "ffffffffffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFFFFFFFFFF",
+          "decoded": ""
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+          "decoded": ""
+        }
+      }
+    },
+    "otp_dump": {
+      "0x3A": {
+        "address": 58,
+        "registers": {
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b010000",
+          "0x18": "09010000",
+          "0x1C": "09ffffff",
+          "0x20": "01060000",
+          "0x24": "09000000",
+          "0x28": "4000453b",
+          "0x2C": "02000800",
+          "0x30": "3d000000",
+          "0x34": "00000000",
+          "0x38": "0a000000",
+          "0x3C": "24ac0500",
+          "0x40": "0d000000",
+          "0x44": "10000000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "06000000",
+          "0x54": "00000000",
+          "0x58": "25000000",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "40000000",
+          "0x68": "2c000000",
+          "0x6C": "40000000",
+          "0x70": "00000000",
+          "0x74": "00000000",
+          "0x78": "283a0000",
+          "0x7C": "05000000"
+        },
+        "read_errors": []
+      },
+      "0x3B": {
+        "address": 59,
+        "registers": {
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b010000",
+          "0x18": "09010000",
+          "0x1C": "09ffffff",
+          "0x20": "01060000",
+          "0x24": "09000000",
+          "0x28": "4003453b",
+          "0x2C": "02001c00",
+          "0x30": "1d000000",
+          "0x34": "00000000",
+          "0x38": "0a000000",
+          "0x3C": "24ac0500",
+          "0x40": "05000000",
+          "0x44": "10000000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "06000000",
+          "0x54": "00000000",
+          "0x58": "25000000",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "40000000",
+          "0x68": "2c042804",
+          "0x6C": "40438f00",
+          "0x70": "00000000",
+          "0x74": "00000000",
+          "0x78": "283b0000",
+          "0x7C": "05000000"
+        },
+        "read_errors": []
+      },
+      "0x3F": {
+        "address": 63,
+        "registers": {
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b010000",
+          "0x18": "09010000",
+          "0x1C": "09ffffff",
+          "0x20": "01060000",
+          "0x24": "09000000",
+          "0x28": "4003453b",
+          "0x2C": "02001500",
+          "0x30": "1d000000",
+          "0x34": "00000000",
+          "0x38": "0a000000",
+          "0x3C": "24ac0500",
+          "0x40": "05000000",
+          "0x44": "10000000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "06000000",
+          "0x54": "00000000",
+          "0x58": "25000000",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "40000000",
+          "0x68": "2c042804",
+          "0x6C": "40438f00",
+          "0x70": "00000000",
+          "0x74": "00000000",
+          "0x78": "283f0000",
+          "0x7C": "05000000"
+        },
+        "read_errors": []
+      },
+      "0x6B": {
+        "address": 107,
+        "registers": {
+          "0x00": "7f5f7f5f",
+          "0x04": "7f5f7f5f",
+          "0x08": "ffffffff",
+          "0x0C": "ffffffff",
+          "0x10": "7f5fffff",
+          "0x14": "ffffffff",
+          "0x18": "ffffffff",
+          "0x1C": "ffffffff",
+          "0x20": "ffffffff",
+          "0x24": "ffffffff",
+          "0x28": "ffffffff",
+          "0x2C": "ffffffff",
+          "0x30": "ffffffff",
+          "0x34": "ffffffff",
+          "0x38": "ffffffff",
+          "0x3C": "ffffffff",
+          "0x40": "ffffffff",
+          "0x44": "ffffffff",
+          "0x48": "ffffffff",
+          "0x4C": "ffffffff",
+          "0x50": "ffffffff",
+          "0x54": "ffffffff",
+          "0x58": "ffffffff",
+          "0x5C": "ffffffff",
+          "0x60": "ffffffff",
+          "0x64": "ffffffff",
+          "0x68": "ffffffff",
+          "0x6C": "ffffffff",
+          "0x70": "ffffffff",
+          "0x74": "ffffffff",
+          "0x78": "ffffffff",
+          "0x7C": "ffffffff"
+        },
+        "read_errors": []
+      }
+    },
+    "report": {
+      "timestamp": "2026-08-29T12:50:12.940027",
+      "adapter_type": "UsbBridgeAdapter",
+      "bus_scan_results": [
+        "0x3A",
+        "0x3B",
+        "0x3F",
+        "0x6B"
+      ],
+      "devices": [
+        {
+          "address": "0x3A",
+          "responds": true,
+          "vendor_id": "0x2804 (Unknown)",
+          "device_id": "0xCD321804",
+          "mode": "PPA0x04",
+          "device_type": "C2I0x04",
+          "health": "FAIL",
+          "health_score": 50,
+          "faults": [
+            "WRONG_VID",
+            "WRONG_MODE"
+          ],
+          "fault_details": [
+            "Vendor ID is 0x2804 (expected 0x0451 TI)",
+            "Unexpected mode: PPA0x04",
+            "Unexpected device type: C2I0x04"
+          ],
+          "notes": ""
+        },
+        {
+          "address": "0x3B",
+          "responds": true,
+          "vendor_id": "0x2804 (Unknown)",
+          "device_id": "0xCD321704",
+          "mode": "PPA0x04",
+          "device_type": "C2I0x04",
+          "health": "FAIL",
+          "health_score": 50,
+          "faults": [
+            "WRONG_VID",
+            "WRONG_MODE"
+          ],
+          "fault_details": [
+            "Vendor ID is 0x2804 (expected 0x0451 TI)",
+            "Unexpected mode: PPA0x04",
+            "Unexpected device type: C2I0x04"
+          ],
+          "notes": ""
+        },
+        {
+          "address": "0x3F",
+          "responds": true,
+          "vendor_id": "0x2804 (Unknown)",
+          "device_id": "0xCD321704",
+          "mode": "PPA0x04",
+          "device_type": "C2I0x04",
+          "health": "FAIL",
+          "health_score": 50,
+          "faults": [
+            "WRONG_VID",
+            "WRONG_MODE"
+          ],
+          "fault_details": [
+            "Vendor ID is 0x2804 (expected 0x0451 TI)",
+            "Unexpected mode: PPA0x04",
+            "Unexpected device type: C2I0x04"
+          ],
+          "notes": ""
+        },
+        {
+          "address": "0x6B",
+          "responds": true,
+          "vendor_id": "0x5F7F5F7F (Unknown)",
+          "device_id": "0xFFFFFFFF",
+          "mode": "0xFF0xFF0xFF0xFF",
+          "device_type": "_0x7F_0x7F",
+          "health": "FAIL",
+          "health_score": 30,
+          "faults": [
+            "WRONG_VID",
+            "WRONG_MODE",
+            "CORRUPTED_REGISTERS"
+          ],
+          "fault_details": [
+            "Vendor ID is 0x5F7F5F7F (expected 0x0451 TI)",
+            "Unexpected mode: 0xFF0xFF0xFF0xFF",
+            "Unexpected device type: _0x7F_0x7F",
+            "4 registers returned suspicious values (all 0x00 or all 0xFF)"
+          ],
+          "notes": ""
+        }
+      ],
+      "summary": "Scan Time: 2026-08-29T12:50:12.940027\nAdapter: UsbBridgeAdapter\nI2C Devices Found: 4\nACE2 Devices Found: 4\n\n--- Device at 0x3A ---\n  Health: FAIL (score: 50/100)\n  Responds: Yes\n  VID: 0x2804 (Unknown)\n  DID: 0xCD321804\n  Mode: PPA0x04\n  Type: C2I0x04\n  FAULTS (2):\n    - WRONG_VID\n    - WRONG_MODE\n  DETAILS:\n    - Vendor ID is 0x2804 (expected 0x0451 TI)\n    - Unexpected mode: PPA0x04\n    - Unexpected device type: C2I0x04\n\n--- Device at 0x3B ---\n  Health: FAIL (score: 50/100)\n  Responds: Yes\n  VID: 0x2804 (Unknown)\n  DID: 0xCD321704\n  Mode: PPA0x04\n  Type: C2I0x04\n  FAULTS (2):\n    - WRONG_VID\n    - WRONG_MODE\n  DETAILS:\n    - Vendor ID is 0x2804 (expected 0x0451 TI)\n    - Unexpected mode: PPA0x04\n    - Unexpected device type: C2I0x04\n\n--- Device at 0x3F ---\n  Health: FAIL (score: 50/100)\n  Responds: Yes\n  VID: 0x2804 (Unknown)\n  DID: 0xCD321704\n  Mode: PPA0x04\n  Type: C2I0x04\n  FAULTS (2):\n    - WRONG_VID\n    - WRONG_MODE\n  DETAILS:\n    - Vendor ID is 0x2804 (expected 0x0451 TI)\n    - Unexpected mode: PPA0x04\n    - Unexpected device type: C2I0x04\n\n--- Device at 0x6B ---\n  Health: FAIL (score: 30/100)\n  Responds: Yes\n  VID: 0x5F7F5F7F (Unknown)\n  DID: 0xFFFFFFFF\n  Mode: 0xFF0xFF0xFF0xFF\n  Type: _0x7F_0x7F\n  FAULTS (3):\n    - WRONG_VID\n    - WRONG_MODE\n    - CORRUPTED_REGISTERS\n  DETAILS:\n    - Vendor ID is 0x5F7F5F7F (expected 0x0451 TI)\n    - Unexpected mode: 0xFF0xFF0xFF0xFF\n    - Unexpected device type: _0x7F_0x7F\n    - 4 registers returned suspicious values (all 0x00 or all 0xFF)\n",
+      "notes": ""
+    }
+  },
+  "errors": []
+}

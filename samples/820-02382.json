@@ -1,0 +1,363 @@
+{
+  "timestamp": "2026-08-29T12:13:53.019820",
+  "adapter_type": "UsbBridgeAdapter",
+  "bus_scan_results": [],
+  "devices": [
+    {
+      "address": "0x3A",
+      "responds": true,
+      "vendor_id": "0x2804 (Unknown)",
+      "device_id": "0xCD321804",
+      "mode": "PPA0x04",
+      "device_type": "C2I0x04",
+      "health": "FAIL",
+      "health_score": 50,
+      "faults": [
+        "WRONG_VID",
+        "WRONG_MODE"
+      ],
+      "fault_details": [
+        "Vendor ID is 0x2804 (expected 0x0451 TI)",
+        "Unexpected mode: PPA0x04",
+        "Unexpected device type: C2I0x04"
+      ],
+      "registers": {
+        "0x00": {
+          "name": "VID",
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Unknown)"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "041832cd",
+          "value": "0xCD321804",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "PPA0x04"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "C2I0x04"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "04007021",
+          "value": "0x21700004",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "0000000000000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PowerStatus",
+          "raw": "3f600003",
+          "value": "0x300603F",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "12810700170f1afe4b9f66c2",
+          "value": "0xC2669F4BFE1A0F1700078112",
+          "decoded": ""
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "404344333231382020204857303032322046573030322e3137302e30302052414345322d4a33313650355520202020",
+          "value": "0x202020205535503631334A2D32454341522030302E3037312E32303057462032323030574820202038313233444340",
+          "decoded": ""
+        }
+      },
+      "notes": ""
+    },
+    {
+      "address": "0x3B",
+      "responds": true,
+      "vendor_id": "0x2804 (Unknown)",
+      "device_id": "0xCD321704",
+      "mode": "PPA0x04",
+      "device_type": "C2I0x04",
+      "health": "FAIL",
+      "health_score": 50,
+      "faults": [
+        "WRONG_VID",
+        "WRONG_MODE"
+      ],
+      "fault_details": [
+        "Vendor ID is 0x2804 (expected 0x0451 TI)",
+        "Unexpected mode: PPA0x04",
+        "Unexpected device type: C2I0x04"
+      ],
+      "registers": {
+        "0x00": {
+          "name": "VID",
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Unknown)"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "041732cd",
+          "value": "0xCD321704",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "PPA0x04"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "C2I0x04"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "04007021",
+          "value": "0x21700004",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "0000000000000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PowerStatus",
+          "raw": "3f2a1103",
+          "value": "0x3112A3F",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "1281070017001bfe6f9f66b2",
+          "value": "0xB2669F6FFE1B001700078112",
+          "decoded": ""
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "404344333231372020204857303032322046573030322e3137302e3030205a414345322d4a33313650325020202020",
+          "value": "0x202020205032503631334A2D324543415A2030302E3037312E32303057462032323030574820202037313233444340",
+          "decoded": ""
+        }
+      },
+      "notes": ""
+    },
+    {
+      "address": "0x3F",
+      "responds": true,
+      "vendor_id": "0x2804 (Unknown)",
+      "device_id": "0xCD321704",
+      "mode": "PPA0x04",
+      "device_type": "C2I0x04",
+      "health": "FAIL",
+      "health_score": 50,
+      "faults": [
+        "WRONG_VID",
+        "WRONG_MODE"
+      ],
+      "fault_details": [
+        "Vendor ID is 0x2804 (expected 0x0451 TI)",
+        "Unexpected mode: PPA0x04",
+        "Unexpected device type: C2I0x04"
+      ],
+      "registers": {
+        "0x00": {
+          "name": "VID",
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Unknown)"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "041732cd",
+          "value": "0xCD321704",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "PPA0x04"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "C2I0x04"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "04007021",
+          "value": "0x21700004",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "0000000000000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PowerStatus",
+          "raw": "3f280103",
+          "value": "0x301283F",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "12810700171f1f2a009366b2",
+          "value": "0xB26693002A1F1F1700078112",
+          "decoded": ""
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "404344333231372020204857303032322046573030322e3137302e3030205a414345322d4a33313650303150202020",
+          "value": "0x202020503130503631334A2D324543415A2030302E3037312E32303057462032323030574820202037313233444340",
+          "decoded": ""
+        }
+      },
+      "notes": ""
+    },
+    {
+      "address": "0x6B",
+      "responds": true,
+      "vendor_id": "0x5F7F5F7F (Unknown)",
+      "device_id": "0xFFFFFFFF",
+      "mode": "0xFF0xFF0xFF0xFF",
+      "device_type": "_0x7F_0x7F",
+      "health": "FAIL",
+      "health_score": 30,
+      "faults": [
+        "WRONG_VID",
+        "WRONG_MODE",
+        "CORRUPTED_REGISTERS"
+      ],
+      "fault_details": [
+        "Vendor ID is 0x5F7F5F7F (expected 0x0451 TI)",
+        "Unexpected mode: 0xFF0xFF0xFF0xFF",
+        "Unexpected device type: _0x7F_0x7F",
+        "4 registers returned suspicious values (all 0x00 or all 0xFF)"
+      ],
+      "registers": {
+        "0x00": {
+          "name": "VID",
+          "raw": "7f5f7f5f",
+          "value": "0x5F7F5F7F",
+          "decoded": "0x5F7F5F7F (Unknown)"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "ffffffff",
+          "value": "0xFFFFFFFF",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "ffffffff",
+          "value": "0xFFFFFFFF",
+          "decoded": "0xFF0xFF0xFF0xFF"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "7f5f7f5f",
+          "value": "0x5F7F5F7F",
+          "decoded": "_0x7F_0x7F"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "ffffffff",
+          "value": "0xFFFFFFFF",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "ffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFF",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "ffffffffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFFFFFFFF",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "ffffffffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFFFFFFFF",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PowerStatus",
+          "raw": "ffffffff",
+          "value": "0xFFFFFFFF",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "ffffffffffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFFFFFFFFFF",
+          "decoded": ""
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+          "decoded": ""
+        }
+      },
+      "notes": ""
+    }
+  ],
+  "summary": "GUI session \u2014 4 device(s)",
+  "notes": ""
+}
