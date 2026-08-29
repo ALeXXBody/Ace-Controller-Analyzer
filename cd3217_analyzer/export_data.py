@@ -286,6 +286,28 @@ class GitHubPushError(Exception):
     pass
 
 
+def _helpful_error(code: int, detail: str = "") -> str:
+    """Map common GitHub API error codes to actionable guidance."""
+    low = detail.lower()
+    if code == 401:
+        return ("token is invalid or expired. Generate a new Personal Access "
+                "Token (repo scope / fine-grained with contents:write).")
+    if code == 403:
+        if "rate" in low or "abuse" in low:
+            return "rate limit hit; wait a minute and retry."
+        return ("token lacks write permission to this repo "
+                "(docs: contents:write, and classic PAT needs repo scope).")
+    if code == 404:
+        return ("token has no access to this repo, or you selected the wrong "
+                "repository. GitHub returns 404 when the token can't see/write "
+                "the repo. For a fine-grained token, select "
+                f"{GITHUB_REPO!r} with Contents: Read and write.")
+    if code == 422:
+        return f"unprocessable entity (conflicting update): {detail}"
+    return detail or ""
+
+
+
 def _api(url: str, token: str, data: Optional[dict] = None,
          timeout: float = 30.0) -> dict:
     req = urllib.request.Request(url)
@@ -307,8 +329,9 @@ def _api(url: str, token: str, data: Optional[dict] = None,
             detail = e.read().decode()[:300]
         except Exception:
             pass
+        msg = _helpful_error(e.code, detail)
         raise GitHubPushError(
-            f"GitHub API {e.code} {e.reason}: {detail}".strip())
+            f"GitHub API {e.code} {e.reason}: {msg}".strip())
 
 
 def _base_url(repo: str) -> str:
