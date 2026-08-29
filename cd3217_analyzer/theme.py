@@ -22,11 +22,11 @@ COLORS = {
 }
 
 FONTS = {
-    "title": ("Segoe UI", 18, "bold"),
-    "heading": ("Segoe UI", 13, "bold"),
-    "body": ("Segoe UI", 11),
-    "small": ("Segoe UI", 10),
-    "mono": ("Consolas", 11),
-    "mono_small": ("Consolas", 10),
-    "score": ("Segoe UI", 36, "bold"),
+    "title": ("Segoe UI", 22, "bold"),
+    "heading": ("Segoe UI", 16, "bold"),
+    "body": ("Segoe UI", 13),
+    "small": ("Segoe UI", 12),
+    "mono": ("Consolas", 12),
+    "mono_small": ("Consolas", 11),
+    "score": ("Segoe UI", 40, "bold"),
 }

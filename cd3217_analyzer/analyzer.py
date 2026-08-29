@@ -217,11 +217,15 @@ class CD3217Analyzer:
         # Step 3: Validate Vendor ID
         vid_reg = result.registers.get(0x00)
         if vid_reg:
-            result.vendor_id = vid_reg.decoded or f"0x{vid_reg.raw_value:04X}"
-            if vid_reg.raw_value not in VALID_ACE2_VIDS:
+            # The VID is a 16-bit field in the low bytes of the 32-bit register.
+            # Some read paths return the unused high bytes as 0xFF (e.g.
+            # 0xFF002804 for Apple 0x2804), so mask to 16 bits before comparing.
+            vid = vid_reg.raw_value & 0xFFFF
+            result.vendor_id = vid_reg.decoded or f"0x{vid:04X}"
+            if vid not in VALID_ACE2_VIDS:
                 result.faults.append(FaultType.WRONG_VID)
                 result.fault_details.append(
-                    f"Vendor ID is 0x{vid_reg.raw_value:04X} (expected one of "
+                    f"Vendor ID is 0x{vid_reg.raw_value:08X} (expected one of "
                     f"{', '.join(f'0x{v:04X}' for v in sorted(VALID_ACE2_VIDS))})"
                 )
         else:
@@ -308,7 +312,7 @@ class CD3217Analyzer:
 
         # Vendor ID correct (15 points)
         vid_reg = result.registers.get(0x00)
-        if vid_reg and vid_reg.raw_value in VALID_ACE2_VIDS:
+        if vid_reg and (vid_reg.raw_value & 0xFFFF) in VALID_ACE2_VIDS:
             score += 15
 
         # Mode is APP / PPA (20 points)

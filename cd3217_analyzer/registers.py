@@ -300,14 +300,20 @@ def decode_4cc(value: int) -> str:
 
 
 def decode_vid(value: int) -> str:
-    """Decode Vendor ID register."""
+    """Decode Vendor ID register.
+
+    The VID is a 16-bit field held in the low bytes of the 32-bit register.
+    Some read paths return the unused high bytes as 0xFF (e.g. 0xFF002804
+    for Apple 0x2804), so mask to 16 bits before looking up.
+    """
+    vid = value & 0xFFFF
     known_vids = {
         0x0451: "Texas Instruments",
         0x0483: "STMicroelectronics",
         0x2804: "Apple (ACE2 CD3217/CD3218 custom)",
     }
-    name = known_vids.get(value, "Unknown")
-    return f"0x{value:04X} ({name})"
+    name = known_vids.get(vid, "Unknown")
+    return f"0x{vid:04X} ({name})"
 
 
 # Vendor IDs that are valid for an ACE2/CD3217 controller. Apple's custom

@@ -61,6 +61,13 @@ class TestRegisters(unittest.TestCase):
         self.assertIn("0x1234", result)
         self.assertIn("Unknown", result)
 
+    def test_decode_vid_masks_high_ff_bytes(self):
+        """A 32-bit read that returns high bytes as 0xFF must still decode
+        the 16-bit VID (e.g. 0xFF002804 -> Apple 0x2804)."""
+        result = decode_vid(0xFF002804)
+        self.assertIn("0x2804", result)
+        self.assertIn("Apple", result)
+
     def test_strap_decode(self):
         """Test I2C address strap configuration decoding."""
         # Port1=0x38 (111000b), Port2=0x38 (111000b)
@@ -161,6 +168,26 @@ class TestAnalyzer(unittest.TestCase):
         self.assertNotIn(FaultType.WRONG_MODE, result.faults)
         self.assertNotIn(FaultType.CORRUPTED_REGISTERS, result.faults)
         self.assertIn(result.health, (HealthStatus.PASS, HealthStatus.WARN))
+
+    def test_diagnose_apple_vid_with_ff_padded_high_bytes(self):
+        """A real ACE2 returns the 16-bit VID with high bytes as 0xFF (e.g.
+        0xFF002804). This must NOT produce a WRONG_VID fault."""
+        def mock_read_bytes(addr, reg, length):
+            if reg == 0x00:  # VID -> 0xFF002804 (Apple ACE2, high byte 0xFF)
+                return bytes([0x04, 0x28, 0x00, 0xFF])
+            elif reg == 0x03:  # Mode -> "PPA "
+                return bytes([0x20, 0x41, 0x50, 0x50])
+            elif reg == 0x04:  # Type -> "I2C "
+                return bytes([0x20, 0x43, 0x32, 0x49])
+            elif reg == 0x2F:
+                return b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"[:length] \
+                    or b"\x00" * length
+            return bytes([0x5A, 0xA5, 0x00, 0x01])[:length]
+
+        self.mock_adapter.read_bytes.side_effect = mock_read_bytes
+        self.mock_adapter.ping.return_value = True
+        result = self.analyzer.diagnose_device(0x3A)
+        self.assertNotIn(FaultType.WRONG_VID, result.faults)
 
     def test_scan_bus_excludes_broadcast_address(self):
         """The ACE2 all-call address (0x6B) must not be reported as a device."""

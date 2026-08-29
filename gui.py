@@ -47,6 +47,7 @@ from cd3217_analyzer.otp import (
     scan_otp,
 )
 from cd3217_analyzer.registers import (
+    ACE2_BROADCAST_ADDRESS,
     KNOWN_ACE2_ADDRESSES,
     REGISTERS,
     decode_i2c_address_straps,
@@ -1165,7 +1166,7 @@ class Application(ctk.CTk):
             ("Offset", 70), ("Name", 150), ("Raw", 180), ("Value", 100), ("Decoded", 200)
         ]:
             ctk.CTkLabel(
-                hdr, text=text, font=("Segoe UI", 10, "bold"), text_color=C["accent"],
+                hdr, text=text, font=("Segoe UI", 12, "bold"), text_color=C["accent"],
                 width=w, anchor="w"
             ).pack(side="left", padx=4)
 
@@ -2005,26 +2006,46 @@ class Application(ctk.CTk):
             self.log("Select a MacBook model first", "warn")
             return
         addrs = [p.address for p in self.current_model.positions]
+        # Also list any broadcast/known addresses to flag if detected.
+        extra = [a for a in (ACE2_BROADCAST_ADDRESS,)
+                 if a not in addrs]
+        expected = addrs + extra
         self._set_busy(True, f"Scanning {self.current_model.model_id}...")
-        self.log(f"Model scan {self.current_model.model_id}: {', '.join(format_hex_addr(a) for a in addrs)}")
+        self.log(f"Model scan {self.current_model.model_id}: {', '.join(format_hex_addr(a) for a in expected)}")
 
         def work():
             found = [a for a in addrs if self.adapter.ping(a)]
             self.scan_results = found
-            self.after(0, self._show_devices, found)
+            self.after(0, self._show_devices, expected, set(found), True)
 
         self._run_bg(work, "Model scan complete")
 
-    def _show_devices(self, devices: List[int]):
+    def _show_devices(self, devices: List[int], found: Optional[set] = None,
+                      expected: bool = False):
         self._clear_devices()
-        self.device_count_var.set(f"{len(devices)} found")
-        if not devices:
-            self.log("No devices found", "warn")
-            return
-        self.log(f"Found {len(devices)} device(s)", "ok")
+        if found is None:
+            found = set(devices)
+        missing = [a for a in devices if a not in found]
+        if expected:
+            self.device_count_var.set(
+                f"{len(found)} found / {len(devices)} expected")
+        else:
+            self.device_count_var.set(f"{len(found)} found")
         for addr in devices:
             desc = self._device_label(addr)
-            self._add_device_row(addr, "?", "—", desc, is_ace2_address(addr))
+            if addr in found:
+                self._add_device_row(addr, "?", "—", desc, is_ace2_address(addr))
+            else:
+                self._add_device_row(addr, "MISSING", "—",
+                                     f"{desc} · NOT FOUND", is_ace2_address(addr))
+        if found:
+            self.log(f"Found {len(found)} device(s)", "ok")
+        if missing:
+            self.log(
+                f"{len(missing)} of {len(devices)} expected address(es) missing: "
+                + ", ".join(format_hex_addr(a) for a in missing), "warn")
+        if not found and not devices:
+            self.log("No devices found", "warn")
 
     def _device_label(self, addr: int) -> str:
         if self.current_model:
@@ -2046,10 +2067,10 @@ class Application(ctk.CTk):
         health_color = (
             C["green"] if health == "PASS" else
             C["yellow"] if health == "WARN" else
-            C["red"] if health == "FAIL" else C["dim"]
+            C["red"] if health in ("FAIL", "MISSING") else C["dim"]
         )
         ctk.CTkLabel(
-            row, text=str(health), font=("Segoe UI", 11, "bold"),
+            row, text=str(health), font=("Segoe UI", 13, "bold"),
             text_color=health_color, width=55
         ).pack(side="left")
         ctk.CTkLabel(
@@ -2343,7 +2364,7 @@ class Application(ctk.CTk):
                      text_color=C["dim"]).pack(side="left", padx=6)
         ctk.CTkLabel(row, text=format_hex_addr(addr), font=F["mono_small"], width=60,
                      text_color=C["accent"]).pack(side="left")
-        ctk.CTkLabel(row, text=health, font=("Segoe UI", 10, "bold"), width=50,
+        ctk.CTkLabel(row, text=health, font=("Segoe UI", 12, "bold"), width=50,
                      text_color=color).pack(side="left")
         ctk.CTkLabel(row, text=str(score), font=F["mono_small"], width=40).pack(side="left")
         ctk.CTkLabel(row, text=mode, font=F["mono_small"], width=50, text_color=C["dim"]).pack(
