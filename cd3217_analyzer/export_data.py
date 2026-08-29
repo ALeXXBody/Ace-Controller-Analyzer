@@ -269,8 +269,25 @@ def _serialize_report(report) -> Dict:
     }
 
 
-def write_bundle(bundle: Dict, name: str, out_dir: str = DATA_DIR) -> str:
+def _data_dir() -> str:
+    """Default export directory, resolved to a deterministic location.
+
+    Frozen (PyInstaller) builds save next to the executable so the folder is
+    easy to find regardless of the process working directory. Source runs save
+    to ./samples relative to the file (same as the repo layout).
+    """
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, DATA_DIR)
+
+
+def write_bundle(bundle: Dict, name: str,
+                 out_dir: Optional[str] = None) -> str:
     """Write the bundle to ``out_dir/<Name>.json`` and return the path."""
+    if out_dir is None:
+        out_dir = _data_dir()
     stem = sanitize_name(name)
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, f"{stem}.json")
