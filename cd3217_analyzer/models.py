@@ -87,15 +87,36 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2251": MacBookModel(
         model_id="A2251",
         name="MacBook Pro 13\" i5 (2020, Intel, 4-port)",
-        board_id="820-01958",
-        chip_count=2,
+        board_id="820-01949",
+        chip_count=4,
         positions=[
-            CD3217Position("UF400", 0x38, "strap", "GND", 2),
-            CD3217Position("UF500", 0x3F, "strap", "float", 2),
+            CD3217Position("U3100_X", 0x38, "strap", "GND", 1,
+                           chip_class="vanilla", silicon="CD3217B12",
+                           notes="ACE2, CD3217B12 — LEFT port (pair with T); "
+                                 "I2C_ADDR=GND -> 0x38; no own SPI (writes T's)"),
+            CD3217Position("U3100_T", 0x3F, "strap", "float", 1,
+                           chip_class="vanilla", silicon="CD3217B12",
+                           notes="ACE2, CD3217B12 — LEFT port (pair with X); "
+                                 "I2C_ADDR=FLOAT -> 0x3F; owns left-pair SPI"),
+            CD3217Position("U3100_W", 0x3B, "otp", "float", 1,
+                           chip_class="otp", silicon="CD3217B12",
+                           notes="ACE2, CD3217B12 — RIGHT port (pair with R); "
+                                 "OVERRIDE OTP -> 0x3B; owns right-pair SPI; "
+                                 "needs OTP-ed donor"),
+            CD3217Position("U3100_R", 0x3C, "otp", "float", 1,
+                           chip_class="otp", silicon="CD3217B12",
+                           notes="ACE2, CD3217B12 — RIGHT port (pair with W); "
+                                 "OVERRIDE OTP -> 0x3C; no own SPI (writes W's); "
+                                 "needs OTP-ed donor"),
         ],
-        notes=("NOT YET VERIFIED against a schematic: the 4-port 2020 13\" "
-               "likely has four ACE controllers (two per side, cf. A2159/"
-               "A2141 layout) — refdeses/address map above are placeholders."),
+        notes=("Verified from 820-01949 (X1795) schematic I2C table + "
+               "boardview (BVRAW_FORMAT_3). Four ACE2 (CD3217B12) controllers "
+               "U3100_X/T/W/R. Addresses: X=GND->0x38, T=FLOAT->0x3F "
+               "(both vanilla strap); W=0x3B and R=0x3C via OVERRIDE OTP "
+               "(need OTP-ed Apple donors). Alternate/all-call = 0x6B (over "
+               "I2C1 and I2C2). Right side (J3300_CWR) = ports R,W; left "
+               "side (J3300_CXT) = ports T,X. Left-pair SPI on U3100_T, "
+               "right-pair SPI on U3100_W."),
     ),
 
     # ── 4-port models (M1 Pro/Max) ────────────────────────────────

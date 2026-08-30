@@ -314,14 +314,24 @@ _mac("a2141", model="MacBook Pro 16\" 2019", board_nos=["820-01700"],
             "(WRITE 0x70/7E/76/78) + boardview pin nets"])
 
 _mac("a2251", model="MacBook Pro 13\" 2020 Intel (4-port)", board_nos=["820-01949"],
-     ports=4, ace="CD3217 (ACE2)", bus="SMC I2C1 / AP I2C0",
-     addresses="no pub. address map",
+     ports=4, ace="CD3217B12 (ACE2)", bus="AP I2C0 (I2C_UPC)",
+     addresses="verified schematic + boardview (820-01949): "
+               "U3100_X @0x38; U3100_T @0x3F; U3100_W @0x3B; U3100_R @0x3C; "
+               "all-call @0x6B",
      connect=[
-         "USB-C/Thunderbolt ports: 4 (one CD3217 per port)",
-         "Tap SDA/SCL + GND on a pull-up/series resistor of SMC I2C1 / "
-         "AP I2C0 near a CD3217, or the CD3217 BGA pins (B5/A4, B7/A6)",
-         "Installation order 1/2/3/4 matters for OTP-addressed positions"],
-     notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups"])
+         "USB-C/Thunderbolt ports: 4 (one CD3217B12 ACE2 per port)",
+         "RIGHT side (J3300_CWR) = ports R@0x3C, W@0x3B (OTP sockets); "
+         "LEFT side (J3300_CXT) = ports T@0x3F, X@0x38 (vanilla sockets)",
+         "Tap SDA/SCL + GND on a pull-up/series resistor of the AP I2C0 "
+         "(I2C_UPC) nets near a controller, or the CD3217 BGA pins (B5/A4, "
+         "B7/A6)"],
+     notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups",
+            "OTP override on ports W/R (0x3B/0x3C) -- vanilla chips will NOT "
+            "work there; need OTP-ed Apple donors. Ports T/X (0x3F/0x38) "
+            "are plain strap addresses and accept vanilla CD3217B12",
+            "Left-pair SPI ROM on U3100_T; right-pair SPI ROM on U3100_W; "
+            "U3100_X and U3100_R have no own SPI (boot off their pair "
+            "partner's ROM)"])
 
 _mac("a2289", model="MacBook Pro 13\" 2020 Intel (2-port)", board_nos=["820-01987"],
      ports=2, ace="CD3217 (ACE2)", bus="SMC I2C1 / AP I2C0",
