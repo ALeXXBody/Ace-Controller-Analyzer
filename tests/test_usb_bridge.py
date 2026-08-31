@@ -173,6 +173,61 @@ class TestUsbBridgeAdapter(unittest.TestCase):
         adapter.close()
         self.assertFalse(adapter.is_open)
 
+    def test_concurrent_transact_is_serialized(self):
+        """Regression: the removal watcher calls is_alive() every 2 s on the
+        same CDC port while Diagnose All runs it from a background thread.
+        Without a lock these interleave and corrupt frames (is_alive() reports
+        false -> watcher wrongly disconnects). Every concurrent call here must
+        return a correct, non-corrupted response."""
+        import threading
+
+        sentinel = make_response(CMD_PING, b"\x51")
+
+        class ThreadSafeSerial:
+            def __init__(self):
+                self._guard = threading.Lock()
+                self._current = sentinel
+
+            def reset_input_buffer(self):
+                with self._guard:
+                    self._current = sentinel
+                return None
+
+            def write(self, frame):
+                pass
+
+            def read(self, n):
+                with self._guard:
+                    out = self._current[:n]
+                    self._current = self._current[n:]
+                return out
+
+            def close(self):
+                pass
+
+        adapter = UsbBridgeAdapter(port="COM9")
+        adapter._ser = ThreadSafeSerial()
+
+        results = []
+        errors = []
+
+        def hammer():
+            for _ in range(50):
+                try:
+                    results.append(adapter.is_alive())
+                except Exception as e:  # noqa: BLE001
+                    errors.append(repr(e))
+
+        threads = [threading.Thread(target=hammer) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 8 * 50)
+        self.assertTrue(all(results), "every PING must return alive=True")
+
 
 class TestNormalizePort(unittest.TestCase):
     def test_bare_number(self):

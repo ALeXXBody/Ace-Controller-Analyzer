@@ -15,6 +15,7 @@ Install:  pip install pyserial
 
 import struct
 import sys
+import threading
 import time
 from typing import List, Optional
 
@@ -47,6 +48,13 @@ class UsbBridgeAdapter(I2CAdapter):
         self.baud = baud
         self.timeout = timeout
         self._ser = None
+        # Serialize every serial transaction. The removal watcher calls
+        # is_alive() every 2 s on the same CDC port while Diagnose All drives
+        # it from a background thread; without a lock those two threads clobber
+        # each other (a reset_input_buffer()/read() race garbles in-flight
+        # frames, is_alive() then reports false repeatedly, and the watcher
+        # wrongly disconnects the board).
+        self._lock = threading.Lock()
 
     # ---- connection ---------------------------------------------------------
     def open(self) -> None:
@@ -102,6 +110,11 @@ class UsbBridgeAdapter(I2CAdapter):
         between retries is not discarded.
         """
         self._require_open()
+        with self._lock:
+            return self._transact_locked(cmd, payload, retries)
+
+    def _transact_locked(self, cmd: int, payload: bytes = b"",
+                         retries: int = 2) -> bytes:
         frame = self._frame(cmd, payload)
         deadline_total = time.time() + self.timeout * (retries + 1) + 0.5
         attempt = 0
