@@ -358,17 +358,36 @@ class TestAnalyzer(unittest.TestCase):
         self.assertNotIn(FaultType.CHIP_MISMATCH, result.faults)
         self.assertFalse(result.is_vanilla)
 
-    def test_chip_mismatch_wrong_silicon(self):
-        """A CD3217 in the CD3218 system/charge socket (U5500@0x3A) must be
-        flagged CHIP_MISMATCH even with the right VID."""
+    def test_chip_mismatch_wrong_generation(self):
+        """An ACE1 generation part (CD3215) in an ACE2 socket (U5500@0x3A)
+        must be flagged CHIP_MISMATCH even with the right VID — genuinely
+        wrong generation."""
         from cd3217_analyzer.models import get_model
         pos = {p.address: p for p in get_model("A2485").positions}[0x3A]
         result = self._diagnose_with_regs(
             0x3A, bytes([0x04, 0x28, 0x00, 0x00]),   # Apple VID
-            bytes([0x04, 0x17, 0x32, 0xCD]))          # DID 0xCD321704 (CD3217!)
+            bytes([0x04, 0x15, 0x32, 0xCD]))          # DID 0xCD321500 (ACE1)
         self.analyzer.apply_socket_expectations(result, pos)
         self.assertIn(FaultType.CHIP_MISMATCH, result.faults)
-        self.assertTrue(any("wrong silicon" in d for d in result.fault_details))
+        self.assertTrue(any("generation" in d for d in result.fault_details))
+
+    def test_chip_mismatch_not_raised_same_ace2_core(self):
+        """A CD3217-marked board (A2251) whose chips report the shared
+        ACE2/Burnside CD3218 die must NOT be flagged CHIP_MISMATCH — the
+        part numbers share one core and retail boards legitimately report
+        the CD3218 family. This was the 'healthy A2251 shows all chips
+        faulty' bug: all four sockets falsely faulted."""
+        from cd3217_analyzer.models import get_model
+        regs = self._diagnose_with_regs(
+            0x38, bytes([0x04, 0x28, 0x00, 0x00]),   # Apple VID 0x2804
+            bytes([0x04, 0x18, 0x32, 0xCD]))          # DID 0xCD321804 (CD3218 die)
+        for pos in get_model("A2251").positions:
+            if pos.address != 0x38:
+                continue
+            self.analyzer.apply_socket_expectations(regs, pos)
+        self.assertNotIn(FaultType.CHIP_MISMATCH, regs.faults)
+        # donor-revision note is present, but no fault / no WARN downgrade
+        self.assertTrue(any("donor-revision" in d for d in regs.fault_details))
 
     def test_parse_silicon(self):
         self.assertEqual(self.analyzer.parse_silicon("0xCD321804"), "CD3218")

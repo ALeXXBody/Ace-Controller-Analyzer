@@ -421,8 +421,11 @@ class CD3217Analyzer:
         `position` is a cd3217_analyzer.models.CD3217Position with verified
         chip_class ('otp' / 'vanilla') and silicon fields. Appends
         CHIP_MISMATCH faults when the installed chip is the wrong class
-        (e.g. a vanilla TI part in an OTP socket) or wrong silicon family
-        (e.g. a CD3217 in the CD3218 system/charge socket).
+        (e.g. a vanilla TI part in an OTP socket) or a genuinely wrong
+        silicon GENERATION (e.g. an ACE1 CD3215 in an ACE2 socket). The
+        CD3217B12/CD3218B12 part-number distinction is informational only —
+        they share the same Burnside-bridge core and a retail CD3217-marked
+        board reports the CD3218 die, so it must never fault a working chip.
         """
         if not result.responds or position is None:
             return
@@ -464,12 +467,37 @@ class CD3217Analyzer:
         if expected_silicon and installed_silicon:
             want = expected_silicon[:6]  # 'CD3217B12' -> 'CD3217'
             if want != installed_silicon:
-                result.faults.append(FaultType.CHIP_MISMATCH)
-                result.fault_details.append(
-                    f"{position.ref}: wrong silicon — board expects "
-                    f"{expected_silicon}, installed chip reports "
-                    f"{installed_silicon} (DID {result.device_id})"
-                )
+                # ACE2 family (CD3217B12 / CD3217B13 / CD3218B12) shares ONE
+                # "Burnside bridge" silicon core (repair.wiki, ASCII strings
+                # 'CD3217'/'CD3218' both appear in the same firmware). The DID
+                # family does NOT reliably distinguish these part numbers — a
+                # retail CD3217-marked board (e.g. A2251) reports the CD3218
+                # Burnside die, so treating CD3217<->CD3218 as a mismatch false-
+                # faults every healthy chip. Only a genuinely different
+                # GENERATION (ACE1 = CD3215, or an unknown part where we cannot
+                # tell) is a hard mismatch.
+                same_ace2 = {"CD3217", "CD3218", "CD3215"}.issuperset(
+                    {want, installed_silicon}) and want.startswith("CD32") \
+                    and installed_silicon.startswith("CD32")
+                if want == "CD3215" or installed_silicon == "CD3215" \
+                        or not same_ace2:
+                    # Definitely across generations (ACE1 vs ACE2) — real fault.
+                    result.faults.append(FaultType.CHIP_MISMATCH)
+                    result.fault_details.append(
+                        f"{position.ref}: wrong silicon generation — board "
+                        f"expects {expected_silicon}, installed chip reports "
+                        f"{installed_silicon} (DID {result.device_id})"
+                    )
+                else:
+                    # Same ACE2 Burnside core; part-number ambiguity. This is a
+                    # donor-revision note, NOT a board fault — a working board
+                    # (correct VID, correct class) must not be flagged.
+                    result.fault_details.append(
+                        f"{position.ref}: silicon part number noted "
+                        f"{installed_silicon} vs expected {expected_silicon} "
+                        f"(same ACE2 Burnside core; donor-revision only — "
+                        f"not a fault)"
+                    )
 
         if FaultType.CHIP_MISMATCH in result.faults:
             if result.health == HealthStatus.PASS:
@@ -507,8 +535,14 @@ class CD3217Analyzer:
             score += 10
 
         # No register corruption (15 points)
-        corruption = sum(1 for r in result.registers.values()
-                         if r.raw_value in (0xFFFFFFFF, 0x00000000))
+        # Match the CORRUPTED_REGISTERS exemptions: 0x06/0x14/0x15 and other
+        # status registers legitimately read 0x00 or 0xFF on a healthy idle
+        # chip, so they must not count as corruption.
+        corruption = sum(
+            1 for off, r in result.registers.items()
+            if r.raw_value in (0xFFFFFFFF, 0x00000000)
+            and not (r.raw_value == 0x00000000 and off in (0x06, 0x14, 0x15))
+        )
         if corruption == 0:
             score += 15
         elif corruption < 3:
