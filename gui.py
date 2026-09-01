@@ -1710,7 +1710,8 @@ class Application(ctk.CTk):
             row.configure(fg_color=C["card_selected"] if selected else C["card"])
 
     def _known_scan_addresses(self) -> List[int]:
-        addrs = list(KNOWN_ACE2_ADDRESSES.keys())
+        addrs = [a for a in KNOWN_ACE2_ADDRESSES.keys()
+                 if a != ACE2_BROADCAST_ADDRESS]
         if self.current_model:
             addrs.extend(p.address for p in self.current_model.positions)
         return unique_sorted(addrs)

@@ -410,6 +410,9 @@ static void apiScan() {
 
   uint32_t t0 = millis();
   for (int a = 0x08; a <= 0x77; a++) {
+    if (a == 0x6B) continue;   // ACE2 all-call: every chip ACKs it at once —
+                               // listing it misleads the user and the
+                               // transaction garbles the next target
     Wire.beginTransmission(a);
     if (Wire.endTransmission() == 0) {
       addrs.add(a);

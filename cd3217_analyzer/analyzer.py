@@ -191,10 +191,15 @@ class CD3217Analyzer:
     BUS_SETTLE_AFTER_NACK = 0.1  # s to let the bus settle after NO_RESPONSE
     REG_RETRY_DELAY = 0.05      # s before re-reading a suspicious register
     REG_RETRIES = 2             # re-read attempts for identity registers
+    BOOT_SETTLE_DELAY = 0.5     # s before re-checking a BOOT mode read
 
     def __init__(self, adapter: I2CAdapter, addresses: Optional[List[int]] = None):
         self.adapter = adapter
-        self.addresses = addresses or list(KNOWN_ACE2_ADDRESSES.keys())
+        # Default target list excludes the all-call address (0x6B): every
+        # chip ACKs it simultaneously, so a "device" there is never real and
+        # the transaction garbles the bus for the next target.
+        self.addresses = [a for a in (addresses or KNOWN_ACE2_ADDRESSES.keys())
+                          if a != ACE2_BROADCAST_ADDRESS]
         # Cumulative bus-integrity counters; reset per scan session.
         self.bus_stats = BusStats()
 
@@ -419,16 +424,34 @@ class CD3217Analyzer:
             elif any(k in mode_str for k in ("APP", "PPA", "PPS", "PSU")):
                 pass  # Normal operating mode
             elif "BOOT" in mode_str:
-                result.faults.append(FaultType.BOOT_FAILED)
-                result.fault_details.append(
-                    "Device stuck in BOOT mode — firmware did not load. "
-                    "Check the controller's SPI flash ROM path (each port "
-                    "PAIR shares its own ROM) and VIN_3V3, then re-ball/"
-                    "replace the chip. Note: a chip in BOOT mode may answer "
-                    "at a loader default address instead of its strapped "
-                    "one — if another socket shows MISSING, this may be "
-                    "that chip, not the socket's own part"
-                )
+                # BOOT is NORMAL during power-on (boot-in-progress — TI
+                # SLVAE21A boot flow: the chip runs boot code, then loads
+                # the patch bundle from its SPI ROM before reaching APP).
+                # Only a PERSISTENT BOOT is a fault. Re-read after a settle
+                # to separate "still booting" from "boot stuck".
+                time.sleep(self.BOOT_SETTLE_DELAY)
+                boot_recheck = self._read_register_clean(address, 0x03, 4)
+                if boot_recheck and "BOOT" not in \
+                        (boot_recheck.decoded or "").upper():
+                    result.fault_details.append(
+                        f"Mode was BOOT at first read; re-check shows "
+                        f"{boot_recheck.decoded} — healthy boot transition, "
+                        "not a fault"
+                    )
+                    result.mode = boot_recheck.decoded
+                    result.mode_raw = boot_recheck.raw_value
+                else:
+                    result.faults.append(FaultType.BOOT_FAILED)
+                    result.fault_details.append(
+                        "Device still in BOOT mode after re-check — firmware "
+                        "did not load. Check the controller's SPI flash ROM "
+                        "path (each port PAIR shares its own ROM) and "
+                        "VIN_3V3, then re-ball/replace the chip. Note: a "
+                        "chip in BOOT mode may answer at a loader default "
+                        "address instead of its strapped one — if another "
+                        "socket shows MISSING, this may be that chip, not "
+                        "the socket's own part"
+                    )
             elif "PTCH" in mode_str:
                 result.fault_details.append(
                     "Device in PATCH mode - waiting for firmware download"
@@ -785,28 +808,30 @@ class CD3217Analyzer:
 
     def identify_chip_type(self, address: int) -> Optional[str]:
         """
-        Attempt to identify if a chip is vanilla or OTP-ed.
+        Identify if a chip is vanilla or OTP-ed from its Vendor ID.
 
-        This is a heuristic based on:
-        - OTP-ed chips typically have addresses like 0x3A, 0x3B, 0x3C
-        - Vanilla chips can have any address based on strap resistors
-        - Some OTP addresses are used exclusively by Apple
+        VID 0x0451 = stock TI silicon (vanilla — strap-configured address),
+        VID 0x2804 = Apple OTP-ed part. This replaces the old address-based
+        heuristic, which mislabeled strap addresses (0x74/0x76/0x78 are the
+        8-bit write forms of the OTP-socket 7-bit addresses 0x3A/0x3B/0x3C,
+        while e.g. A2337's strap vanilla chips answer at 0x38/0x3F).
+
+        Returns None when the chip doesn't respond or the VID is unreadable.
         """
         if not self.adapter.ping(address):
             return None
-
-        # Known OTP-only addresses (Apple internal)
-        OTP_ADDRESSES = {0x3A, 0x3B, 0x3C, 0x74, 0x76, 0x78, 0x79}
-
-        # Known vanilla-friendly addresses
-        VANILLA_ADDRESSES = {0x38, 0x3F, 0x2F, 0x28}
-
-        if address in OTP_ADDRESSES:
-            return "OTP-ed (Apple-programmed address)"
-        elif address in VANILLA_ADDRESSES:
-            return "Likely vanilla (strap-configured address)"
-        else:
-            return "Unknown type"
+        try:
+            read = self.read_register(address, 0x00, 4)
+        except Exception:
+            return None
+        if read is None:
+            return None
+        vid = read.raw_value & 0xFFFF
+        if vid == 0x0451:
+            return "Vanilla (VID 0x0451 — stock TI, strap-configured address)"
+        if vid == 0x2804:
+            return "OTP-ed (VID 0x2804 — Apple-programmed)"
+        return f"Unknown VID 0x{vid:04X}"
 
     def quick_health_check(self, address: int) -> Tuple[HealthStatus, int, str]:
         """

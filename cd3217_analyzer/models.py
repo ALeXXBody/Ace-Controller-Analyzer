@@ -37,8 +37,12 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
         board_id="820-02016",
         chip_count=2,
         positions=[
-            CD3217Position("UF400", 0x70, "strap", "GND", 2),
-            CD3217Position("UF500", 0x7E, "strap", "float", 2),
+            # The schematic lists 0x70/0x7E — those are the 8-BIT WRITE
+            # forms (0x38<<1, 0x3F<<1). The chips ANSWER at the 7-bit
+            # addresses 0x38/0x3F, same straps as A2338 (GND / float).
+            # Verified from strap analysis (badcaps 2026, BoardRev video).
+            CD3217Position("UF400", 0x38, "strap", "GND", 2),
+            CD3217Position("UF500", 0x3F, "strap", "float", 2),
         ],
     ),
     "A2338": MacBookModel(
@@ -57,8 +61,10 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
         board_id="820-01996",
         chip_count=2,
         positions=[
-            CD3217Position("UF400", 0x70, "strap", "GND", 2),
-            CD3217Position("UF500", 0x7E, "strap", "float", 2),
+            # Same strap pattern as A2337; schematic 0x70/0x7E are 8-bit
+            # write forms — the real 7-bit addresses are 0x38/0x3F.
+            CD3217Position("UF400", 0x38, "strap", "GND", 2),
+            CD3217Position("UF500", 0x3F, "strap", "float", 2),
         ],
     ),
     "A2289": MacBookModel(
@@ -131,6 +137,11 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
             CD3217Position("UF500", 0x39, "strap", "GND", 2, "Port 2 — SMC (SDA=B7, SCL=A6)"),
             CD3217Position("UF600", 0x10, "strap", "GND", 2, "Port 2 — SMC"),
         ],
+        notes=("UNVERIFIED map: repair.wiki quotes the A2442 schematic I2C0 "
+               "table as 7-bit 0x38/0x3F/0x3B/0x3A (8-bit 0x70/0x7E/0x76/0x74) "
+               "+ all-call 0x6B — which contradicts the addresses here. Do "
+               "not trust placement verdicts on this model until verified "
+               "against the 820-02100 schematic + boardview."),
     ),
     "A2485": MacBookModel(
         model_id="A2485",
@@ -174,7 +185,10 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
             CD3217Position("UF500", 0x39, "strap", "GND", 2, "Port 2 — SMC"),
             CD3217Position("UF600", 0x10, "strap", "GND", 2, "Port 2 — SMC"),
         ],
-        notes="Same address map as A2442/A2485",
+        notes=("Same address map as A2442/A2485 — UNVERIFIED for 820-02230; "
+               "repair.wiki's A2442-family schematic table (7-bit "
+               "0x38/0x3F/0x3B/0x3A) contradicts it. Verify against the "
+               "820-02230 schematic + boardview before trusting verdicts."),
     ),
     "A2780": MacBookModel(
         model_id="A2780",
@@ -187,7 +201,10 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
             CD3217Position("UF500", 0x39, "strap", "GND", 2, "Port 2 — SMC"),
             CD3217Position("UF600", 0x10, "strap", "GND", 2, "Port 2 — SMC"),
         ],
-        notes="Same address map as A2442/A2485",
+        notes=("Same address map as A2442/A2485 — UNVERIFIED for 820-02230; "
+               "repair.wiki's A2442-family schematic table (7-bit "
+               "0x38/0x3F/0x3B/0x3A) contradicts it. Verify against the "
+               "820-02230 schematic + boardview before trusting verdicts."),
     ),
 
     # ── 2-port T2 models ──────────────────────────────────────────

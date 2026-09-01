@@ -49,17 +49,20 @@ KNOWN_ACE2_ADDRESSES = {
     0x28: "ACE2 Port2 (vanilla, ADDR=GND)",
     0x2B: "ACE2 Port2 (OTP typical)",
     0x2A: "ACE2 Port2 (OTP typical)",
-    0x6B: "ACE2 All-call / Bank",
+    0x6B: "ACE2 All-call / Bank — ALL chips ACK simultaneously; never a device",
     # MacBook model maps (A2337/A2442/A2141 family)
     0x10: "ACE2 model map (UF600)",
     0x30: "ACE2 model map (A2780 UB400 placeholder)",
     0x50: "ACE2 model map (A2159 UB300 placeholder)",
-    0x70: "ACE2 model map (A2337 UF400)",
-    0x74: "ACE2 model map (UB400 OTP)",
-    0x76: "ACE2 OTP typical",
-    0x78: "ACE2 OTP typical",
-    0x79: "ACE2 OTP typical",
-    0x7E: "ACE2 model map (A2337 UF500)",
+    # The following are 8-BIT WRITE forms quoted by schematics (7-bit<<1).
+    # No chip ever ANSWERS at these 7-bit-space values — they are listed
+    # only so schematic address tables can be decoded unambiguously.
+    0x70: "8-bit write form of 0x38 (A2337/A2179 schematic)",
+    0x74: "8-bit write form of 0x3A (OTP-socket pair address)",
+    0x76: "8-bit write form of 0x3B",
+    0x78: "8-bit write form of 0x3C",
+    0x79: "8-bit read form of 0x3C",
+    0x7E: "8-bit write form of 0x3F (A2337/A2179 schematic)",
     # From Asahi Linux wiki / TPS65987D reference
     0x20: "TPS6598x Primary I2C1",
     0x22: "TPS6598x Primary I2C1 (alt)",

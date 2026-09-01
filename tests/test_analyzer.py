@@ -499,6 +499,73 @@ class TestBusHealth(unittest.TestCase):
         self.analyzer.bus_stats.add_ping(False)
         self.assertEqual(self.analyzer.bus_stats.nack_rate, 0.5)
 
+    def test_quick_scan_excludes_all_call_address(self):
+        """L3: the ACE2 all-call (0x6B) ACKs by construction (every chip
+        answers it at once) and must never be reported as a device."""
+        self.mock_adapter.ping.return_value = True
+        found = self.analyzer.quick_scan()
+        self.assertNotIn(0x6B, found)
+
+    def test_identify_chip_type_uses_vid_not_address(self):
+        """L2: vanilla/OTP must come from the Vendor ID (0x0451 TI stock /
+        0x2804 Apple OTP), not from the address — the old heuristic labeled
+        strap addresses like 0x7E as OTP."""
+        self.mock_adapter.read_bytes.return_value = bytes([0x51, 0x04, 0x00, 0x00])
+        result = self.analyzer.identify_chip_type(0x7E)
+        self.assertIn("Vanilla", result)          # strap address, NOT otp label
+        self.assertIn("0x0451", result)
+
+        self.mock_adapter.read_bytes.return_value = bytes([0x04, 0x28, 0x00, 0x00])
+        result = self.analyzer.identify_chip_type(0x3B)
+        self.assertIn("OTP-ed", result)
+        self.assertIn("0x2804", result)
+
+        # unreadable VID -> None
+        self.mock_adapter.read_bytes.return_value = None
+        self.assertIsNone(self.analyzer.identify_chip_type(0x38))
+
+    def test_boot_mode_recheck_transition_is_not_a_fault(self):
+        """L4: BOOT right after power-on is normal; a re-check that shows
+        APP (or any non-BOOT mode) means a healthy boot transition — no
+        BOOT_FAILED fault."""
+        self.mock_adapter.ping.return_value = True
+        state = {"n": 0}
+
+        def rb(addr, reg, length):
+            if reg == 0x03:
+                state["n"] += 1
+                if state["n"] == 1:
+                    return bytes([0x04, 0x42, 0x4F, 0x4F])  # "BOO"->BOOT
+                return bytes([0x20, 0x41, 0x50, 0x50])      # "APP "
+            if reg == 0x00:
+                return bytes([0x51, 0x04, 0x00, 0x00])
+            if reg == 0x04:
+                return bytes([0x20, 0x49, 0x32, 0x43])      # "I2C"
+            return bytes([0x00] * length)
+
+        self.mock_adapter.read_bytes.side_effect = rb
+        result = self.analyzer.diagnose_device(0x38)
+        self.assertNotIn(FaultType.BOOT_FAILED, result.faults)
+        self.assertEqual(result.mode.strip(), "APP")
+        self.assertTrue(any("healthy boot transition" in d
+                            for d in result.fault_details))
+
+    def test_boot_mode_persistent_still_faults(self):
+        """L4: BOOT that persists after the settle re-check is still a real
+        BOOT_FAILED."""
+        self.mock_adapter.ping.return_value = True
+
+        def rb(addr, reg, length):
+            if reg == 0x03:
+                return bytes([0x04, 0x42, 0x4F, 0x4F])  # BOOT every read
+            if reg == 0x00:
+                return bytes([0x51, 0x04, 0x00, 0x00])
+            return bytes([0x00] * length)
+
+        self.mock_adapter.read_bytes.side_effect = rb
+        result = self.analyzer.diagnose_device(0x38)
+        self.assertIn(FaultType.BOOT_FAILED, result.faults)
+
 
 class TestReport(unittest.TestCase):
     """Test reporting functions."""

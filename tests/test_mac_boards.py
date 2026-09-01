@@ -102,6 +102,21 @@ class TestMacBoards(unittest.TestCase):
             "U3100_R": (0x3C, "float", "CD3217B12", "otp"),
         })
 
+    def test_a2337_a2179_use_seven_bit_addresses(self):
+        """L1 regression: A2337/A2179 schematics list 0x70/0x7E, which are
+        the 8-BIT WRITE forms (0x38<<1, 0x3F<<1). The chips answer at the
+        7-bit addresses 0x38/0x3F (same straps as A2338). The model map
+        must hold 7-bit addresses or scans miss the real chips."""
+        from cd3217_analyzer.models import get_model
+        for mid in ("A2337", "A2179"):
+            m = get_model(mid)
+            by_ref = {p.ref: (p.address, p.addr_pin, p.addressing)
+                      for p in m.positions}
+            self.assertEqual(by_ref, {
+                "UF400": (0x38, "GND", "strap"),
+                "UF500": (0x3F, "float", "strap"),
+            }, mid)
+
     def test_connect_mentions_tap_method(self):
         # every board should explain where/how to tap the bus
         for key, b in MAC_BOARDS.items():
