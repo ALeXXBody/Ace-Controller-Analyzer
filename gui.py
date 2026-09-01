@@ -123,8 +123,14 @@ class Application(ctk.CTk):
         self.flash_info: Optional[FlashInfo] = None
         self.device_rows: Dict[int, ctk.CTkFrame] = {}
         self._busy_buttons: List[ctk.CTkButton] = []
+        # Cross-thread UI marshaling (see _ui/_drain_ui_queue)
+        import queue as _queue
+        self._ui_queue: "_queue.Queue" = _queue.Queue()
+        self._bg_threads: set = set()
+        self._busy_since = 0.0
 
         self._build_ui()
+        self.after(150, self._drain_ui_queue)
         self.after(400, self._auto_detect)
         # silent background update check (fails silently when offline)
         self.after(3000, self._auto_update_check)
@@ -298,12 +304,43 @@ class Application(ctk.CTk):
 
     # ─── Self-update ──────────────────────────────────────────────────────
 
-    def _ui(self, fn):
-        """Run fn on the UI thread (safe to call from workers)."""
+    def _ui(self, fn, *args, **kwargs):
+        """Schedule fn(*args, **kwargs) on the UI thread. Workers must use
+        this instead of touching tkinter.
+
+        tkinter calls from worker threads are unsupported in EVERY form:
+        after()/widget calls can raise "main thread is not in main loop"
+        AND can deadlock the whole app when a worker blocks on the Tcl
+        lock while the main loop pumps (the Windows "Not responding"
+        freeze). So workers ONLY put callbacks on a thread-safe queue;
+        the main thread drains it every 150 ms (see _drain_ui_queue).
+        """
         try:
-            self.after(0, fn)
+            self._ui_queue.put((fn, args, kwargs))
         except Exception:
             pass
+
+    def _drain_ui_queue(self):
+        """Main thread: deliver callbacks parked by _ui() + busy watchdog."""
+        try:
+            while True:
+                fn, args, kwargs = self._ui_queue.get_nowait()
+                try:
+                    fn(*args, **kwargs)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # Watchdog: force-clear the busy state when no background worker is
+        # alive anymore (e.g. a worker thread died before its finally ran).
+        try:
+            if self.busy and time.time() - self._busy_since > 5.0:
+                if not any(t.is_alive() for t in tuple(self._bg_threads)):
+                    self._set_busy(False, "")
+                    self._bg_threads.clear()
+        except Exception:
+            pass
+        self.after(150, self._drain_ui_queue)
 
     def _manual_update_check(self):
         self.log("Checking for updates...")
@@ -1654,7 +1691,7 @@ class Application(ctk.CTk):
         # not thread-safe, so marshal to the UI thread when off-thread.
         if threading.current_thread() is not threading.main_thread():
             try:
-                self.after(0, self.log, msg, level)
+                self._ui(self.log, msg, level)
             except Exception:
                 pass
             return
@@ -1664,6 +1701,8 @@ class Application(ctk.CTk):
 
     def _set_busy(self, busy: bool, message: str = ""):
         self.busy = busy
+        if busy:
+            self._busy_since = time.time()
         state = "disabled" if busy else "normal"
         for btn in self._busy_buttons:
             try:
@@ -1675,16 +1714,25 @@ class Application(ctk.CTk):
             self.status_left.configure(text=message)
 
     def _run_bg(self, work: Callable, done_msg: str = "Ready"):
-        def runner():
-            try:
-                work()
-            except Exception as e:
-                self.after(0, lambda err=e: self.log(f"Error: {err}", "err"))
-            finally:
-                self.after(0, lambda: self._set_busy(False, ""))
-                self.after(0, lambda: self.status_left.configure(text=done_msg))
+        # Register the thread BEFORE starting it so the _drain_ui_queue
+        # watchdog can always tell whether a worker is still alive.
+        t = threading.Thread(target=self._bg_runner, args=(work, done_msg),
+                             daemon=True)
+        self._bg_threads.add(t)
+        t.start()
 
-        threading.Thread(target=runner, daemon=True).start()
+    def _bg_runner(self, work: Callable, done_msg: str = "Ready"):
+        try:
+            work()
+        except Exception as e:
+            self._ui(self.log, f"Error: {e}", "err")
+        finally:
+            self._ui(self._set_busy, False, "")
+            self._ui(self.status_left.configure, text=done_msg)
+            try:
+                self._bg_threads.discard(threading.current_thread())
+            except Exception:
+                pass
 
     def _check_conn(self) -> bool:
         if self.busy:
@@ -1939,7 +1987,7 @@ class Application(ctk.CTk):
                 # like the board vanished.
                 if self.busy:
                     state["misses"] = 0
-                    self.after(2000, lambda: threading.Thread(
+                    self._ui(lambda: threading.Thread(
                         target=tick, daemon=True).start())
                     return
                 alive = adapter.is_alive()
@@ -1951,7 +1999,7 @@ class Application(ctk.CTk):
                         self._disconnect()
                 self._ui(gone)
                 return
-            self.after(2000, lambda: threading.Thread(
+            self._ui(lambda: threading.Thread(
                 target=tick, daemon=True).start())
 
         self.log(f"Watching {port} for board removal")
@@ -2064,15 +2112,15 @@ class Application(ctk.CTk):
             devices = sorted(set(devices))
             self.scan_results = devices
             if recovered:
-                self.after(0, self.log, "Second-chance ping recovered: "
+                self._ui(self.log, "Second-chance ping recovered: "
                            + ", ".join(format_hex_addr(a) for a in recovered),
                            "ok")
             if self.current_model:
                 expected = self._merge_expected(devices)
-                self.after(0, self._show_devices, expected, set(devices), True)
-                self.after(0, self._update_strap_reference)
+                self._ui(self._show_devices, expected, set(devices), True)
+                self._ui(self._update_strap_reference)
             else:
-                self.after(0, self._show_devices, devices)
+                self._ui(self._show_devices, devices)
 
         self._run_bg(work, "Scan complete")
 
@@ -2088,10 +2136,10 @@ class Application(ctk.CTk):
             self.scan_results = found
             if self.current_model:
                 expected = self._merge_expected(found)
-                self.after(0, self._show_devices, expected, set(found), True)
-                self.after(0, self._update_strap_reference)
+                self._ui(self._show_devices, expected, set(found), True)
+                self._ui(self._update_strap_reference)
             else:
-                self.after(0, self._show_devices, found)
+                self._ui(self._show_devices, found)
 
         self._run_bg(work, "Quick scan complete")
 
@@ -2167,7 +2215,7 @@ class Application(ctk.CTk):
             self.scan_results = found
             from cd3217_analyzer.models import build_placement_guide
             lines = build_placement_guide(self.current_model, found)
-            self.after(0, self._show_placement_guide, lines)
+            self._ui(self._show_placement_guide, lines)
 
         self._run_bg(work, "Placement guide ready")
 
@@ -2219,7 +2267,7 @@ class Application(ctk.CTk):
         def work():
             found = [a for a in addrs if self._ping_stable(a)]
             self.scan_results = found
-            self.after(0, self._show_devices, addrs, set(found), True)
+            self._ui(self._show_devices, addrs, set(found), True)
 
         self._run_bg(work, "Model scan complete")
 
@@ -2350,7 +2398,7 @@ class Application(ctk.CTk):
                         result = analyzer.diagnose_device(addr)
                         self._apply_socket_expectations(analyzer, result)
                     except Exception as e:
-                        self.after(0, self.log,
+                        self._ui(self.log,
                                    f"Error {format_hex_addr(addr)}: {e}", "err")
                         continue
                     rank = CD3217Analyzer._HEALTH_RANK.get(result.health, 0)
@@ -2360,7 +2408,7 @@ class Application(ctk.CTk):
                     if not CD3217Analyzer.is_retryable_failure(result):
                         break
                     if attempt < len(retry_settles):
-                        self.after(0, self.log,
+                        self._ui(self.log,
                                    f"{format_hex_addr(addr)}: no answer on "
                                    f"pass {attempt} — settling bus, retrying...",
                                    "warn")
@@ -2382,7 +2430,7 @@ class Application(ctk.CTk):
                               if a not in model_addrs
                               and self.devices[a].responds]
                 if len(silent) >= max(2, len(model_addrs) // 2) and live_extra:
-                    self.after(0, self.log,
+                    self._ui(self.log,
                                "Most model sockets silent while chips answer "
                                "at other addresses — the selected model's "
                                "address map may not match this board (some "
@@ -2391,7 +2439,7 @@ class Application(ctk.CTk):
             except Exception:
                 pass
             self._report_bus_health(analyzer)
-            self.after(0, self._refresh_display)
+            self._ui(self._refresh_display)
 
         self._run_bg(work, "Diagnose all complete")
 
@@ -2452,8 +2500,8 @@ class Application(ctk.CTk):
             result = analyzer.diagnose_device(address)
             self._apply_socket_expectations(analyzer, result)
             self.devices[address] = result
-            self.after(0, self._show_result, result)
-            self.after(0, self._refresh_display)
+            self._ui(self._show_result, result)
+            self._ui(self._refresh_display)
 
         self._run_bg(work, f"{format_hex_addr(address)} done")
 
@@ -2479,13 +2527,13 @@ class Application(ctk.CTk):
             level = "warn" if analyzer.bus_stats.marginal else "info"
             first, _, rest = summary.partition("\n")
             self.last_bus_stats = analyzer.bus_stats
-            self.after(0, self.log, first, level)
+            self._ui(self.log, first, level)
             if rest:
                 for ln in rest.split("\n"):
                     if ln.strip():
-                        self.after(0, self.log, ln.strip(), level)
+                        self._ui(self.log, ln.strip(), level)
         except Exception as e:
-            self.after(0, self.log, f"Bus health: {e}", "err")
+            self._ui(self.log, f"Bus health: {e}", "err")
 
     def _show_result(self, result: DeviceResult):
         score = result.health_score
@@ -2625,8 +2673,8 @@ class Application(ctk.CTk):
                         0, self._add_reg_row, f"0x{offset:02X}", reg_def.name,
                         "ERROR", "—", "Read failed"
                     )
-            self.after(0, self.log, f"Register dump: {format_hex_addr(addr)}", "ok")
-            self.after(0, lambda: self.tabs.set("Registers"))
+            self._ui(self.log, f"Register dump: {format_hex_addr(addr)}", "ok")
+            self._ui(lambda: self.tabs.set("Registers"))
 
         self._run_bg(work, "Register dump complete")
 
@@ -2692,12 +2740,12 @@ class Application(ctk.CTk):
                             f"{result.scan_time_ms:.0f}"
                         )
                     except Exception as e:
-                        self.after(0, self.log, f"Batch error: {e}", "err")
+                        self._ui(self.log, f"Batch error: {e}", "err")
                     # let the bus settle between devices (dead-chip NACKs)
                     time.sleep(0.08)
                     done += 1
-                    self.after(0, self.batch_progress.set, done / total)
-                    self.after(0, self.batch_status_var.set, f"{done}/{total}")
+                    self._ui(self.batch_progress.set, done / total)
+                    self._ui(self.batch_status_var.set, f"{done}/{total}")
 
             total_r = len(self.batch_results)
             passed = sum(1 for r in self.batch_results if r.health == HealthStatus.PASS)
@@ -2708,7 +2756,7 @@ class Application(ctk.CTk):
                 0, self.batch_status_var.set,
                 f"Done: {total_r} | {passed} pass | {warned} warn | {failed} fail"
             )
-            self.after(0, lambda: self.batch_start_btn.configure(state="normal"))
+            self._ui(lambda: self.batch_start_btn.configure(state="normal"))
 
         self._run_bg(work, "Batch complete")
 
@@ -2835,19 +2883,19 @@ class Application(ctk.CTk):
 
         def work():
             def progress(cur, total):
-                self.after(0, self.otp_progress.set, cur / total if total else 0)
+                self._ui(self.otp_progress.set, cur / total if total else 0)
 
             dump = scan_otp(
                 self.adapter, addr, label=format_hex_addr(addr), progress_cb=progress
             )
             self.otp_current_dump = dump
-            self.after(0, self._show_otp_dump, dump)
+            self._ui(self._show_otp_dump, dump)
             self.after(
                 0, self.otp_status_var.set,
                 f"Done: {dump.filled_count} regs, {dump.error_count} errors"
             )
-            self.after(0, self.log, f"OTP scan: {dump.filled_count} regs", "ok")
-            self.after(0, lambda: self.otp_scan_btn.configure(state="normal"))
+            self._ui(self.log, f"OTP scan: {dump.filled_count} regs", "ok")
+            self._ui(lambda: self.otp_scan_btn.configure(state="normal"))
 
         self._run_bg(work, "OTP scan complete")
 
@@ -3076,12 +3124,12 @@ class Application(ctk.CTk):
 
         def work():
             def progress(cur, total):
-                self.after(0, self.flash_progress.set, cur / total if total else 0)
+                self._ui(self.flash_progress.set, cur / total if total else 0)
 
             size = self.flash.dump_to_file(filepath, progress_cb=progress)
-            self.after(0, self.flash_status_var.set, f"Read {size:,} bytes → {filepath}")
-            self.after(0, self.log, f"Flash dumped: {filepath} ({size:,} bytes)", "ok")
-            self.after(0, self._show_flash_hex, filepath, 256)
+            self._ui(self.flash_status_var.set, f"Read {size:,} bytes → {filepath}")
+            self._ui(self.log, f"Flash dumped: {filepath} ({size:,} bytes)", "ok")
+            self._ui(self._show_flash_hex, filepath, 256)
 
         self._run_bg(work, "Flash read complete")
 
@@ -3110,26 +3158,26 @@ class Application(ctk.CTk):
 
         def work():
             def progress(cur, total):
-                self.after(0, self.flash_progress.set, cur / total if total else 0)
+                self._ui(self.flash_progress.set, cur / total if total else 0)
 
-            self.after(0, self.flash_status_var.set, "Erasing chip...")
+            self._ui(self.flash_status_var.set, "Erasing chip...")
             self.flash.erase_chip()
-            self.after(0, self.flash_status_var.set, "Writing data...")
+            self._ui(self.flash_status_var.set, "Writing data...")
             self.flash.write(0, data, progress_cb=progress)
-            self.after(0, self.flash_status_var.set, "Verifying...")
+            self._ui(self.flash_status_var.set, "Verifying...")
             readback = self.flash.read(0, len(data))
             if readback == data:
                 self.after(
                     0, self.flash_status_var.set,
                     f"Write complete — {len(data):,} bytes verified"
                 )
-                self.after(0, self.log, f"Flash write verified: {len(data):,} bytes", "ok")
+                self._ui(self.log, f"Flash write verified: {len(data):,} bytes", "ok")
             else:
                 for i, (a, b) in enumerate(zip(data, readback)):
                     if a != b:
-                        self.after(0, self.log, f"Verify mismatch at 0x{i:06X}", "err")
+                        self._ui(self.log, f"Verify mismatch at 0x{i:06X}", "err")
                         break
-                self.after(0, self.flash_status_var.set, "Write complete — VERIFY FAILED")
+                self._ui(self.flash_status_var.set, "Write complete — VERIFY FAILED")
 
         self._run_bg(work, "Flash write complete")
 
@@ -3145,8 +3193,8 @@ class Application(ctk.CTk):
 
         def work():
             self.flash.erase_chip()
-            self.after(0, self.flash_status_var.set, "Erase complete")
-            self.after(0, self.log, "Flash erased", "ok")
+            self._ui(self.flash_status_var.set, "Erase complete")
+            self._ui(self.log, "Flash erased", "ok")
 
         self._run_bg(work, "Flash erase complete")
 
@@ -3170,12 +3218,12 @@ class Application(ctk.CTk):
 
         def work():
             def progress(cur, total):
-                self.after(0, self.flash_progress.set, cur / total if total else 0)
-                self.after(0, self.flash_status_var.set, f"Restore {cur}/{total}")
+                self._ui(self.flash_progress.set, cur / total if total else 0)
+                self._ui(self.flash_status_var.set, f"Restore {cur}/{total}")
 
             self.flash.full_restore(filepath, progress_cb=progress)
-            self.after(0, self.flash_status_var.set, "Restore complete — verified")
-            self.after(0, self.log, f"Flash restored: {filepath}", "ok")
+            self._ui(self.flash_status_var.set, "Restore complete — verified")
+            self._ui(self.log, f"Flash restored: {filepath}", "ok")
 
         self._run_bg(work, "Flash restore complete")
 
@@ -3355,7 +3403,7 @@ class Application(ctk.CTk):
         """Collect the bundle, write locally, optionally push to GitHub."""
         def ui(fn):
             try:
-                self.after(0, fn)
+                self._ui(fn)
             except Exception:
                 pass
 
