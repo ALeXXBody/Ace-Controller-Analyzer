@@ -20,6 +20,12 @@ import time
 from typing import List, Optional
 
 from .adapters import I2CAdapter
+from . import debuglog
+
+CMD_NAMES = {0x01: "SCAN", 0x02: "READ", 0x03: "WRITE", 0x04: "PING",
+             0x05: "INFO", 0x06: "BUSCHK", 0x07: "I2CFREQ",
+             0x20: "UART_SETUP", 0x21: "UART_READ", 0x24: "UART_AUTOBAUD",
+             0x30: "FW_UPDATE"}
 
 try:
     import serial
@@ -117,7 +123,14 @@ class UsbBridgeAdapter(I2CAdapter):
 
     def _transact_locked(self, cmd: int, payload: bytes = b"",
                          retries: int = 2) -> bytes:
+        if debuglog.is_enabled():
+            debuglog.log("TX %s addr=0x%02X plen=%d payload=%s",
+                         CMD_NAMES.get(cmd, f"0x{cmd:02X}"),
+                         payload[0] if payload else 0, len(payload),
+                         payload[1:25].hex(" "))
         frame = self._frame(cmd, payload)
+        _dbg = debuglog.is_enabled()
+        _t_send = time.monotonic()
         deadline_total = time.time() + self.timeout * (retries + 1) + 0.5
         attempt = 0
         while True:
@@ -148,6 +161,14 @@ class UsbBridgeAdapter(I2CAdapter):
                         if len(body) >= total:
                             cand = body[:total]
                             if cand[0] == cmd and _verify_ck(cand, plen):
+                                if _dbg:
+                                    resp_payload = bytes(cand[2:2 + plen])
+                                    debuglog.log(
+                                        "RX %s ok %.1fms status=0x%02X data=%s",
+                                        CMD_NAMES.get(cmd, f"0x{cmd:02X}"),
+                                        (time.monotonic() - _t_send) * 1000.0,
+                                        resp_payload[0] if resp_payload else 0,
+                                        resp_payload[1:25].hex(" "))
                                 return bytes(cand[2:2 + plen])
                             i += 1  # not our target — keep scanning
                             continue
@@ -157,6 +178,11 @@ class UsbBridgeAdapter(I2CAdapter):
             if attempt >= retries or time.time() >= deadline_total:
                 break
             attempt += 1  # retry without flushing; let a late response arrive
+        if _dbg:
+            debuglog.log("RX %s FAILED after %.1fms (%d attempt(s)) — no "
+                         "valid frame; serial-level problem or board wedged",
+                         CMD_NAMES.get(cmd, f"0x{cmd:02X}"),
+                         (time.monotonic() - _t_send) * 1000.0, attempt + 1)
         raise IOError(f"Bridge no response for cmd 0x{cmd:02X}")
 
     # ---- I2CAdapter interface ----------------------------------------------
@@ -178,6 +204,10 @@ class UsbBridgeAdapter(I2CAdapter):
         payload = bytes([address, register, length])
         resp = self._transact(CMD_READ, payload)
         if not resp or resp[0] != RESP_OK:
+            if debuglog.is_enabled():
+                debuglog.log("I2C READ NACK 0x%02X reg 0x%02X len=%d — chip "
+                             "did not answer (address dead, chip busy, or "
+                             "bus margin)", address, register, length)
             raise OSError(f"Read failed at 0x{address:02X} reg 0x{register:02X}")
         return resp[1:]
 
@@ -188,7 +218,11 @@ class UsbBridgeAdapter(I2CAdapter):
         data = bytes(data)
         payload = bytes([address, register, len(data)]) + data
         resp = self._transact(CMD_WRITE, payload)
-        return bool(resp) and resp[0] == RESP_OK
+        ok = bool(resp) and resp[0] == RESP_OK
+        if debuglog.is_enabled() and not ok:
+            debuglog.log("I2C WRITE NACK 0x%02X reg 0x%02X len=%d — chip did "
+                         "not answer", address, register, len(data))
+        return ok
 
     def ping(self, address: int) -> bool:
         try:

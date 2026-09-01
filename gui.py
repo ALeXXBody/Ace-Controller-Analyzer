@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -27,6 +28,7 @@ ctk.set_default_color_theme("blue")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from cd3217_analyzer import __version__
+from cd3217_analyzer import debuglog
 from cd3217_analyzer.adapters import FTDIAdapter, SMBusAdapter, detect_adapter
 from cd3217_analyzer.usb_bridge import UsbBridgeAdapter, list_bridge_ports, normalize_port
 from cd3217_analyzer.analyzer import (
@@ -1700,6 +1702,55 @@ class Application(ctk.CTk):
             row, text="Copy All", width=80, fg_color=C["btn"], hover_color=C["btn_hover"],
             command=self._copy_log
         ).pack(side="left", padx=6)
+        ctk.CTkButton(
+            row, text="Save debug log…", width=120, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._save_debug_log
+        ).pack(side="left", padx=6)
+        self.debug_var = ctk.BooleanVar(value=False)
+        ctk.CTkSwitch(
+            row, text="Debug trace", variable=self.debug_var,
+            command=self._toggle_debug, fg_color=C["btn"],
+            progress_color=C["accent"], font=F["small"]
+        ).pack(side="right")
+        self.log_text = ctk.CTkTextbox(tab, fg_color=C["entry"], font=F["mono_small"])
+        self.log_text.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+    def _toggle_debug(self):
+        """Comprehensive trace switch: every bridge transaction, I2C NACK,
+        retry decision and watcher event, with ms timestamps + thread
+        names — the definitive 'what exactly went wrong' record."""
+        if self.debug_var.get():
+            path = os.path.join(tempfile.gettempdir(),
+                                "cd3217_debug.log")
+            used = debuglog.enable(path)
+            self.log("Debug trace ON — full transaction log: "
+                     + (used or "in-memory ring only (use Save debug log…)")
+                     , "warn")
+            if used:
+                self.log(f"Debug trace ON — all bridge transactions, I2C "
+                         f"NACKs, retries and watcher events are recorded "
+                         f"to {used}", "warn")
+        else:
+            debuglog.disable()
+            self.log("Debug trace OFF", "info")
+
+    def _save_debug_log(self):
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".log",
+            filetypes=[("Log", "*.log *.txt"), ("All", "*.*")],
+            title="Save debug trace",
+        )
+        if not filepath:
+            return
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(f"CD3217 Analyzer v{__version__} debug trace\n")
+                f.write(f"saved {datetime.now().isoformat()}\n")
+                f.write("\n".join(debuglog.entries()) + "\n")
+            self.log(f"Debug log saved: {filepath} "
+                     f"({len(debuglog.entries())} lines)", "ok")
+        except Exception as e:
+            self.log(f"Debug log save failed: {e}", "err")
         self.log_text = ctk.CTkTextbox(tab, fg_color=C["entry"], font=F["mono_small"])
         self.log_text.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
@@ -1985,6 +2036,7 @@ class Application(ctk.CTk):
             if isinstance(adapter, UsbBridgeAdapter):
                 self._start_board_watcher(adapter)
         except Exception as e:
+            debuglog.log("CONNECT FAILED: %r", e)
             hint = ""
             if "PermissionError(13" in str(e) or "(13," in str(e):
                 hint = ("  (the port may be held by another program or the "
@@ -2041,6 +2093,8 @@ class Application(ctk.CTk):
                 alive = adapter.is_alive()
                 state["misses"] = 0 if alive else state["misses"] + 1
             if (not present) or state["misses"] >= 5:
+                debuglog.log("watcher: disconnect decision — port_present="
+                             "%s misses=%d", present, state["misses"])
                 def gone():
                     if self.connected and self.adapter is adapter:
                         self.log("Board removed — disconnecting.", "warn")
@@ -2051,6 +2105,8 @@ class Application(ctk.CTk):
                 target=tick, daemon=True).start())
 
         self.log(f"Watching {port} for board removal")
+        debuglog.log("watcher started for %s (grace %.0fs)", port,
+                     max(0.0, state["grace_until"] - time.time()))
         self.after(2000, lambda: threading.Thread(
             target=tick, daemon=True).start())
 
@@ -2159,6 +2215,7 @@ class Application(ctk.CTk):
                         recovered.append(p.address)
             devices = sorted(set(devices))
             self.scan_results = devices
+            debuglog.log("SCAN done: found %s", [hex(a) for a in devices])
             if recovered:
                 self._ui(self.log, "Second-chance ping recovered: "
                            + ", ".join(format_hex_addr(a) for a in recovered),
@@ -2469,8 +2526,15 @@ class Application(ctk.CTk):
                             best.health, 0):
                         best = result
                     if not CD3217Analyzer.is_retryable_failure(result):
+                        debuglog.log("LADDER 0x%02X pass %d final: %s (%s)",
+                                     addr, attempt, result.health.value,
+                                     [f.value for f in result.faults])
                         break
                     if attempt < len(retry_settles):
+                        debuglog.log("LADDER 0x%02X pass %d retryable (%s) — "
+                                     "retry in %.1fs", addr, attempt,
+                                     [f.value for f in result.faults],
+                                     retry_settles[attempt])
                         self._ui(self.log,
                                    f"{format_hex_addr(addr)}: no answer on "
                                    f"pass {attempt} — settling bus, retrying...",

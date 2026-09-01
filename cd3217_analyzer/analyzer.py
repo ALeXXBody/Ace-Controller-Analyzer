@@ -11,6 +11,8 @@ Performs comprehensive testing of ACE2 controllers:
 
 import json
 import time
+
+from . import debuglog
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -286,6 +288,9 @@ class CD3217Analyzer:
         for attempt in range(1 + self.PING_RETRIES):
             ok = self.adapter.ping(address)
             self.bus_stats.add_ping(ok)
+            if debuglog.is_enabled():
+                debuglog.log("PING 0x%02X attempt %d: %s", address,
+                             attempt + 1, "ok" if ok else "NACK")
             if ok:
                 if attempt:
                     self.bus_stats.add_recovered_ping()
@@ -362,6 +367,9 @@ class CD3217Analyzer:
         if not self._register_suspicious(offset, read):
             return read
         self.bus_stats.contaminated_rereads += 1
+        if debuglog.is_enabled():
+            debuglog.log("REG 0x%02X@0x%02X garbled (%s) — re-reading",
+                         address, offset, read.raw_bytes[:8].hex(" "))
         for _ in range(self.REG_RETRIES):
             time.sleep(self.REG_RETRY_DELAY)
             retry = self.read_register(address, offset, length)
@@ -399,6 +407,8 @@ class CD3217Analyzer:
         Returns detailed DeviceResult.
         """
         result = DeviceResult(address=address, timestamp=datetime.now().isoformat())
+        if debuglog.is_enabled():
+            debuglog.log("DIAG 0x%02X start", address)
         # S3: snapshot the flakiness counters so we can tell at the end
         # whether THIS diagnosis itself hit recovered flakiness.
         flaky_before = (self.bus_stats.ping_recovered,
@@ -442,9 +452,17 @@ class CD3217Analyzer:
 
         corrupt = _suspicious_count(result.registers)
         if corrupt > 3:
+            if debuglog.is_enabled():
+                debuglog.log("DIAG 0x%02X %d/%d registers corrupt — full "
+                             "re-read pass", address, corrupt,
+                             len(result.registers))
             time.sleep(self.REG_RETRY_DELAY * 3)
             re_read = self.read_all_registers(address)
             if _suspicious_count(re_read) < corrupt:
+                if debuglog.is_enabled():
+                    debuglog.log("DIAG 0x%02X re-read clean (%d suspicious) "
+                                 "— keeping second snapshot", address,
+                                 _suspicious_count(re_read))
                 result.registers = re_read
 
         # Step 3: Validate Vendor ID
@@ -564,6 +582,10 @@ class CD3217Analyzer:
                 corruption_count += 1
 
         if corruption_count > 3:
+            if debuglog.is_enabled():
+                debuglog.log("DIAG 0x%02X CORRUPTED_REGISTERS (%d) — still "
+                             "garbled after re-read: chip fault or hard bus "
+                             "problem", address, corruption_count)
             result.faults.append(FaultType.CORRUPTED_REGISTERS)
             result.fault_details.append(
                 f"{corruption_count} registers returned suspicious values "
@@ -588,7 +610,18 @@ class CD3217Analyzer:
             # S3: this diagnosis hit recovered flakiness — let the bus
             # settle before the next device starts reading.
             time.sleep(self.ADAPTIVE_SETTLE)
+            if debuglog.is_enabled():
+                debuglog.log("DIAG 0x%02X flaky (recovered ping=%d, garbled "
+                             "re-read=%d) — adaptive settle %.2fs",
+                             address, flaky_now[0] - flaky_before[0],
+                             flaky_now[1] - flaky_before[1],
+                             self.ADAPTIVE_SETTLE)
 
+        if debuglog.is_enabled():
+            debuglog.log("DIAG 0x%02X done: %s score=%d faults=%s %.0fms",
+                         address, result.health.value, result.health_score,
+                         [f.value for f in result.faults],
+                         result.scan_time_ms)
         return result
 
     # ── Socket expectations (chip-placement validation) ────────────────
