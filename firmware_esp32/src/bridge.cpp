@@ -249,6 +249,23 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
       sendResp_(0x06, resp, 3);
       break;
     }
+    case 0x07: {
+      // I2CFREQ: [freq LE32 Hz] -> [status]. Sets the I2C clock for the
+      // bus-speed stress probe. Values outside 10k..400k Hz (the TI
+      // TPS6598x slave-mode max) reset to the default 100 kHz.
+      if (plen < 4) {
+        uint8_t r = 0xFF;
+        sendResp_(0x07, &r, 1);
+        break;
+      }
+      uint32_t hz = (uint32_t)pl[0] | ((uint32_t)pl[1] << 8) |
+                    ((uint32_t)pl[2] << 16) | ((uint32_t)pl[3] << 24);
+      if (hz < 10000 || hz > 400000) hz = 100000;
+      Wire.setClock(hz);
+      uint8_t r = 0x00;
+      sendResp_(0x07, &r, 1);
+      break;
+    }
     case 0x05: {
       // INFO: [boardlen][board][sda][scl][spi_sck][spi_miso][spi_mosi]
       //       [spi_cs][hw][uart_rx][verlen][version]

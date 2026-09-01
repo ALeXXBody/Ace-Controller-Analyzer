@@ -34,6 +34,7 @@ CMD_WRITE = 0x03
 CMD_PING = 0x04
 CMD_INFO = 0x05
 CMD_BUS_CHECK = 0x06       # -> [status][sda][scl] idle levels (1=HIGH)
+CMD_I2C_FREQ = 0x07        # [freq LE32 Hz] -> [status]; stress-probe clock
 CMD_UART_SETUP = 0x20      # [baud LE32][pin] -> [status]; baud 0 = stop
 CMD_UART_READ = 0x21       # -> [n][n bytes]
 CMD_UART_AUTOBAUD = 0x24   # [pin] -> [status][width_us LE32]
@@ -277,6 +278,22 @@ class UsbBridgeAdapter(I2CAdapter):
             raise IOError("Board did not answer BUSCHK — firmware predates "
                           "it; update the board firmware first")
         return {"sda": resp[1], "scl": resp[2]}
+
+    def set_i2c_clock(self, hz: int) -> None:
+        """Change the bridge's I2C clock (bus-speed stress probe support).
+
+        The firmware clamps to 10k–400k Hz (TI TPS6598x slave-mode max)
+        and resets out-of-range values to 100 kHz. The analyzer board runs
+        at 100 kHz by default; stress tests MUST restore it afterwards
+        (CD3217Analyzer.stress_test_margin does, in a finally block).
+
+        Raises IOError on old firmware that predates I2CFREQ.
+        """
+        pl = struct.pack("<I", int(hz) & 0xFFFFFFFF)
+        resp = self._transact(CMD_I2C_FREQ, pl)
+        if not resp or resp[0] != 0x00:
+            raise IOError("Board refused the I2C clock change — firmware "
+                          "predates I2CFREQ; update the board firmware")
 
     # ---- UART RX sniffing ---------------------------------------------------
 

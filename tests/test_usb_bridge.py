@@ -160,6 +160,23 @@ class TestUsbBridgeAdapter(unittest.TestCase):
         with self.assertRaises(IOError):
             adapter.bus_check()
 
+    def test_set_i2c_clock_ok(self):
+        """S1: I2CFREQ payload is the frequency as LE32."""
+        import struct
+        from cd3217_analyzer.usb_bridge import CMD_I2C_FREQ
+        adapter, fake = self.make_adapter(
+            [make_response(CMD_I2C_FREQ, b"\x00")]
+        )
+        adapter.set_i2c_clock(400_000)
+        frame = fake.write_calls[-1]
+        self.assertEqual(frame[3:7], struct.pack("<I", 400_000))
+
+    def test_set_i2c_clock_old_firmware_raises(self):
+        """S1: firmware without I2CFREQ support errors with guidance."""
+        adapter, fake = self.make_adapter([])
+        with self.assertRaises(IOError):
+            adapter.set_i2c_clock(400_000)
+
     def test_read_error_raises(self):
         adapter, fake = self.make_adapter([make_response(CMD_READ, bytes([0xFF]))])
         with self.assertRaises(OSError):

@@ -197,6 +197,12 @@ class CD3217Analyzer:
     REG_RETRY_DELAY = 0.05      # s before re-reading a suspicious register
     REG_RETRIES = 2             # re-read attempts for identity registers
     BOOT_SETTLE_DELAY = 0.5     # s before re-checking a BOOT mode read
+    # S3 adaptive settle: when a diagnosis itself hit flakiness (recovered
+    # ping / garbled read), let the bus settle before the next device so
+    # the tail of the garble cannot contaminate it — instead of a fixed
+    # inter-device delay for every scan.
+    ADAPTIVE_PING_SETTLE = 0.05  # s after a ping that only ACKed on retry
+    ADAPTIVE_SETTLE = 0.25       # s after a diagnosis that saw flakiness
 
     def __init__(self, adapter: I2CAdapter, addresses: Optional[List[int]] = None):
         self.adapter = adapter
@@ -282,6 +288,9 @@ class CD3217Analyzer:
             if ok:
                 if attempt:
                     self.bus_stats.add_recovered_ping()
+                    # S3: the recovered NACK may leave the bus mid-settle —
+                    # give it a beat before the first register read.
+                    time.sleep(self.ADAPTIVE_PING_SETTLE)
                 return True
             if attempt < self.PING_RETRIES:
                 time.sleep(self.PING_RETRY_DELAY)
@@ -380,6 +389,10 @@ class CD3217Analyzer:
         Returns detailed DeviceResult.
         """
         result = DeviceResult(address=address, timestamp=datetime.now().isoformat())
+        # S3: snapshot the flakiness counters so we can tell at the end
+        # whether THIS diagnosis itself hit recovered flakiness.
+        flaky_before = (self.bus_stats.ping_recovered,
+                        self.bus_stats.contaminated_rereads)
 
         # Step 1: Connectivity check (retried: a single NACK right after
         # another device failed does NOT mean the chip is dead)
@@ -536,6 +549,13 @@ class CD3217Analyzer:
             result.health = HealthStatus.FAIL
         else:
             result.health = HealthStatus.WARN
+
+        flaky_now = (self.bus_stats.ping_recovered,
+                     self.bus_stats.contaminated_rereads)
+        if flaky_now != flaky_before:
+            # S3: this diagnosis hit recovered flakiness — let the bus
+            # settle before the next device starts reading.
+            time.sleep(self.ADAPTIVE_SETTLE)
 
         return result
 
@@ -823,6 +843,88 @@ class CD3217Analyzer:
         else:
             msg += "\n  Bus clean: no NACKs or garbled reads recorded."
         return msg
+
+    # Identity registers used for the bus-speed stress comparison.
+    STRESS_IDENTITY_REGS = (0x00, 0x01, 0x03, 0x04)
+
+    def _stress_snapshot(self, address: int) -> Dict[int, bool]:
+        """One pass of clean/garbled verdicts over the identity registers."""
+        snaps = {}
+        for reg in self.STRESS_IDENTITY_REGS:
+            read = self._read_register_clean(address, reg, 4)
+            snaps[reg] = (read is not None
+                          and not self._register_suspicious(reg, read))
+        return snaps
+
+    def stress_test_margin(self, address: int, iterations: int = 3) -> dict:
+        """S1 bus-speed stress probe: identity reads at 100 kHz vs 400 kHz.
+
+        A chip that reads clean at BOTH speeds has ample timing margin
+        (headroom within the TI TPS6598x 400 kHz / 400 pF bus spec). One
+        that garbles at 400 kHz while staying clean at 100 kHz has a
+        marginal bus — probe capacitance eats rise-time margin (TI
+        SLVA689): shorten the probe leads, add ~100 Ω series resistors,
+        verify the pull-ups.
+
+        The clock is ALWAYS restored to 100 kHz (finally), and the baseline
+        must be clean before the stress phase — a garbled 100 kHz baseline
+        is a bus/chip problem, not a margin signal.
+
+        Returns {"supported": bool, "verdict": str, "detail": str}.
+        Verdicts: ample-margin | marginal | bus-problem | no-response |
+        unavailable (FTDI/CH341/SMBus adapters can't change clock).
+        """
+        if not hasattr(self.adapter, "set_i2c_clock"):
+            return {
+                "supported": False, "verdict": "unavailable",
+                "detail": ("needs the analyzer board (USB bridge); FTDI/"
+                           "CH341/SMBus adapters cannot change the I2C "
+                           "clock"),
+            }
+        if not self._ping_with_retry(address):
+            return {
+                "supported": True, "verdict": "no-response",
+                "detail": "chip does not respond — stress test not "
+                          "applicable; check power (VIN_3V3/VBUS) first",
+            }
+        base = self._stress_snapshot(address)
+        if not all(base.values()):
+            return {
+                "supported": True, "verdict": "bus-problem",
+                "detail": ("identity reads already fail/garble at 100 kHz — "
+                           "fix the bus or chip first (see per-chip faults); "
+                           "no clock change was performed"),
+            }
+        fast_clean = True
+        garbled: List[int] = []
+        try:
+            self.adapter.set_i2c_clock(400_000)
+            for _ in range(max(1, iterations)):
+                for reg, ok in self._stress_snapshot(address).items():
+                    if not ok:
+                        fast_clean = False
+                        if reg not in garbled:
+                            garbled.append(reg)
+        finally:
+            try:
+                self.adapter.set_i2c_clock(100_000)
+            except Exception:
+                pass
+        if fast_clean:
+            return {
+                "supported": True, "verdict": "ample-margin",
+                "detail": ("identity reads clean at BOTH 100 kHz and "
+                           "400 kHz — ample timing margin (headroom within "
+                           "the TI 400 kHz / 400 pF bus spec)"),
+            }
+        return {
+            "supported": True, "verdict": "marginal",
+            "detail": ("clean at 100 kHz but garbled at 400 kHz ("
+                       + ", ".join(f"0x{r:02X}" for r in sorted(garbled))
+                       + ") — bus capacitance eats rise-time margin (TI "
+                       "SLVA689): shorten probe leads, add ~100 Ω series "
+                       "resistors, verify pull-ups"),
+        }
 
     def register_dump(self, address: int) -> str:
         """Dump all readable registers from a device as formatted text."""

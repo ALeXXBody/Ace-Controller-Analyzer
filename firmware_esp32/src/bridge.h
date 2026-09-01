@@ -19,6 +19,10 @@
  *                                     SDA/SCL idle levels (1 = HIGH = pulled
  *                                     up/healthy, 0 = held LOW by a stuck
  *                                     chip/wiring). Temporarily detaches Wire.
+ *   0x07 I2CFREQ req: [freq LE32 Hz]  resp: [status]
+ *                                     Set the I2C clock for the bus-speed
+ *                                     stress probe (clamped 10k..400k Hz,
+ *                                     out-of-range resets to 100k).
  *   0x10 SPIXFR req: [tx bytes...] (≤240) resp: [status][rx bytes...]
  *                                       full-duplex SPI exchange with CS
  *                                       wrapped around it (SPI flash backend)

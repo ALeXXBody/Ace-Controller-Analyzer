@@ -668,6 +668,11 @@ class Application(ctk.CTk):
             hover_color=C["btn_hover"], command=self._dump_selected
         )
         self.btn_dump.pack(side="left", padx=(0, 4))
+        self.btn_stress = ctk.CTkButton(
+            act, text="Stress", width=74, height=30, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._stress_selected
+        )
+        self.btn_stress.pack(side="left", padx=(0, 4))
         self.btn_export = ctk.CTkButton(
             act, text="Export JSON", width=100, height=30, fg_color=C["btn"],
             hover_color=C["btn_hover"], command=self._save_json
@@ -2079,6 +2084,29 @@ class Application(ctk.CTk):
         model_addrs = [p.address for p in self.current_model.positions]
         extras = [a for a in found if a not in model_addrs]
         return model_addrs + extras
+
+    def _stress_selected(self):
+        """S1: bus-speed stress probe on the selected device (100k vs 400k)."""
+        addr = self.selected_address
+        if addr is None:
+            self.log("Select a device first (click a row).", "warn")
+            return
+        if not self._check_conn():
+            return
+        self._set_busy(True, f"Stress test {format_hex_addr(addr)}...")
+        self.log(f"Stress test {format_hex_addr(addr)}: identity reads at "
+                 "100 kHz vs 400 kHz...")
+
+        def work():
+            analyzer = CD3217Analyzer(self.adapter, addresses=[addr])
+            res = analyzer.stress_test_margin(addr)
+            lvl = {"ample-margin": "ok", "marginal": "warn",
+                   "bus-problem": "err", "no-response": "warn",
+                   "unavailable": "warn"}.get(res["verdict"], "info")
+            self.log(f"Stress test {format_hex_addr(addr)} "
+                     f"[{res['verdict']}]: {res['detail']}", lvl)
+
+        self._run_bg(work, "Stress test complete")
 
     def _bus_check(self):
         """F4: measure SDA/SCL idle levels through the board bridge."""

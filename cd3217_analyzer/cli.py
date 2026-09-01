@@ -448,6 +448,14 @@ def cmd_export(args) -> None:
             sys.exit(1)
 
 
+def cmd_stress(analyzer: CD3217Analyzer, address: int) -> None:
+    """Handle --stress: bus-speed margin probe (100 kHz vs 400 kHz)."""
+    res = analyzer.stress_test_margin(address)
+    print(f"Stress test 0x{address:02X}: [{res['verdict']}]")
+    print(f"  {res['detail']}")
+    sys.exit(0 if res["verdict"] == "ample-margin" else 1)
+
+
 def cmd_bus_check(args) -> None:
     """Handle --bus-check: I2C idle levels through a connected board."""
     from .usb_bridge import (UsbBridgeAdapter, list_bridge_ports,
@@ -842,6 +850,11 @@ Examples:
                        help="Measure the I2C lines' idle levels through a "
                             "connected board (1=HIGH healthy, 0=held LOW) "
                             "and exit")
+    group.add_argument("--stress", metavar="ADDR",
+                       help="Bus-speed stress probe on ADDR: identity "
+                            "registers re-read at 100 kHz vs 400 kHz; "
+                            "reports the timing-margin verdict (board "
+                            "adapter only)")
     group.add_argument("--board-update", action="store_true",
                        help="Update a connected board's firmware from the "
                             "latest GitHub release (auto-detects the board)")
@@ -1015,6 +1028,8 @@ Examples:
                 cmd_full_report(analyzer, args.output)
             elif args.batch:
                 cmd_batch(analyzer, count=args.count, output=args.output)
+            elif args.stress:
+                cmd_stress(analyzer, parse_hex_address(args.stress))
             elif args.otp_scan:
                 cmd_otp_scan(analyzer, parse_hex_address(args.otp_scan), args.output)
             elif args.otp_export:

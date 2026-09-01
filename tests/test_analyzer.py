@@ -735,6 +735,148 @@ class TestDeviceInfo(unittest.TestCase):
         self.assertEqual(d["fw_variant"], "ZACE2-J316P01P")
 
 
+class _BridgeMock:
+    """Bridge adapter stand-in with controllable clock + register data."""
+
+    def __init__(self, rb, ping=True, with_clock=True):
+        self._rb = rb
+        self._ping = ping
+        self.clocks = []
+        self.hz = 100_000
+        if with_clock:
+            self.set_i2c_clock = self._set_clock
+
+    def _set_clock(self, hz):
+        self.hz = hz
+        self.clocks.append(hz)
+
+    def open(self):
+        pass
+
+    def ping(self, addr):
+        return self._ping
+
+    def read_bytes(self, addr, reg, length):
+        return self._rb(reg, length)[:length]
+
+
+def _clean_regs(holder=None):
+    """Register data: clean at 100 kHz; when ``holder`` is given, mode
+    register garbles at >100 kHz (the marginal-bus scenario)."""
+    def rb(reg, length):
+        if reg == 0x00:
+            return bytes([0x51, 0x04, 0x00, 0x00])
+        if reg == 0x01:
+            return bytes([0x04, 0x18, 0x32, 0xCD])
+        if reg == 0x03:
+            if holder is not None and holder.hz > 100_000:
+                return bytes([0xFF, 0x41, 0x50, 0x50])  # garbled top byte
+            return bytes([0x20, 0x41, 0x50, 0x50])      # "APP "
+        if reg == 0x04:
+            return bytes([0x20, 0x49, 0x32, 0x43])      # "I2C"
+        if reg == 0x2F:
+            return (b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"
+                    + b"\x00" * 4)[:length]
+        return bytes([0x00] * length)
+    return rb
+
+
+class TestStressMargin(unittest.TestCase):
+    """S1: bus-speed stress probe verdicts + clock restoration."""
+
+    def test_ample_margin_restores_clock(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        mock = _BridgeMock(_clean_regs())
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        res = an.stress_test_margin(0x38)
+        self.assertEqual(res["verdict"], "ample-margin")
+        self.assertEqual(mock.clocks, [400_000, 100_000])
+
+    def test_marginal_garbles_only_at_400k(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        mock = _BridgeMock(lambda r, l: b"\x00" * l)
+        mock._rb = _clean_regs(mock)          # rb watches mock.hz
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        res = an.stress_test_margin(0x38)
+        self.assertEqual(res["verdict"], "marginal")
+        self.assertIn("0x03", res["detail"])
+        self.assertIn("SLVA689", res["detail"])
+        self.assertEqual(mock.clocks, [400_000, 100_000])
+
+    def test_bus_problem_leaves_clock_untouched(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+
+        def rb(reg, length):
+            if reg in (0x00, 0x01, 0x03, 0x04):
+                return bytes([0xFF, 0xFF, 0xFF, 0xFF])
+            return bytes([0x00] * length)
+
+        mock = _BridgeMock(rb)
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        res = an.stress_test_margin(0x38)
+        self.assertEqual(res["verdict"], "bus-problem")
+        self.assertEqual(mock.clocks, [])     # no clock change performed
+
+    def test_no_response_verdict(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        mock = _BridgeMock(_clean_regs(), ping=False)
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        res = an.stress_test_margin(0x38)
+        self.assertEqual(res["verdict"], "no-response")
+        self.assertEqual(mock.clocks, [])
+
+    def test_unavailable_without_bridge(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        mock = _BridgeMock(_clean_regs(), with_clock=False)
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        res = an.stress_test_margin(0x38)
+        self.assertEqual(res["verdict"], "unavailable")
+        self.assertFalse(res["supported"])
+
+
+class TestAdaptiveSettle(unittest.TestCase):
+    """S3: settle sleeps only after recovered flakiness."""
+
+    @staticmethod
+    def _rb_all_clean(addr, reg, length):
+        if reg == 0x00:
+            return bytes([0x51, 0x04, 0x00, 0x00])
+        if reg == 0x01:
+            return bytes([0x04, 0x18, 0x32, 0xCD])
+        if reg in (0x03, 0x04):
+            return bytes([0x20, 0x41, 0x50, 0x50])
+        if reg == 0x2F:
+            return (b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"
+                    + b"\x00" * 4)[:length]
+        return bytes([0x00] * length)
+
+    def _mk(self, rb, ping=True):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        mock = MagicMock()
+        mock.ping.return_value = ping
+        mock.read_bytes.side_effect = rb
+        return CD3217Analyzer(mock, addresses=[0x38])
+
+    def test_adaptive_settle_after_flaky_diagnosis(self):
+        from unittest.mock import patch
+        an = self._mk(self._rb_all_clean)
+        an.adapter.ping.side_effect = [False, True, True]   # recovered ping
+        with patch("cd3217_analyzer.analyzer.time.sleep") as slp:
+            an.diagnose_device(0x38)
+        delays = [c.args[0] for c in slp.call_args_list]
+        self.assertIn(an.ADAPTIVE_PING_SETTLE, delays)      # after retry ping
+        self.assertIn(an.ADAPTIVE_SETTLE, delays)           # diagnosis-level
+
+    def test_no_adaptive_settle_on_clean_diagnosis(self):
+        from unittest.mock import patch
+        an = self._mk(self._rb_all_clean)
+        with patch("cd3217_analyzer.analyzer.time.sleep") as slp:
+            an.diagnose_device(0x38)
+        delays = [c.args[0] for c in slp.call_args_list]
+        self.assertNotIn(an.ADAPTIVE_PING_SETTLE, delays)
+        self.assertNotIn(an.ADAPTIVE_SETTLE, delays)
+
+
 class TestReport(unittest.TestCase):
     """Test reporting functions."""
 

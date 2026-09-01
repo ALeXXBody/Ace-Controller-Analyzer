@@ -10,7 +10,7 @@
 #define CD3217_FW_VERSION_H
 
 #ifndef CD3217_FW_VERSION
-#define CD3217_FW_VERSION "0.6.26"
+#define CD3217_FW_VERSION "0.7.0"
 #endif
 
 #endif  // CD3217_FW_VERSION_H
