@@ -164,6 +164,55 @@ class TestMacBoards(unittest.TestCase):
         by_addr = check_model_placement(empty, [0x38])
         self.assertEqual(by_addr[0x38]["verdict"], "UNEXPECTED")
 
+    def test_build_placement_guide_full_map(self):
+        """F1: every responding socket is matched to its expected ref."""
+        from cd3217_analyzer.models import build_placement_guide, get_model
+        m = get_model("A2251")
+        lines = build_placement_guide(m, [0x38, 0x3F, 0x3B, 0x3C])
+        self.assertTrue(lines[0].startswith(
+            "Placement guide — MacBook Pro 13\" i5 (2020, Intel, 4-port)"))
+        self.assertIn("820-01949", lines[0])
+        joined = "\n".join(lines)
+        self.assertIn("socket U3100_X", joined)
+        self.assertIn("socket U3100_T", joined)
+        self.assertIn("socket U3100_W", joined)
+        self.assertIn("socket U3100_R", joined)
+        for a in (0x38, 0x3F, 0x3B, 0x3C):
+            self.assertIn(f"0x{a:02X}: answers", joined)
+
+    def test_build_placement_guide_donor_matching(self):
+        """F1: an OTP donor that answers at its burned address is pointed
+        at the socket that wants that address; empty OTP sockets get
+        try-and-rescan instructions."""
+        from cd3217_analyzer.models import build_placement_guide, get_model
+        m = get_model("A2251")
+        # two donors answer; the OTP sockets they belong to are covered,
+        # but the vanilla sockets are still empty
+        lines = build_placement_guide(m, [0x3B, 0x3C])
+        joined = "\n".join(lines)
+        self.assertIn("0x3B: answers — socket U3100_W", joined)
+        self.assertIn("0x3C: answers — socket U3100_R", joined)
+        self.assertIn("U3100_X (strap GND): still empty", joined)
+        self.assertIn("U3100_T (strap float): still empty", joined)
+
+    def test_build_placement_guide_unexpected_donor(self):
+        """F1: a chip answering at an address this board doesn't use is
+        flagged as a wrong donor."""
+        from cd3217_analyzer.models import build_placement_guide, get_model
+        m = get_model("A2251")
+        lines = build_placement_guide(m, [0x3B, 0x3C, 0x7E])
+        joined = "\n".join(lines)
+        self.assertIn("0x7E: answers, but no socket", joined)
+
+    def test_build_placement_guide_skips_broadcast_and_empty_model(self):
+        from cd3217_analyzer.models import (MacBookModel,
+                                            build_placement_guide)
+        self.assertEqual(build_placement_guide(None, [0x38]), [])
+        m = MacBookModel("X", "T", "000", 1, [])
+        lines = build_placement_guide(m, [0x6B, 0x38])
+        self.assertIn("0x38: answers, but no socket", "\n".join(lines))
+        self.assertNotIn("0x6B", "\n".join(lines))
+
 
 if __name__ == "__main__":
     unittest.main()

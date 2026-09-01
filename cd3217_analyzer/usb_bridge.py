@@ -33,6 +33,7 @@ CMD_READ = 0x02
 CMD_WRITE = 0x03
 CMD_PING = 0x04
 CMD_INFO = 0x05
+CMD_BUS_CHECK = 0x06       # -> [status][sda][scl] idle levels (1=HIGH)
 CMD_UART_SETUP = 0x20      # [baud LE32][pin] -> [status]; baud 0 = stop
 CMD_UART_READ = 0x21       # -> [n][n bytes]
 CMD_UART_AUTOBAUD = 0x24   # [pin] -> [status][width_us LE32]
@@ -257,6 +258,25 @@ class UsbBridgeAdapter(I2CAdapter):
             return bool(resp) and resp[0] == 0x51
         except Exception:
             return False
+
+    # ---- bus integrity ------------------------------------------------------
+
+    def bus_check(self) -> dict:
+        """Measure the I2C lines' idle levels through the bridge.
+
+        Returns {"sda": 0|1, "scl": 0|1} — 1 means the line idles HIGH
+        (pulled up / healthy), 0 means it is held LOW: a chip is stuck on
+        the bus, or the line is shorted/absent. Runs the check with the
+        board otherwise idle (the Wire peripheral is briefly detached).
+
+        Raises IOError on old firmware that predates BUSCHK (update the
+        board via the Adapter tab / --board-update).
+        """
+        resp = self._transact(CMD_BUS_CHECK)
+        if not resp or len(resp) < 3 or resp[0] != 0x00:
+            raise IOError("Board did not answer BUSCHK — firmware predates "
+                          "it; update the board firmware first")
+        return {"sda": resp[1], "scl": resp[2]}
 
     # ---- UART RX sniffing ---------------------------------------------------
 

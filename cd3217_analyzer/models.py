@@ -310,3 +310,60 @@ def check_model_placement(model: MacBookModel,
                             "or donor with the wrong burned address"),
             }
     return out
+
+
+def build_placement_guide(model: MacBookModel,
+                          responding_addresses) -> List[str]:
+    """Step-by-step donor placement guidance from a live scan + model map.
+
+    The repair-shop workflow this automates (repair.wiki donor procedure +
+    badcaps A2251 thread): an OTP donor ALWAYS answers at its burned address
+    no matter which socket it sits in, so a scan reveals which socket it
+    belongs to — the one whose expected address matches. Vanilla (strap)
+    chips instead strap to the socket's address once powered from VIN_3V3.
+
+    Returns human-readable instruction lines; empty ``model`` yields [].
+    """
+    if not model:
+        return []
+    broadcast = 0x6B  # ACE2 all-call — not a device
+    pos_by_addr = {p.address: p for p in model.positions}
+    responding = sorted(set(int(a) for a in responding_addresses))
+    lines = [
+        f"Placement guide — {model.name} ({model.board_id})",
+        "Power the board from VBUS (charger) or VIN_3V3 so the chips can "
+        "boot and answer the bus.",
+    ]
+    for addr in responding:
+        if addr == broadcast:
+            continue
+        p = pos_by_addr.get(addr)
+        if p is None:
+            lines.append(
+                f"0x{addr:02X}: answers, but no socket on this board wants "
+                "this address — wrong donor, or an OTP chip burned for a "
+                "different board/model.")
+        else:
+            kind = (f"strap {p.addr_pin}" if p.addressing == "strap"
+                    else "OTP — burned address")
+            lines.append(
+                f"0x{addr:02X}: answers — socket {p.ref} wants exactly this "
+                f"address ({kind}). If this chip is not physically in "
+                f"{p.ref}, move it there: it answers at its strapped/burned "
+                "address regardless of which socket it sits in.")
+    for p in model.positions:
+        if p.address in responding or p.address == broadcast:
+            continue
+        if p.addressing == "otp":
+            lines.append(
+                f"{p.ref} (OTP, expects 0x{p.address:02X}): still empty. "
+                "Place any donor chip and re-scan: if it answers at "
+                f"0x{p.address:02X} it belongs here; if it answers at a "
+                "different address, move it to the socket that wants that "
+                "address instead.")
+        else:
+            lines.append(
+                f"{p.ref} (strap {p.addr_pin or '—'}): still empty — a "
+                f"vanilla chip will strap to 0x{p.address:02X} once it is "
+                "powered from VIN_3V3.")
+    return lines

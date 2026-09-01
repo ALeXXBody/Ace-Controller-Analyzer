@@ -15,6 +15,10 @@
  *   0x03 WRITE  req: [addr][reg][dlen][data...] resp: [status]
  *   0x04 PING   req: -                resp: [0x51]
  *   0x05 INFO   req: -                resp: [boardlen][board][sda][scl]
+ *   0x06 BUSCHK req: -                resp: [status][sda][scl]
+ *                                     SDA/SCL idle levels (1 = HIGH = pulled
+ *                                     up/healthy, 0 = held LOW by a stuck
+ *                                     chip/wiring). Temporarily detaches Wire.
  *   0x10 SPIXFR req: [tx bytes...] (≤240) resp: [status][rx bytes...]
  *                                       full-duplex SPI exchange with CS
  *                                       wrapped around it (SPI flash backend)
@@ -61,6 +65,7 @@ class UsbBridge {
   void runRead_(const uint8_t *f, size_t flen);
   void runWrite_(const uint8_t *f, size_t flen);
   void reattachWire_();
+  void busIdleLevels_(uint8_t &sda, uint8_t &scl);
   void recoverBus_();
 };
 

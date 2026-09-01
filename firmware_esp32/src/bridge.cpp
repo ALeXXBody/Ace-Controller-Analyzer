@@ -170,6 +170,17 @@ void UsbBridge::reattachWire_() {
 #endif
 }
 
+// Detach Wire and measure both I2C lines' idle levels (1 = HIGH, 0 = LOW).
+// Shared by BUSCHK and the bus-clear recovery path.
+void UsbBridge::busIdleLevels_(uint8_t &sda, uint8_t &scl) {
+  Wire.end();
+  pinMode(I2C_SDA_GPIO, INPUT_PULLUP);
+  pinMode(I2C_SCL_GPIO, INPUT_PULLUP);
+  delayMicroseconds(10);
+  sda = digitalRead(I2C_SDA_GPIO) ? 1 : 0;
+  scl = digitalRead(I2C_SCL_GPIO) ? 1 : 0;
+}
+
 // I2C bus clear (TI SCPA069 / NXP AN10241 style), for probing broken boards.
 //
 // When a probed chip is dead, half-powered or mid-garbled-byte, it can hold
@@ -182,12 +193,10 @@ void UsbBridge::reattachWire_() {
 // devices), synthesize a STOP, then re-attach Wire. On a healthy bus SDA is
 // high and this returns after two pin reads, touching nothing.
 void UsbBridge::recoverBus_() {
-  Wire.end();
-  pinMode(I2C_SDA_GPIO, INPUT_PULLUP);
-  pinMode(I2C_SCL_GPIO, INPUT_PULLUP);
-  delayMicroseconds(10);
+  uint8_t sda_lvl, scl_lvl;
+  busIdleLevels_(sda_lvl, scl_lvl);
 
-  if (digitalRead(I2C_SDA_GPIO) == HIGH) {
+  if (sda_lvl) {
     reattachWire_();                      // not stuck — nothing to clear
     return;
   }
@@ -229,6 +238,17 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
     case 0x02: runRead_(pl, plen); break;
     case 0x03: runWrite_(pl, plen); break;
     case 0x04: { uint8_t r = 0x51; sendResp_(0x04, &r, 1); break; }
+    case 0x06: {
+      // BUSCHK: measure SDA/SCL idle levels. resp = [status][sda][scl]
+      // 1 = idle HIGH (pulled up / healthy), 0 = held LOW (a chip or
+      // wiring is stuck on the bus, or the line is absent/shorted).
+      uint8_t sda_lvl, scl_lvl;
+      busIdleLevels_(sda_lvl, scl_lvl);
+      uint8_t resp[3] = {0x00, sda_lvl, scl_lvl};
+      reattachWire_();
+      sendResp_(0x06, resp, 3);
+      break;
+    }
     case 0x05: {
       // INFO: [boardlen][board][sda][scl][spi_sck][spi_miso][spi_mosi]
       //       [spi_cs][hw][uart_rx][verlen][version]

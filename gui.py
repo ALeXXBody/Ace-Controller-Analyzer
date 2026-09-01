@@ -33,6 +33,7 @@ from cd3217_analyzer.analyzer import (
     CD3217Analyzer,
     DeviceResult,
     DiagnosticReport,
+    FaultType,
     HealthStatus,
 )
 from cd3217_analyzer.flash import FlashInfo, SPIFlash
@@ -643,7 +644,12 @@ class Application(ctk.CTk):
             row, text="Diagnose All", width=100, height=32, fg_color=C["btn"],
             hover_color=C["btn_hover"], command=self._refresh_devices
         )
-        self.btn_refresh.pack(side="left")
+        self.btn_refresh.pack(side="left", padx=(0, 4))
+        self.btn_bus_check = ctk.CTkButton(
+            row, text="Bus Check", width=84, height=32, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._bus_check
+        )
+        self.btn_bus_check.pack(side="left")
 
         self.device_frame = ctk.CTkScrollableFrame(
             parent, fg_color=C["entry"], corner_radius=10
@@ -1259,6 +1265,10 @@ class Application(ctk.CTk):
             inp, text="Calculate", width=100, fg_color=C["accent"], text_color="#041018",
             hover_color=C["accent_dim"], command=self._calc_straps
         ).grid(row=0, column=2, rowspan=2, padx=16, pady=8)
+        ctk.CTkButton(
+            inp, text="Placement guide", width=110, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._placement_guide
+        ).grid(row=0, column=3, rowspan=2, padx=(0, 8), pady=8)
 
         res = ctk.CTkFrame(tab, fg_color=C["card"], corner_radius=10)
         res.pack(fill="x", padx=16, pady=4)
@@ -2070,6 +2080,79 @@ class Application(ctk.CTk):
         extras = [a for a in found if a not in model_addrs]
         return model_addrs + extras
 
+    def _bus_check(self):
+        """F4: measure SDA/SCL idle levels through the board bridge."""
+        if not self._check_conn():
+            return
+        self._set_busy(True, "Bus check...")
+        self.log("Bus check: measuring SDA/SCL idle levels...")
+
+        def work():
+            try:
+                res = self.adapter.bus_check()
+            except Exception as e:
+                self.log(f"Bus check failed: {e}", "err")
+                return
+            self.log(
+                "SDA idle HIGH ✓ (pulled up, healthy)" if res["sda"] else
+                "SDA held LOW ✗ — a chip or wiring is stuck on the bus "
+                "(the bridge clears it on the next failed transaction)",
+                "ok" if res["sda"] else "err")
+            self.log(
+                "SCL idle HIGH ✓" if res["scl"] else
+                "SCL held LOW ✗ — line shorted/absent, or a clock-stretching "
+                "slave is wedged (power-cycle the board/chip)",
+                "ok" if res["scl"] else "err")
+
+        self._run_bg(work, "Bus check complete")
+
+    def _placement_guide(self):
+        """F1: donor placement guidance from a quick scan + model map."""
+        if not self.current_model:
+            self.log("Select a MacBook model first (Board tab).", "warn")
+            return
+        if not self._check_conn():
+            return
+        addrs = self._known_scan_addresses()
+        self._set_busy(True, "Placement guide scan...")
+        self.log(f"Placement guide: scanning {len(addrs)} addresses...")
+
+        def work():
+            found = [a for a in addrs if self._ping_stable(a)]
+            self.scan_results = found
+            from cd3217_analyzer.models import build_placement_guide
+            lines = build_placement_guide(self.current_model, found)
+            self.after(0, self._show_placement_guide, lines)
+
+        self._run_bg(work, "Placement guide ready")
+
+    def _show_placement_guide(self, lines):
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Donor placement guide")
+        dlg.geometry("640x460")
+        txt = ctk.CTkTextbox(dlg, font=F["mono"], fg_color=C["entry"],
+                             text_color=C["text"], wrap="word")
+        txt.pack(fill="both", expand=True, padx=12, pady=(12, 6))
+        txt.insert("1.0", "\n".join(lines))
+        txt.configure(state="disabled")
+        btns = ctk.CTkFrame(dlg, fg_color="transparent")
+        btns.pack(pady=(0, 10))
+
+        def copy():
+            self.clipboard_clear()
+            self.clipboard_append("\n".join(lines))
+            self.log("Placement guide copied to clipboard", "ok")
+
+        ctk.CTkButton(btns, text="Copy", width=80, fg_color=C["btn"],
+                      hover_color=C["btn_hover"], command=copy).pack(
+            side="left", padx=4)
+        ctk.CTkButton(btns, text="Close", width=80, fg_color=C["btn"],
+                      hover_color=C["btn_hover"], command=dlg.destroy).pack(
+            side="left", padx=4)
+        for ln in lines:
+            self.log(ln, "info" if "answers —" in ln or "empty — a" in ln
+                     else "warn")
+
     def _ping_stable(self, addr: int) -> bool:
         """Ping with one retry — the first ping after a NACKed dead address
         can fail on a healthy chip."""
@@ -2378,6 +2461,19 @@ class Application(ctk.CTk):
                 self.faults_text.insert("end", "\nDetails:\n")
                 for d in result.fault_details:
                     self.faults_text.insert("end", f"  - {d}\n")
+            if any(f == FaultType.BOOT_FAILED for f in result.faults):
+                # F3: persistent BOOT usually means the chip can't load its
+                # patch bundle from the shared SPI ROM — route the user to
+                # the ROM check the app already has.
+                self.faults_text.insert(
+                    "end",
+                    "\n→ Persistent BOOT: the chip can't load its firmware "
+                    "from the ACE ROM. Check it in the Flash tab (Detect → "
+                    "Dump) and re-program from a golden dump if needed — a "
+                    "shorted/blank ROM shows the same symptoms as a bad "
+                    "chip (repair case reports, 2025–2026).\n")
+                self.log("Persistent BOOT — check the ACE ROM (Flash tab: "
+                         "Detect + Dump)", "warn")
         self.faults_text.configure(state="disabled")
 
         try:

@@ -448,6 +448,40 @@ def cmd_export(args) -> None:
             sys.exit(1)
 
 
+def cmd_bus_check(args) -> None:
+    """Handle --bus-check: I2C idle levels through a connected board."""
+    from .usb_bridge import (UsbBridgeAdapter, list_bridge_ports,
+                             normalize_port)
+
+    port = normalize_port(args.port) if getattr(args, "port", None) else None
+    if not port:
+        ports = list_bridge_ports()
+        if not ports:
+            print("ERROR: no serial port found; plug in the board or use "
+                  "--port COMx")
+            sys.exit(1)
+        port = ports[0]
+    adapter = UsbBridgeAdapter(port=port)
+    adapter.open()
+    if not adapter.handshake():
+        adapter.close()
+        print(f"ERROR: board on {port} did not answer PING")
+        sys.exit(1)
+    try:
+        res = adapter.bus_check()
+    except Exception as e:
+        adapter.close()
+        print(f"ERROR: {e}")
+        sys.exit(1)
+    adapter.close()
+    for line, lvl in (("SDA", res["sda"]), ("SCL", res["scl"])):
+        print(f"{line} idle: {'HIGH (healthy)' if lvl else 'LOW — stuck/absent'}")
+    if not (res["sda"] and res["scl"]):
+        print("A line is held LOW: a chip is stuck on the bus or the wiring "
+              "is shorted/absent. The bridge clears a stuck bus on the next "
+              "failed transaction; otherwise power-cycle the board.")
+
+
 def cmd_uart(args) -> None:
     """Handle --uart-autobaud / --uart-sniff (RX-only UART capture)."""
     from .usb_bridge import (UsbBridgeAdapter, list_bridge_ports,
@@ -804,6 +838,10 @@ Examples:
     group.add_argument("--uart-autobaud", action="store_true",
                        help="Measure the UART line's baud through a "
                             "connected board and print it (no sniffing)")
+    group.add_argument("--bus-check", action="store_true",
+                       help="Measure the I2C lines' idle levels through a "
+                            "connected board (1=HIGH healthy, 0=held LOW) "
+                            "and exit")
     group.add_argument("--board-update", action="store_true",
                        help="Update a connected board's firmware from the "
                             "latest GitHub release (auto-detects the board)")
@@ -839,6 +877,10 @@ Examples:
     # Handle --board-update
     if args.board_update:
         cmd_board_update(args)
+
+    if args.bus_check:
+        cmd_bus_check(args)
+        return
 
     # Handle --set-token (no adapter needed)
     if args.set_token:

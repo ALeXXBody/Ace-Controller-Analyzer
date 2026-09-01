@@ -133,6 +133,33 @@ class TestUsbBridgeAdapter(unittest.TestCase):
         self.assertEqual(info["sda"], 4)
         self.assertEqual(info["scl"], 5)
 
+    def test_bus_check_healthy(self):
+        """F4: BUSCHK reports both lines idle HIGH."""
+        from cd3217_analyzer.usb_bridge import CMD_BUS_CHECK
+        adapter, fake = self.make_adapter(
+            [make_response(CMD_BUS_CHECK, bytes([0x00, 0x01, 0x01]))]
+        )
+        res = adapter.bus_check()
+        self.assertEqual(res, {"sda": 1, "scl": 1})
+
+    def test_bus_check_stuck_sda(self):
+        """F4: SDA held LOW is reported so the tool can blame the bus."""
+        from cd3217_analyzer.usb_bridge import CMD_BUS_CHECK
+        adapter, fake = self.make_adapter(
+            [make_response(CMD_BUS_CHECK, bytes([0x00, 0x00, 0x01]))]
+        )
+        res = adapter.bus_check()
+        self.assertEqual(res["sda"], 0)
+        self.assertEqual(res["scl"], 1)
+
+    def test_bus_check_old_firmware_raises(self):
+        """F4: firmware without BUSCHK support yields no matching frame —
+        the adapter must surface an actionable error."""
+        from cd3217_analyzer.usb_bridge import CMD_BUS_CHECK
+        adapter, fake = self.make_adapter([])
+        with self.assertRaises(IOError):
+            adapter.bus_check()
+
     def test_read_error_raises(self):
         adapter, fake = self.make_adapter([make_response(CMD_READ, bytes([0xFF]))])
         with self.assertRaises(OSError):
