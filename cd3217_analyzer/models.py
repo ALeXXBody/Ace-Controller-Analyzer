@@ -367,3 +367,26 @@ def build_placement_guide(model: MacBookModel,
                 f"vanilla chip will strap to 0x{p.address:02X} once it is "
                 "powered from VIN_3V3.")
     return lines
+
+
+def merge_diagnose_targets(model: Optional[MacBookModel],
+                           found) -> List[int]:
+    """Full-board target list for a "Diagnose All" pass.
+
+    A sequential full-bus scan can transiently miss chips (ACE2 emits bus
+    junk of its own; a chip that is busy or still booting NACKs the scan
+    probe). A Diagnose-All pass must therefore cover the WHOLE socket map
+    when a model is selected — a chip that only flaked during the scan is
+    recovered by the per-chip diagnose (ping retries + settle), while a
+    genuinely absent socket gets a real NO_RESPONSE verdict instead of a
+    misleading "MISSING" row.
+
+    With a model: model positions first (board order), then any found
+    extras. Without a model: the found set only (diagnosing all 14 known
+    addresses would just add NO_RESPONSE noise for absent ones).
+    """
+    found_set = sorted(set(int(a) for a in found))
+    if model is None:
+        return found_set
+    base = [p.address for p in model.positions]
+    return base + [a for a in found_set if a not in base]

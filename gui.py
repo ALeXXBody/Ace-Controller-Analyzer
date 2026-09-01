@@ -2049,7 +2049,24 @@ class Application(ctk.CTk):
         def work():
             devices = [a for a in self.adapter.scan(0x08, 0x77)
                        if a != ACE2_BROADCAST_ADDRESS]
+            # Second chance: a chip can NACK the sequential scan while it
+            # is busy or still booting — retry those model sockets with a
+            # stable ping before declaring them MISSING.
+            recovered = []
+            if self.current_model:
+                found = set(devices)
+                for p in self.current_model.positions:
+                    if p.address in found:
+                        continue
+                    if self._ping_stable(p.address):
+                        devices.append(p.address)
+                        recovered.append(p.address)
+            devices = sorted(set(devices))
             self.scan_results = devices
+            if recovered:
+                self.after(0, self.log, "Second-chance ping recovered: "
+                           + ", ".join(format_hex_addr(a) for a in recovered),
+                           "ok")
             if self.current_model:
                 expected = self._merge_expected(devices)
                 self.after(0, self._show_devices, expected, set(devices), True)
@@ -2296,12 +2313,25 @@ class Application(ctk.CTk):
         self.device_rows.clear()
 
     def _refresh_devices(self):
-        if not self._check_conn() or not self.scan_results:
+        if not self._check_conn():
+            return
+        if self.current_model:
+            # Diagnose the whole board map even if the last scan missed
+            # chips: the sequential bus scan can transiently NACK a chip
+            # that is busy/booting (ACE2 emits bus junk of its own), and a
+            # per-chip diagnose with ping retries recovers it. Diagnosing
+            # only the scan-found set produced "one good IC + the rest
+            # MISSING" even on healthy boards.
+            from cd3217_analyzer.models import merge_diagnose_targets
+            addrs = merge_diagnose_targets(self.current_model,
+                                           self.scan_results)
+        else:
             if not self.scan_results:
                 self.log("Scan first", "warn")
-            return
+                return
+            addrs = list(self.scan_results)
         self._set_busy(True, "Diagnosing all...")
-        addrs = list(self.scan_results)
+        self.log(f"Diagnose All: {len(addrs)} target(s)")
 
         def work():
             analyzer = CD3217Analyzer(self.adapter)

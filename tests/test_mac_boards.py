@@ -213,6 +213,24 @@ class TestMacBoards(unittest.TestCase):
         self.assertIn("0x38: answers, but no socket", "\n".join(lines))
         self.assertNotIn("0x6B", "\n".join(lines))
 
+    def test_merge_diagnose_targets_covers_whole_map(self):
+        """Diagnose-All regression: a scan that missed chips (transient
+        NACKs) must not shrink the target set — with a model selected the
+        WHOLE socket map is diagnosed, plus any found extras."""
+        from cd3217_analyzer.models import (get_model,
+                                            merge_diagnose_targets)
+        m = get_model("A2251")
+        # scan only saw one chip: targets must still cover all 4 sockets
+        targets = merge_diagnose_targets(m, [0x38])
+        self.assertEqual(targets, [0x38, 0x3F, 0x3B, 0x3C])
+        # found extras are appended after the map
+        targets = merge_diagnose_targets(m, [0x3B, 0x38, 0x7E])
+        self.assertEqual(targets, [0x38, 0x3F, 0x3B, 0x3C, 0x7E])
+        # no model: found set only, deduped + sorted
+        self.assertEqual(merge_diagnose_targets(None, [0x40, 0x38, 0x38]),
+                         [0x38, 0x40])
+        self.assertEqual(merge_diagnose_targets(None, []), [])
+
 
 if __name__ == "__main__":
     unittest.main()
