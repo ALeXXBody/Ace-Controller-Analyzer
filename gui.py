@@ -2335,16 +2335,61 @@ class Application(ctk.CTk):
 
         def work():
             analyzer = CD3217Analyzer(self.adapter)
+            # v0.7.2: a chip that NACKed right after the previous chip's
+            # read burst usually answers fine seconds later — exactly what
+            # the manual per-chip clicks show. Re-diagnose transport
+            # failures after a settle (keeps the best verdict, never
+            # downgrades a PASS).
+            retry_settles = (0.0, 0.8, 1.6)
             for addr in addrs:
-                try:
-                    result = analyzer.diagnose_device(addr)
-                    self._apply_socket_expectations(analyzer, result)
-                    self.devices[addr] = result
-                except Exception as e:
-                    self.after(0, self.log, f"Error {format_hex_addr(addr)}: {e}", "err")
+                best = None
+                for attempt, settle in enumerate(retry_settles, 1):
+                    if settle:
+                        time.sleep(settle)
+                    try:
+                        result = analyzer.diagnose_device(addr)
+                        self._apply_socket_expectations(analyzer, result)
+                    except Exception as e:
+                        self.after(0, self.log,
+                                   f"Error {format_hex_addr(addr)}: {e}", "err")
+                        continue
+                    rank = CD3217Analyzer._HEALTH_RANK.get(result.health, 0)
+                    if best is None or rank > CD3217Analyzer._HEALTH_RANK.get(
+                            best.health, 0):
+                        best = result
+                    if not CD3217Analyzer.is_retryable_failure(result):
+                        break
+                    if attempt < len(retry_settles):
+                        self.after(0, self.log,
+                                   f"{format_hex_addr(addr)}: no answer on "
+                                   f"pass {attempt} — settling bus, retrying...",
+                                   "warn")
+                if best is not None:
+                    self.devices[addr] = best
                 # brief pause between devices so a dead chip's NACK does not
                 # contaminate the reads of the next healthy chip
                 time.sleep(0.08)
+            # Guidance: if MOST model sockets stayed silent while extras
+            # answered elsewhere, the selected model's address map may not
+            # match this board (some maps are flagged UNVERIFIED).
+            try:
+                model_addrs = ([p.address for p in self.current_model.positions]
+                               if self.current_model else [])
+                silent = [a for a in model_addrs if self.devices.get(a)
+                          and self.devices[a].health == HealthStatus.FAIL
+                          and not self.devices[a].faults]
+                live_extra = [a for a in self.devices
+                              if a not in model_addrs
+                              and self.devices[a].responds]
+                if len(silent) >= max(2, len(model_addrs) // 2) and live_extra:
+                    self.after(0, self.log,
+                               "Most model sockets silent while chips answer "
+                               "at other addresses — the selected model's "
+                               "address map may not match this board (some "
+                               "maps are UNVERIFIED). Run Scan Bus and check "
+                               "the Straps placement guide.", "warn")
+            except Exception:
+                pass
             self._report_bus_health(analyzer)
             self.after(0, self._refresh_display)
 
@@ -3180,22 +3225,19 @@ class Application(ctk.CTk):
     # ─── Export data to GitHub (for upstream analysis) ────────────────────
 
     def _export_default_name(self) -> str:
-        """Best name for the export: selected MacBook model, else the
-        connected adapter board, else a date-stamped generic name."""
-        from cd3217_analyzer.boards import MAC_BOARDS
+        """Best name for the export: the selected MacBook model.
+
+        The interface board (Pico/ESP32 analyzer) is NOT the device under
+        test — it must never be the bundle name. Without a selected model
+        we use a date-stamped generic name the user can overwrite.
+        """
+        if self.current_model:
+            return self.current_model.model_id          # e.g. "A2251"
         mac = self.mac_picker_var.get()
         if mac:
-            for b in MAC_BOARDS.values():
-                if b.model == mac:
-                    m = re.match(r"^(A\d{3,5})", b.model)
-                    return m.group(1) if m else mac
-        try:
-            if getattr(self, "board_name_label", None):
-                nm = self.board_name_label.cget("text")
-                if nm and nm != "No board selected":
-                    return re.match(r"^(A\d{3,5}|.*)", nm).group(1)
-        except Exception:
-            pass
+            m = re.match(r"^(A\d{3,5})", mac)
+            if m:
+                return m.group(1)
         return datetime.now().strftime("Board_%Y%m%d_%H%M%S")
 
     def _export_data(self):
@@ -3338,7 +3380,8 @@ class Application(ctk.CTk):
                 uart_text = self.uart_output.get("1.0", "end").strip()
             except Exception:
                 uart_text = None
-        mac_model = self.mac_picker_var.get() or None
+        mac_model = (self.current_model.model_id if self.current_model
+                     else (self.mac_picker_var.get() or None))
         from cd3217_analyzer.export_data import (
             GitHubPushError, collect_bundle, store_token, write_bundle)
 

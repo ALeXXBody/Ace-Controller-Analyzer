@@ -877,6 +877,81 @@ class TestAdaptiveSettle(unittest.TestCase):
         self.assertNotIn(an.ADAPTIVE_SETTLE, delays)
 
 
+class TestBatchRetry(unittest.TestCase):
+    """v0.7.2: Diagnose-All retry ladder — only transport failures retry,
+    and the best verdict is kept."""
+
+    def test_retryable(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        self.assertTrue(CD3217Analyzer.is_retryable_failure(None))
+        r = MagicMock()
+        r.health = HealthStatus.FAIL
+        r.faults = [FaultType.NO_RESPONSE]
+        self.assertTrue(CD3217Analyzer.is_retryable_failure(r))
+        r.faults = [FaultType.I2C_ERROR]
+        self.assertTrue(CD3217Analyzer.is_retryable_failure(r))
+
+    def test_not_retryable(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        r = MagicMock()
+        r.health = HealthStatus.FAIL
+        r.faults = [FaultType.WRONG_VID]          # genuine wrong chip
+        self.assertFalse(CD3217Analyzer.is_retryable_failure(r))
+        r.health = HealthStatus.PASS
+        r.faults = []
+        self.assertFalse(CD3217Analyzer.is_retryable_failure(r))
+        r.health = HealthStatus.WARN
+        r.faults = [FaultType.CHIP_MISMATCH]
+        self.assertFalse(CD3217Analyzer.is_retryable_failure(r))
+
+    def test_batch_recover_transient_nack(self):
+        """A chip that NACKs on the first Diagnose-All pass recovers on a
+        later pass and the PASS verdict wins."""
+        from unittest.mock import patch
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        mock = MagicMock()
+        mock.ping.return_value = True
+        mock.read_bytes.side_effect = TestAdaptiveSettle._rb_all_clean
+
+        # pass 1: chip does not answer; pass 2: healthy
+        an = CD3217Analyzer(mock, addresses=[0x3F])
+        best = None
+        with patch("cd3217_analyzer.analyzer.time.sleep"):
+            for settle in (0.0, 0.8, 1.6):
+                result = an.diagnose_device(0x3F)
+                if best is None or CD3217Analyzer._HEALTH_RANK.get(
+                        result.health, 0) > CD3217Analyzer._HEALTH_RANK.get(
+                        best.health, 0):
+                    best = result
+                if not CD3217Analyzer.is_retryable_failure(result):
+                    break
+        self.assertEqual(best.health, HealthStatus.PASS)
+
+    def test_transient_nack_flow(self):
+        """Real ladder flow: pass 1 NO_RESPONSE (ping fails), then the chip
+        answers — best verdict must be PASS, not the first FAIL."""
+        from unittest.mock import patch
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        mock = MagicMock()
+        mock.ping.side_effect = [False, False, False,   # pass 1: dead
+                                 True, True, True]      # pass 2: answers
+        mock.read_bytes.side_effect = TestAdaptiveSettle._rb_all_clean
+        an = CD3217Analyzer(mock, addresses=[0x3F])
+        best = None
+        with patch("cd3217_analyzer.analyzer.time.sleep"):
+            for settle in (0.0, 0.8, 1.6):
+                result = an.diagnose_device(0x3F)
+                if best is None or CD3217Analyzer._HEALTH_RANK.get(
+                        result.health, 0) > CD3217Analyzer._HEALTH_RANK.get(
+                        best.health, 0):
+                    best = result
+                if not CD3217Analyzer.is_retryable_failure(result):
+                    break
+        self.assertIsNotNone(best)
+        self.assertEqual(best.health, HealthStatus.PASS)
+        self.assertEqual(best.address, 0x3F)
+
+
 class TestReport(unittest.TestCase):
     """Test reporting functions."""
 

@@ -974,6 +974,28 @@ class CD3217Analyzer:
             return "OTP-ed (VID 0x2804 — Apple-programmed)"
         return f"Unknown VID 0x{vid:04X}"
 
+    # Verdict ranking for keep-best logic across retry passes.
+    _HEALTH_RANK = {HealthStatus.PASS: 3, HealthStatus.WARN: 2,
+                    HealthStatus.FAIL: 1, HealthStatus.UNKNOWN: 0}
+
+    @staticmethod
+    def is_retryable_failure(result: Optional["DeviceResult"]) -> bool:
+        """True when a batch pass should re-diagnose a chip after a settle.
+
+        Only TRANSPORT failures are worth retrying: a chip that NACKed or
+        returned I2C errors right after the previous chip's read burst very
+        often answers fine seconds later (probe capacitance + bus settle;
+        the user's manual per-chip clicks prove it). Genuine verdicts —
+        WRONG_VID, CHIP_MISMATCH, NO_RESPONSE-only-with-a-real-fault — are
+        NOT retried away.
+        """
+        if result is None:
+            return True
+        if result.health == HealthStatus.FAIL:
+            transport = {FaultType.NO_RESPONSE, FaultType.I2C_ERROR}
+            return any(f in transport for f in result.faults)
+        return False
+
     def quick_health_check(self, address: int) -> Tuple[HealthStatus, int, str]:
         """
         Quick health check returning (status, score, message).
