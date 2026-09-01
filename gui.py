@@ -128,6 +128,7 @@ class Application(ctk.CTk):
         self._ui_queue: "_queue.Queue" = _queue.Queue()
         self._bg_threads: set = set()
         self._busy_since = 0.0
+        self._cancel_event = threading.Event()
 
         self._build_ui()
         self.after(150, self._drain_ui_queue)
@@ -727,6 +728,12 @@ class Application(ctk.CTk):
             hover_color=C["btn_hover"], command=self._save_json
         )
         self.btn_export.pack(side="left")
+        self.btn_cancel = ctk.CTkButton(
+            act, text="Cancel", width=74, height=30,
+            fg_color=C["red"], hover_color=C["btn_hover"], state="disabled",
+            command=self._cancel_op
+        )
+        self.btn_cancel.pack(side="left")
 
         qa = ctk.CTkFrame(parent, fg_color=C["card"], corner_radius=10)
         qa.pack(fill="x", padx=12, pady=(0, 12))
@@ -1715,19 +1722,37 @@ class Application(ctk.CTk):
         self.busy = busy
         if busy:
             self._busy_since = time.time()
+        else:
+            self._cancel_event.clear()
         state = "disabled" if busy else "normal"
         for btn in self._busy_buttons:
             try:
                 btn.configure(state=state)
             except Exception:
                 pass
+        try:
+            # Cancel stays clickable WHILE busy so long operations can be
+            # aborted instead of looking like a freeze.
+            self.btn_cancel.configure(state="normal" if busy else "disabled")
+        except Exception:
+            pass
         self.busy_label.configure(text=message if busy else "")
         if message:
             self.status_left.configure(text=message)
 
+    def _cancel_op(self):
+        if self.busy:
+            self._cancel_event.set()
+            self.log("Cancel requested — stopping after the current step...",
+                     "warn")
+
+    def _cancelled(self) -> bool:
+        return self._cancel_event.is_set()
+
     def _run_bg(self, work: Callable, done_msg: str = "Ready"):
         # Register the thread BEFORE starting it so the _drain_ui_queue
         # watchdog can always tell whether a worker is still alive.
+        self._cancel_event = threading.Event()
         t = threading.Thread(target=self._bg_runner, args=(work, done_msg),
                              daemon=True)
         self._bg_threads.add(t)
@@ -2414,6 +2439,11 @@ class Application(ctk.CTk):
             retry_settles = (0.0, 0.8, 1.6)
             prev_flaky = False
             for addr in addrs:
+                if self._cancelled():
+                    self._ui(self.log,
+                             "Diagnose All cancelled — partial results kept.",
+                             "warn")
+                    break
                 if prev_flaky:
                     # A chip that needed retry passes leaves the shared bus
                     # busy (the ACE2 port-1 bus also serves the live SMC) —
@@ -2423,6 +2453,8 @@ class Application(ctk.CTk):
                 passes_used = 0
                 for attempt, settle in enumerate(retry_settles, 1):
                     passes_used = attempt
+                    if self._cancelled():
+                        break
                     if settle:
                         time.sleep(settle)
                     try:
@@ -2715,14 +2747,12 @@ class Application(ctk.CTk):
                 reg_def = REGISTERS[offset]
                 read = analyzer.read_register(addr, offset, reg_def.length)
                 if read:
-                    self.after(
-                        0, self._add_reg_row, f"0x{offset:02X}", read.name,
+                    self._ui(self._add_reg_row, f"0x{offset:02X}", read.name,
                         read.raw_bytes.hex(), f"0x{read.raw_value:X}",
                         read.decoded or f"0x{read.raw_value:X}"
                     )
                 else:
-                    self.after(
-                        0, self._add_reg_row, f"0x{offset:02X}", reg_def.name,
+                    self._ui(self._add_reg_row, f"0x{offset:02X}", reg_def.name,
                         "ERROR", "—", "Read failed"
                     )
             self._ui(self.log, f"Register dump: {format_hex_addr(addr)}", "ok")
@@ -2780,14 +2810,19 @@ class Application(ctk.CTk):
             total = max(count * len(addrs), 1)
             done = 0
             for i in range(count):
+                if self._cancelled():
+                    self._ui(self.log, "Batch cancelled.", "warn")
+                    break
                 for addr in addrs:
+                    if self._cancelled():
+                        self._ui(self.log, "Batch cancelled.", "warn")
+                        break
                     try:
                         result = analyzer.diagnose_device(addr)
                         self._apply_socket_expectations(analyzer, result)
                         self.batch_results.append(result)
                         faults = "; ".join(f.value for f in result.faults)
-                        self.after(
-                            0, self._add_batch_row, i + 1, addr, result.health.value,
+                        self._ui(self._add_batch_row, i + 1, addr, result.health.value,
                             result.health_score, result.mode or "—", faults,
                             f"{result.scan_time_ms:.0f}"
                         )
@@ -2804,8 +2839,7 @@ class Application(ctk.CTk):
             warned = sum(1 for r in self.batch_results if r.health == HealthStatus.WARN)
             failed = sum(1 for r in self.batch_results if r.health == HealthStatus.FAIL)
             self._report_bus_health(analyzer)
-            self.after(
-                0, self.batch_status_var.set,
+            self._ui(self.batch_status_var.set,
                 f"Done: {total_r} | {passed} pass | {warned} warn | {failed} fail"
             )
             self._ui(lambda: self.batch_start_btn.configure(state="normal"))
@@ -2942,8 +2976,7 @@ class Application(ctk.CTk):
             )
             self.otp_current_dump = dump
             self._ui(self._show_otp_dump, dump)
-            self.after(
-                0, self.otp_status_var.set,
+            self._ui(self.otp_status_var.set,
                 f"Done: {dump.filled_count} regs, {dump.error_count} errors"
             )
             self._ui(self.log, f"OTP scan: {dump.filled_count} regs", "ok")
@@ -3177,8 +3210,17 @@ class Application(ctk.CTk):
         def work():
             def progress(cur, total):
                 self._ui(self.flash_progress.set, cur / total if total else 0)
+                if self._cancelled():
+                    raise IOError("cancelled")
 
-            size = self.flash.dump_to_file(filepath, progress_cb=progress)
+            try:
+                size = self.flash.dump_to_file(filepath, progress_cb=progress)
+            except Exception as e:
+                if self._cancelled():
+                    self._ui(self.log, "Flash read cancelled.", "warn")
+                    return
+                raise
+
             self._ui(self.flash_status_var.set, f"Read {size:,} bytes → {filepath}")
             self._ui(self.log, f"Flash dumped: {filepath} ({size:,} bytes)", "ok")
             self._ui(self._show_flash_hex, filepath, 256)
@@ -3211,16 +3253,25 @@ class Application(ctk.CTk):
         def work():
             def progress(cur, total):
                 self._ui(self.flash_progress.set, cur / total if total else 0)
+                if self._cancelled():
+                    raise IOError("cancelled")
 
-            self._ui(self.flash_status_var.set, "Erasing chip...")
-            self.flash.erase_chip()
-            self._ui(self.flash_status_var.set, "Writing data...")
-            self.flash.write(0, data, progress_cb=progress)
+            try:
+                self._ui(self.flash_status_var.set, "Erasing chip...")
+                self.flash.erase_chip()
+                self._ui(self.flash_status_var.set, "Writing data...")
+                self.flash.write(0, data, progress_cb=progress)
+            except Exception as e:
+                if self._cancelled():
+                    self._ui(self.log, "Flash write cancelled — chip left "
+                             "partially written; write again to complete.",
+                             "warn")
+                    return
+                raise
             self._ui(self.flash_status_var.set, "Verifying...")
             readback = self.flash.read(0, len(data))
             if readback == data:
-                self.after(
-                    0, self.flash_status_var.set,
+                self._ui(self.flash_status_var.set,
                     f"Write complete — {len(data):,} bytes verified"
                 )
                 self._ui(self.log, f"Flash write verified: {len(data):,} bytes", "ok")

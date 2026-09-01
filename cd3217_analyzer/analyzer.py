@@ -425,6 +425,28 @@ class CD3217Analyzer:
         # Step 2: Read all registers
         result.registers = self.read_all_registers(address)
 
+        # Step 2b: Corruption re-pass. On a marginal probed bus, a burst of
+        # register reads can come back largely garbled (all-0x00/all-0xFF);
+        # a single-shot verdict on that snapshot wrongly FAILs a healthy
+        # chip. If more than a few registers look corrupt, re-read the full
+        # set once after a short settle and keep the better snapshot —
+        # genuine chip faults garble consistently, bus noise does not.
+        def _suspicious_count(regs: Dict[int, RegisterRead]) -> int:
+            n = 0
+            for off, rd in regs.items():
+                if rd.raw_value == 0xFFFFFFFF:
+                    n += 1
+                elif rd.raw_value == 0x00000000 and off not in (0x06, 0x14, 0x15):
+                    n += 1
+            return n
+
+        corrupt = _suspicious_count(result.registers)
+        if corrupt > 3:
+            time.sleep(self.REG_RETRY_DELAY * 3)
+            re_read = self.read_all_registers(address)
+            if _suspicious_count(re_read) < corrupt:
+                result.registers = re_read
+
         # Step 3: Validate Vendor ID
         vid_reg = result.registers.get(0x00)
         if vid_reg:
@@ -838,14 +860,21 @@ class CD3217Analyzer:
                f"{nack_n} NACK/error attempts ({rate:.1f}% failed), "
                f"{s.contaminated_rereads} garbled-read rechecks.")
         if s.marginal:
-            msg += (f"\n  WARN: {s.ping_recovered} address(es) answered only "
-                    "after retries and/or "
-                    f"{s.contaminated_rereads} garbled read(s) recovered — the "
-                    "bus is marginal. This is a probe/cable/pull-up margin "
-                    "issue (TI SLVA689: added probe capacitance eats "
-                    "rise-time margin). Re-check SDA/SCL probe contact, "
-                    "lead length, and 3.3V pull-ups before trusting "
-                    "per-chip verdicts.")
+            if s.ping_recovered and s.contaminated_rereads:
+                what = (f"{s.ping_recovered} address(es) answered only after "
+                        f"retries and {s.contaminated_rereads} garbled "
+                        "read(s) recovered on re-check")
+            elif s.contaminated_rereads:
+                what = (f"{s.contaminated_rereads} garbled read(s) recovered "
+                        "on re-check")
+            else:
+                what = (f"{s.ping_recovered} address(es) answered only after "
+                        "retries")
+            msg += (f"\n  WARN: {what} — the bus is marginal. This is a "
+                    "probe/cable/pull-up margin issue (TI SLVA689: added "
+                    "probe capacitance eats rise-time margin). Re-check "
+                    "SDA/SCL probe contact, lead length, and 3.3V pull-ups "
+                    "before trusting per-chip verdicts.")
         elif nack_n:
             msg += ("\n  Failures were hard (never recovered) — consistent "
                     "with dead/absent chips, which are faulted per-device "
@@ -1002,7 +1031,8 @@ class CD3217Analyzer:
         if result is None:
             return True
         if result.health == HealthStatus.FAIL:
-            transport = {FaultType.NO_RESPONSE, FaultType.I2C_ERROR}
+            transport = {FaultType.NO_RESPONSE, FaultType.I2C_ERROR,
+                         FaultType.CORRUPTED_REGISTERS}
             return any(f in transport for f in result.faults)
         return False
 

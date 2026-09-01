@@ -653,7 +653,7 @@ class TestDeviceInfo(unittest.TestCase):
                 return bytes([0x20, 0x41, 0x50, 0x50])
             if reg == 0x04:
                 return bytes([0x20, 0x49, 0x32, 0x43])
-            return bytes([0x00] * length)
+            return bytes([0x5A] * length)
 
         self.mock_adapter.read_bytes.side_effect = rb
         result = self.analyzer.diagnose_device(0x38)
@@ -678,7 +678,7 @@ class TestDeviceInfo(unittest.TestCase):
                 return bytes([0x20, 0x41, 0x50, 0x50])
             if reg == 0x04:
                 return bytes([0x20, 0x49, 0x32, 0x43])
-            return bytes([0x00] * length)
+            return bytes([0x5A] * length)
 
         self.mock_adapter.read_bytes.side_effect = rb
         self.analyzer.diagnose_device(0x38)
@@ -926,6 +926,46 @@ class TestBatchRetry(unittest.TestCase):
                 if not CD3217Analyzer.is_retryable_failure(result):
                     break
         self.assertEqual(best.health, HealthStatus.PASS)
+
+    def test_corruption_repass_recovers_healthy_chip(self):
+        """v0.7.5: a garbled read burst (user saw 0x3C FAIL(55) in Diagnose
+        All, PASS(90) per-chip) must be re-read once; the clean snapshot
+        wins and CORRUPTED_REGISTERS is not raised."""
+        mock = MagicMock()
+        mock.ping.return_value = True
+        state = {"pass": 0}   # completed read passes
+
+        def counting_rb(addr, reg, length):
+            if reg == 0x2F:            # last reg in DETAIL_REGS = pass marker
+                state["pass"] += 1
+            if state["pass"] == 0 and reg in (0x0F, 0x29, 0x2D, 0x04):
+                return bytes([0x00] * length)   # pass-1 garbled burst
+            if reg == 0x00:
+                return bytes([0x04, 0x28, 0x00, 0x00])
+            if reg == 0x01:
+                return bytes([0x04, 0x18, 0x32, 0xCD])
+            if reg in (0x03, 0x04):
+                return bytes([0x20, 0x41, 0x50, 0x50])
+            if reg == 0x2F:
+                return (b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"
+                        + b"\x00" * 4)[:length]
+            # plausible non-corrupt filler for detail regs
+            return bytes([0x5A] * length)
+
+        mock.read_bytes.side_effect = counting_rb
+        an = CD3217Analyzer(mock, addresses=[0x3C])
+        result = an.diagnose_device(0x3C)
+        self.assertNotIn(FaultType.CORRUPTED_REGISTERS, result.faults)
+        self.assertTrue(result.vendor_id.startswith("0x2804"))
+        self.assertGreaterEqual(state["pass"], 2)   # a second pass happened
+
+    def test_retryable_includes_corrupted_registers(self):
+        """v0.7.5: a CORRUPTED_REGISTERS FAIL is transport-shaped and must
+        be retried by the Diagnose-All ladder."""
+        r = MagicMock()
+        r.health = HealthStatus.FAIL
+        r.faults = [FaultType.CORRUPTED_REGISTERS]
+        self.assertTrue(CD3217Analyzer.is_retryable_failure(r))
 
     def test_transient_nack_flow(self):
         """Real ladder flow: pass 1 NO_RESPONSE (ping fails), then the chip
