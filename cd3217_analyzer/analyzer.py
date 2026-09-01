@@ -196,6 +196,7 @@ class CD3217Analyzer:
     BUS_SETTLE_AFTER_NACK = 0.1  # s to let the bus settle after NO_RESPONSE
     REG_RETRY_DELAY = 0.05      # s before re-reading a suspicious register
     REG_RETRIES = 2             # re-read attempts for identity registers
+    REG_SPACING = 0.02          # s between consecutive register reads
     BOOT_SETTLE_DELAY = 0.5     # s before re-checking a BOOT mode read
     # S3 adaptive settle: when a diagnosis itself hit flakiness (recovered
     # ping / garbled read), let the bus settle before the next device so
@@ -373,7 +374,16 @@ class CD3217Analyzer:
     def read_all_registers(self, address: int) -> Dict[int, RegisterRead]:
         """Read all important registers from a device."""
         results = {}
+        first = True
         for offset in self.DETAIL_REGS:
+            if not first:
+                # Back-to-back register bursts on a probed bus are the worst
+                # case for timing margin (TI SLVA689) — and the ACE2's port-1
+                # bus is shared with the live SMC. A tiny spacing between
+                # register reads dramatically cuts NACK/garble rates without
+                # meaningfully slowing a diagnosis.
+                time.sleep(self.REG_SPACING)
+            first = False
             reg_def = REGISTERS.get(offset)
             if reg_def:
                 read = self._read_register_clean(address, offset, reg_def.length)

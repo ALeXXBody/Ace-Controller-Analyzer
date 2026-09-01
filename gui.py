@@ -615,11 +615,23 @@ class Application(ctk.CTk):
             deadline = _t.time() + 30
             found = []
             while _t.time() < deadline:
+                # Stand down the moment the user reconnects manually: this
+                # worker probes serial ports (opens them), which otherwise
+                # collides with the user's own Connect attempts
+                # (PermissionError 13) and with a running Diagnose All.
+                if self.connected or self.adapter is not None:
+                    return
                 found = scan_for_boards()
                 if found:
                     break
-                _t.sleep(2)
+                _t.sleep(1)
+
             def report():
+                # Re-check on the UI thread: the user may have reconnected
+                # while we scanned — never report a false "did not come
+                # back" over a live session.
+                if self.connected or self.adapter is not None:
+                    return
                 if not found:
                     self.log("Board did not come back after the update — "
                              "unplug/replug it, then Connect.", "warn")
@@ -1948,7 +1960,11 @@ class Application(ctk.CTk):
             if isinstance(adapter, UsbBridgeAdapter):
                 self._start_board_watcher(adapter)
         except Exception as e:
-            self.log(f"Connection failed: {e}", "err")
+            hint = ""
+            if "PermissionError(13" in str(e) or "(13," in str(e):
+                hint = ("  (the port may be held by another program or the "
+                        "board is still re-enumerating — wait 3 s and retry)")
+            self.log(f"Connection failed: {e}{hint}", "err")
 
     # ─── Board presence watcher ───────────────────────────────────────────
 
@@ -1963,7 +1979,10 @@ class Application(ctk.CTk):
         """
         self._stop_board_watcher()
         port = adapter.port
-        state = {"misses": 0}
+        # Grace period: right after connect (esp. after an OTA update) the
+        # board can still be settling — a PING miss in that window must not
+        # count toward a false "board removed".
+        state = {"misses": 0, "grace_until": time.time() + 8.0}
         self._board_watch_stop = threading.Event()
 
         def tick():
@@ -1987,6 +2006,10 @@ class Application(ctk.CTk):
                 # like the board vanished.
                 if self.busy:
                     state["misses"] = 0
+                    self._ui(lambda: threading.Thread(
+                        target=tick, daemon=True).start())
+                    return
+                if time.time() < state["grace_until"]:
                     self._ui(lambda: threading.Thread(
                         target=tick, daemon=True).start())
                     return
@@ -2389,9 +2412,17 @@ class Application(ctk.CTk):
             # failures after a settle (keeps the best verdict, never
             # downgrades a PASS).
             retry_settles = (0.0, 0.8, 1.6)
+            prev_flaky = False
             for addr in addrs:
+                if prev_flaky:
+                    # A chip that needed retry passes leaves the shared bus
+                    # busy (the ACE2 port-1 bus also serves the live SMC) —
+                    # give the next target a longer settle before pass 1.
+                    time.sleep(0.6)
                 best = None
+                passes_used = 0
                 for attempt, settle in enumerate(retry_settles, 1):
+                    passes_used = attempt
                     if settle:
                         time.sleep(settle)
                     try:
@@ -2413,10 +2444,31 @@ class Application(ctk.CTk):
                                    f"pass {attempt} — settling bus, retrying...",
                                    "warn")
                 if best is not None:
+                    best._retried = passes_used > 1
                     self.devices[addr] = best
+                prev_flaky = passes_used > 1
                 # brief pause between devices so a dead chip's NACK does not
                 # contaminate the reads of the next healthy chip
-                time.sleep(0.08)
+                time.sleep(0.2 if prev_flaky else 0.1)
+            # Honest summary: when every target was ultimately read (some
+            # after retry passes), say so — the raw NACK statistics look
+            # alarming but the verdicts are valid.
+            try:
+                resolved = [a for a in addrs
+                            if self.devices.get(a) is not None
+                            and self.devices[a].health in
+                            (HealthStatus.PASS, HealthStatus.WARN)]
+                unresolved = [a for a in addrs if a not in resolved]
+                if addrs and not unresolved:
+                    flaky = sum(1 for a in addrs
+                                if getattr(self.devices[a], "_retried", False))
+                    note = (f"All {len(addrs)} target(s) read successfully"
+                            + (f" ({flaky} needed retry passes)" if flaky
+                               else "") +
+                            " — verdicts are valid.")
+                    self._ui(self.log, note, "ok")
+            except Exception:
+                pass
             # Guidance: if MOST model sockets stayed silent while extras
             # answered elsewhere, the selected model's address map may not
             # match this board (some maps are flagged UNVERIFIED).
