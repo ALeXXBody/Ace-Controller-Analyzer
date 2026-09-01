@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import BinaryIO, Dict, List, Optional, Tuple
 
 from .adapters import I2CAdapter
+from . import debuglog
 from .registers import KNOWN_ACE2_ADDRESSES, REGISTERS, is_ace2_address
 
 
@@ -127,18 +128,38 @@ def scan_otp(adapter: I2CAdapter, address: int, label: str = "",
 
     total = end - start + 1
     offset = start
+    # Probed buses are marginal (TI SLVA689): back-to-back register bursts
+    # NACK/garble at a far higher rate than paced reads. Space the
+    # transactions out and retry failures so every scan of a healthy chip
+    # converges to the same filled-count instead of bouncing 19..31.
+    read_spacing = 0.02
+    read_retries = 2
+    retry_delay = 0.12
 
     while offset <= end:
         remaining = end - offset + 1
         read_len = min(chunk_size, remaining)
 
-        try:
-            data = adapter.read_bytes(address, offset, read_len)
+        data = None
+        for attempt in range(1 + read_retries):
+            if attempt:
+                time.sleep(retry_delay)
+            try:
+                data = adapter.read_bytes(address, offset, read_len)
+                break
+            except Exception:
+                if debuglog.is_enabled():
+                    debuglog.log("OTP 0x%02X reg 0x%02X read failed "
+                                 "(attempt %d/%d)", address, offset,
+                                 attempt + 1, 1 + read_retries)
+                data = None
+        if data is not None:
             dump.registers[offset] = data
-        except Exception:
+        else:
             dump.read_errors.append(offset)
 
         offset += read_len
+        time.sleep(read_spacing)
 
         if progress_cb:
             progress_cb(offset - start, total)

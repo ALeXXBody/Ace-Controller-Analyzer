@@ -3553,6 +3553,51 @@ class Application(ctk.CTk):
             command=dlg.destroy,
         ).pack(side="right")
 
+    def _show_export_done(self, local_path: str, extra: Optional[str] = None):
+        """'Download complete' popup after an export: shows exactly where
+        the data went and offers to open the folder."""
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Export complete")
+        dlg.geometry("560x240")
+        dlg.attributes("-topmost", True)
+        ctk.CTkLabel(
+            dlg, text="✓ Export complete", font=F["heading"],
+            text_color=C["green"]
+        ).pack(anchor="w", padx=18, pady=(16, 6))
+        ctk.CTkLabel(
+            dlg, text=f"Saved to:\n{local_path}", font=F["small"],
+            text_color=C["text"], justify="left", wraplength=500
+        ).pack(anchor="w", padx=18, pady=4)
+        if extra:
+            ctk.CTkLabel(
+                dlg, text=extra, font=F["small"], text_color=C["dim"],
+                justify="left", wraplength=500
+            ).pack(anchor="w", padx=18, pady=4)
+        btns = ctk.CTkFrame(dlg, fg_color="transparent")
+        btns.pack(side="bottom", fill="x", padx=18, pady=(6, 14))
+
+        def open_folder():
+            try:
+                folder = os.path.dirname(local_path)
+                if sys.platform.startswith("win"):
+                    os.startfile(folder)            # noqa: S606
+                elif sys.platform == "darwin":
+                    import subprocess
+                    subprocess.Popen(["open", folder])
+                else:
+                    import subprocess
+                    subprocess.Popen(["xdg-open", folder])
+            except Exception as e:
+                self.log(f"Could not open folder: {e}", "warn")
+
+        ctk.CTkButton(btns, text="Open folder", width=110,
+                      fg_color=C["accent"], text_color="#041018",
+                      hover_color=C["accent_dim"],
+                      command=open_folder).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btns, text="OK", width=90, fg_color=C["btn"],
+                      hover_color=C["btn_hover"],
+                      command=dlg.destroy).pack(side="left")
+
     def _export_source_available(self, key: str) -> bool:
         """Whether a source can actually be collected right now."""
         if key in ("info", "registers", "otp", "report"):
@@ -3625,10 +3670,13 @@ class Application(ctk.CTk):
                         f"Exported {name} — local: {local_path}; pushed: "
                         f"{url}", "ok"))
                     ui(lambda: dlg.destroy())
+                    ui(self._show_export_done, local_path,
+                       f"Also pushed to GitHub:\n{url}")
                 else:
                     ui(lambda: self.log(
                         f"Exported {name} — saved to {local_path}", "ok"))
                     ui(lambda: dlg.destroy())
+                    ui(self._show_export_done, local_path, None)
             except GitHubPushError as e:
                 ui(lambda: self.export_progress.configure(
                     text=f"Push failed: {e}"))
