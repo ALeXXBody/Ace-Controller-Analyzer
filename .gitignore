@@ -22,3 +22,4 @@ Thumbs.db
 
 # Deps marker
 .deps_installed
+otp_profiles/*_U3100_X.json
