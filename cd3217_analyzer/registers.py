@@ -371,6 +371,63 @@ def decode_silicon_from_str(device_id: str) -> str:
     return ""
 
 
+@dataclass
+class DeviceIdentity:
+    """Parsed ACE2 identity string (register 0x2F, DeviceInfo, 47 B).
+
+    Real captures show two formats:
+      A2485 M1 sample:  "@CD3218   HW0022 FW002.170.00 RACE2-J316P5U    "
+      TI TPS6598x:      "TPS65988 HW0030 FWF807.12.00 ZAce1"
+    Apple T2-era (t8012dev): "CD3217   HW0022 FW002.032.00 ZACE2-J213"
+
+    Notes:
+      - a leading marker char ('@') may precede the part number — skip it
+      - the variant tag begins with ZACE2/RACE2/ZAce (role/firmware build);
+        its board project code (J316 = A2485 family, J213 = T2 era) is the
+        key signal when matching donors to sockets
+      - verified A2485 roles each carry their own build suffix
+        (real 820-02382 capture): 0x3A "RACE2-J316P5U", 0x3B
+        "ZACE2-J316P2P", 0x3F "ZACE2-J316P01P" — different suffix per role,
+        same project code
+    """
+    raw: str = ""
+    silicon: str = ""   # "CD3217" / "CD3218" / "TPS65988" / ...
+    hw: str = ""        # "22"  from HW0022
+    fw: str = ""        # "002.170.00"  from FW002.170.00
+    variant: str = ""   # "RACE2-J316P5U" / "ZACE2-J213" / "ZAce1"
+
+
+def parse_device_info(raw_bytes) -> DeviceIdentity:
+    """Parse the register-0x2F identity string into its components."""
+    ident = DeviceIdentity()
+    try:
+        data = bytes(raw_bytes or b"")
+    except (TypeError, ValueError):
+        return ident
+    # Identity strings are printable ASCII, NUL-padded at the tail.
+    text = data.split(b"\x00", 1)[0].decode("ascii", errors="ignore").strip()
+    ident.raw = text
+    if not text:
+        return ident
+    tokens = text.split()
+    # Silicon: part-number token (leading marker chars like '@' are skipped).
+    for tok in tokens:
+        t = tok.upper().lstrip("@#*")
+        if t.startswith("CD32") or t.startswith("TPS"):
+            ident.silicon = t
+            break
+    for tok in tokens[1:]:
+        up = tok.upper()
+        if up.startswith("HW") and len(up) > 2:
+            # Strip leading zeros for display: HW0022 -> "22"
+            ident.hw = tok[2:].lstrip("0") or "0"
+        elif up.startswith("FW") and len(up) > 2:
+            ident.fw = tok[2:]
+        elif "ACE" in up and len(up) >= 5:
+            ident.variant = tok
+    return ident
+
+
 def decode_vid(value: int) -> str:
     """Decode Vendor ID register.
 

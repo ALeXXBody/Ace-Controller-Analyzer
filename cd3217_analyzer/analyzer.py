@@ -29,6 +29,7 @@ from .registers import (
     decode_type_reg,
     decode_vid,
     is_ace2_address,
+    parse_device_info,
 )
 
 
@@ -81,6 +82,10 @@ class DeviceResult:
     device_id: Optional[str] = None
     did_raw: Optional[int] = None       # numeric DID register (0x01) value
     silicon: str = ""                   # decoded family: CD3217/CD3218/CD3215
+    device_info: str = ""               # register 0x2F identity string
+    hw_version: str = ""                # parsed from identity ("22")
+    fw_version: str = ""                # parsed from identity ("002.170.00")
+    fw_variant: str = ""                # role/firmware build ("ZACE2-J316P01P")
     mode: Optional[str] = None
     mode_raw: Optional[int] = None
     device_type: Optional[str] = None
@@ -282,13 +287,14 @@ class CD3217Analyzer:
                 time.sleep(self.PING_RETRY_DELAY)
         return False
 
-    # Registers whose format is known well enough to detect a contaminated
-    # read (undriven bytes read back as 0xFF right after bus contention or
-    # a NACKed dead address).
-    _IDENTITY_REGS = {0x00, 0x03, 0x04}
+    # Registers that get a garble-recheck on suspicious reads: VID, DID,
+    # Mode and Type 4CCs (identity-critical fields) plus the ASCII string
+    # registers (identity/build info).
+    _IDENTITY_REGS = {0x00, 0x01, 0x03, 0x04}
+    _STRING_REGS = {0x2E, 0x2F, 0xA1}
+    _RECHECK_REGS = _IDENTITY_REGS | _STRING_REGS
 
-    @staticmethod
-    def _register_suspicious(offset: int, read: RegisterRead) -> bool:
+    def _register_suspicious(self, offset: int, read: RegisterRead) -> bool:
         """True when an identity-register read shows undriven-byte garbage."""
         v = read.raw_value
         if v == 0xFFFFFFFF:
@@ -308,6 +314,26 @@ class CD3217Analyzer:
                 if not (0x20 <= b <= 0x7E):
                     return True
             return False
+        if offset == 0x01:
+            # DID: real ACE2 silicon reads 0xCD32xxxx; undriven-bus garbage
+            # shows as all-0x00, all-0xFF, or a 0xFF top byte. Deliberately
+            # NOT flagging other shapes — non-Apple silicon (ACE1 donors)
+            # has its own DID and must not trigger pointless re-reads.
+            return (v == 0x00000000 or v == 0xFFFFFFFF
+                    or (v & 0xFF000000) == 0xFF000000)
+        if offset in self._STRING_REGS:
+            # Identity strings (0x2F DeviceInfo, 0x2E BuildInfo, 0xA1
+            # RomVersion) are printable ASCII with NUL padding; allow at
+            # most one stray byte before calling the read garbled.
+            bad = 0
+            for b in read.raw_bytes:
+                if b == 0x00:
+                    continue
+                if not (0x20 <= b <= 0x7E):
+                    bad += 1
+                    if bad > 1:
+                        return True
+            return False
         return False
 
     def _read_register_clean(self, address: int, offset: int,
@@ -321,7 +347,7 @@ class CD3217Analyzer:
         the bus time to settle and returns clean data.
         """
         read = self.read_register(address, offset, length)
-        if read is None or offset not in self._IDENTITY_REGS:
+        if read is None or offset not in self._RECHECK_REGS:
             return read
         if not self._register_suspicious(offset, read):
             return read
@@ -403,6 +429,19 @@ class CD3217Analyzer:
             result.device_id = did_reg.decoded or f"0x{did_reg.raw_value:08X}"
             result.silicon = decode_silicon(did_reg.raw_value) \
                 or decode_silicon_from_str(result.device_id)
+
+        # Step 4b: Parse the DeviceInfo identity string (register 0x2F).
+        # Format (verified): "CD3217   HW0022 FW002.170.00 ZACE2-J316P01P".
+        # The trailing ZACEx-xxxx tag is the firmware variant / role build —
+        # key signal when matching donors to sockets (roles differ).
+        di_reg = result.registers.get(0x2F)
+        if di_reg and di_reg.raw_bytes:
+            ident = parse_device_info(di_reg.raw_bytes)
+            if ident.silicon:
+                result.device_info = ident.raw
+                result.hw_version = ident.hw
+                result.fw_version = ident.fw
+                result.fw_variant = ident.variant
 
         # Step 5: Check Mode
         mode_reg = result.registers.get(0x03)

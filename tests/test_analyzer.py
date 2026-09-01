@@ -567,6 +567,174 @@ class TestBusHealth(unittest.TestCase):
         self.assertIn(FaultType.BOOT_FAILED, result.faults)
 
 
+class TestDeviceInfo(unittest.TestCase):
+    """F2/S2: register-0x2F identity parsing + DID/string garble rechecks."""
+
+    def setUp(self):
+        from cd3217_analyzer.registers import parse_device_info
+        self.parse = parse_device_info
+        self.mock_adapter = MagicMock()
+        self.mock_adapter.ping.return_value = True
+        self.analyzer = CD3217Analyzer(self.mock_adapter, addresses=[0x38])
+
+    def test_parse_apple_identity_string(self):
+        raw = b"CD3217   HW0022 FW002.170.00 ZACE2-J316P01P" + b"\x00" * 4
+        ident = self.parse(raw)
+        self.assertEqual(ident.silicon, "CD3217")
+        self.assertEqual(ident.hw, "22")
+        self.assertEqual(ident.fw, "002.170.00")
+        self.assertEqual(ident.variant, "ZACE2-J316P01P")
+        self.assertIn("ZACE2-J316P01P", ident.raw)
+
+    def test_parse_ti_identity_string(self):
+        ident = self.parse(b"TPS65988 HW0030 FWF807.12.00 ZAce1\x00")
+        self.assertEqual(ident.silicon, "TPS65988")
+        self.assertEqual(ident.hw, "30")
+        self.assertEqual(ident.fw, "F807.12.00")
+        self.assertEqual(ident.variant, "ZAce1")
+
+    def test_parse_real_a2485_sample_bytes(self):
+        """Regression: exact 0x2F bytes from the real A2485 (820-02382)
+        capture — leading '@' marker, RACE2 variant tag (not ZACE2)."""
+        hexstr = ("404344333231382020204857303032322046573030322e3137302e"
+                  "30302052414345322d4a33313650355520202020")
+        ident = self.parse(bytes.fromhex(hexstr))
+        self.assertEqual(ident.silicon, "CD3218")
+        self.assertEqual(ident.hw, "22")
+        self.assertEqual(ident.fw, "002.170.00")
+        self.assertEqual(ident.variant, "RACE2-J316P5U")
+        self.assertIn("RACE2-J316P5U", ident.raw)
+
+    def test_parse_garbled_or_empty(self):
+        self.assertEqual(self.parse(b"\x00" * 47).silicon, "")
+        self.assertEqual(self.parse(b"").silicon, "")
+        self.assertEqual(self.parse(None).silicon, "")
+
+    def test_diagnose_collects_identity(self):
+        ident_bytes = (b"CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"
+                       + b"\x00" * 4)
+        state = {"n": 0}
+
+        def rb(addr, reg, length):
+            if reg == 0x2F:
+                return ident_bytes[:length]
+            if reg == 0x00:
+                return bytes([0x51, 0x04, 0x00, 0x00])
+            if reg == 0x01:
+                return bytes([0x04, 0x18, 0x32, 0xCD])
+            if reg == 0x03:
+                state["n"] += 1
+                return bytes([0x20, 0x41, 0x50, 0x50])   # APP
+            if reg == 0x04:
+                return bytes([0x20, 0x49, 0x32, 0x43])   # I2C
+            return bytes([0x00] * length)
+
+        self.mock_adapter.read_bytes.side_effect = rb
+        result = self.analyzer.diagnose_device(0x38)
+        self.assertIn("ZACE2-J316P01P", result.device_info)
+        self.assertEqual(result.hw_version, "22")
+        self.assertEqual(result.fw_version, "002.170.00")
+        self.assertEqual(result.fw_variant, "ZACE2-J316P01P")
+
+    def test_did_garbled_read_is_reread(self):
+        """S2: DID reads that come back all-0xFF/0x00 garbage get re-read;
+        the clean retry replaces the garbage value."""
+        calls = {"0x01": 0}
+
+        def rb(addr, reg, length):
+            if reg == 0x01:
+                calls["0x01"] += 1
+                if calls["0x01"] == 1:
+                    return bytes([0xFF, 0xFF, 0xFF, 0xFF])
+                return bytes([0x04, 0x18, 0x32, 0xCD])
+            if reg == 0x00:
+                return bytes([0x51, 0x04, 0x00, 0x00])
+            if reg == 0x03:
+                return bytes([0x20, 0x41, 0x50, 0x50])
+            if reg == 0x04:
+                return bytes([0x20, 0x49, 0x32, 0x43])
+            return bytes([0x00] * length)
+
+        self.mock_adapter.read_bytes.side_effect = rb
+        result = self.analyzer.diagnose_device(0x38)
+        self.assertEqual(calls["0x01"], 2)
+        self.assertEqual(result.did_raw, 0xCD321804)
+        self.assertGreaterEqual(
+            self.analyzer.bus_stats.contaminated_rereads, 1)
+        self.assertTrue(self.analyzer.bus_stats.marginal)
+
+    def test_did_plausible_ti_did_not_reread(self):
+        """S2: a non-0xCD DID (e.g. ACE1 donor) must NOT trigger rereads —
+        it is valid silicon, just not Apple."""
+        calls = {"0x01": 0}
+
+        def rb(addr, reg, length):
+            if reg == 0x01:
+                calls["0x01"] += 1
+                return bytes([0x01, 0x98, 0x65, 0x12])  # 0x12986501
+            if reg == 0x00:
+                return bytes([0x51, 0x04, 0x00, 0x00])
+            if reg == 0x03:
+                return bytes([0x20, 0x41, 0x50, 0x50])
+            if reg == 0x04:
+                return bytes([0x20, 0x49, 0x32, 0x43])
+            return bytes([0x00] * length)
+
+        self.mock_adapter.read_bytes.side_effect = rb
+        self.analyzer.diagnose_device(0x38)
+        self.assertEqual(calls["0x01"], 1)
+        self.assertEqual(self.analyzer.bus_stats.contaminated_rereads, 0)
+
+    def test_device_info_garbled_read_is_reread(self):
+        """S2: 0x2F identity strings are printable+NUL — garbled reads get
+        re-read, and the clean retry populates the identity fields."""
+        calls = {"0x2F": 0}
+        good = b"CD3217   HW0022 FW002.170.00 ZACE2-J316P01P" + b"\x00" * 4
+
+        def rb(addr, reg, length):
+            if reg == 0x2F:
+                calls["0x2F"] += 1
+                if calls["0x2F"] == 1:
+                    return bytes([0xA5, 0x5A, 0x01, 0x02, 0x03, 0x04, 0x05,
+                                  0x06, 0x07, 0x08, 0x09, 0x0A])[:length]
+                return good[:length]
+            if reg == 0x00:
+                return bytes([0x51, 0x04, 0x00, 0x00])
+            if reg == 0x01:
+                return bytes([0x04, 0x18, 0x32, 0xCD])
+            if reg == 0x03:
+                return bytes([0x20, 0x41, 0x50, 0x50])
+            if reg == 0x04:
+                return bytes([0x20, 0x49, 0x32, 0x43])
+            return bytes([0x00] * length)
+
+        self.mock_adapter.read_bytes.side_effect = rb
+        result = self.analyzer.diagnose_device(0x38)
+        self.assertGreaterEqual(calls["0x2F"], 2)
+        self.assertEqual(result.fw_variant, "ZACE2-J316P01P")
+
+    def test_save_json_report_includes_identity(self):
+        import json
+        import tempfile
+        from cd3217_analyzer.analyzer import DeviceResult, DiagnosticReport
+        from cd3217_analyzer.report import save_json_report
+        with tempfile.TemporaryDirectory() as td:
+            path = f"{td}/r.json"
+            dev = DeviceResult(address=0x38)
+            dev.device_info = "CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"
+            dev.hw_version = "22"
+            dev.fw_version = "002.170.00"
+            dev.fw_variant = "ZACE2-J316P01P"
+            report = DiagnosticReport()
+            report.devices = [dev]
+            save_json_report(report, path)
+            with open(path) as f:
+                data = json.load(f)
+        d = data["devices"][0]
+        self.assertIn("ZACE2-J316P01P", d["device_info"])
+        self.assertEqual(d["fw_variant"], "ZACE2-J316P01P")
+
+
 class TestReport(unittest.TestCase):
     """Test reporting functions."""
 

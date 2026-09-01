@@ -1134,6 +1134,7 @@ class Application(ctk.CTk):
             ("Device ID", "did"),
             ("Mode", "mode"),
             ("Type", "type"),
+            ("Identity", "identity"),
             ("Response", "time"),
             ("Chip Type", "chip_type"),
         ]
@@ -2217,9 +2218,13 @@ class Application(ctk.CTk):
         for addr in shown:
             dev = self.devices.get(addr)
             if dev is not None:
+                desc = self._device_label(addr)
+                if dev.device_info:
+                    desc += (f"  ·  {dev.device_info.split()[0]}"
+                             f" FW{dev.fw_version} {dev.fw_variant}").rstrip()
                 self._add_device_row(
                     addr, dev.health.value, dev.health_score,
-                    self._device_label(addr), is_ace2_address(addr)
+                    desc, is_ace2_address(addr)
                 )
             elif addr in self.scan_results:
                 self._add_device_row(
@@ -2323,6 +2328,19 @@ class Application(ctk.CTk):
         self.info_labels["did"].configure(text=result.device_id or "N/A")
         self.info_labels["mode"].configure(text=result.mode or "N/A")
         self.info_labels["type"].configure(text=result.device_type or "N/A")
+        # Register 0x2F identity string: silicon + FW + variant tag
+        # (the ZACEx/RACEx-xxxxx variant is the role build — the donor-
+        # matching signal). Prefer DID-decoded silicon for the prefix.
+        identity = "N/A"
+        if result.device_info:
+            first = result.silicon or result.device_info.split()[0]
+            bits = [first.lstrip("@#*")]
+            if result.fw_version:
+                bits.append(f"FW{result.fw_version}")
+            if result.fw_variant:
+                bits.append(result.fw_variant)
+            identity = "  ".join(b for b in bits if b)
+        self.info_labels["identity"].configure(text=identity)
         self.info_labels["time"].configure(text=f"{result.scan_time_ms:.1f} ms")
 
         cls = chip_class(result.address)

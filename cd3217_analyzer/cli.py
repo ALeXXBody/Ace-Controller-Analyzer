@@ -129,6 +129,8 @@ def cmd_diagnose(analyzer: CD3217Analyzer, address: int) -> None:
     print(f"Health:      {result.health.value} (score: {result.health_score}/100)")
     print(f"VID:         {result.vendor_id or 'N/A'}")
     print(f"DID:         {result.device_id or 'N/A'}")
+    if result.device_info:
+        print(f"Identity:    {result.device_info}")
     print(f"Mode:        {result.mode or 'N/A'}")
     print(f"Type:        {result.device_type or 'N/A'}")
     print(f"Scan Time:   {result.scan_time_ms:.1f}ms")

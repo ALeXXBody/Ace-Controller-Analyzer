@@ -1,4 +1,4 @@
 """CD3217B12 (Apple ACE2) I2C Diagnostic Analyzer for MacBook Repair."""
 
-__version__ = "0.6.24"
+__version__ = "0.6.25"
 __author__ = "ALeXXBody"
