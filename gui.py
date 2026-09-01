@@ -1634,6 +1634,14 @@ class Application(ctk.CTk):
     # ─── Helpers ───────────────────────────────────────────────────────────
 
     def log(self, msg: str, level: str = "info"):
+        # Workers call log() directly in several places; tkinter widgets are
+        # not thread-safe, so marshal to the UI thread when off-thread.
+        if threading.current_thread() is not threading.main_thread():
+            try:
+                self.after(0, self.log, msg, level)
+            except Exception:
+                pass
+            return
         ts = datetime.now().strftime("%H:%M:%S")
         self.log_text.insert("end", f"[{ts}] {msg}\n")
         self.log_text.see("end")
@@ -1953,6 +1961,10 @@ class Application(ctk.CTk):
         if not fpath:
             return
 
+        # Read UI state on the UI thread — StringVar/widget access from a
+        # worker thread is not thread-safe.
+        port = self.bus_var.get().strip() if self.connected else None
+
         def worker():
             try:
                 from cd3217_analyzer.flash_board import find_bootsel_drives, flash_file
@@ -1964,7 +1976,6 @@ class Application(ctk.CTk):
                         return
                     msg = flash_file(fpath, bootsel_drive=drives[0])
                 else:
-                    port = self.bus_var.get().strip() if self.connected else None
                     if not port:
                         self.log("Connect to the board first (enter COM port in "
                                  "Bus/Port), then Flash.", "warn")
@@ -3146,6 +3157,15 @@ class Application(ctk.CTk):
 
         token = self.export_token_var.get().strip()
         push = self.export_push_var.get()
+        # Read widget/var state on the UI thread (Text.get / StringVar.get
+        # are not thread-safe from a worker).
+        uart_text = None
+        if "uart" in selected:
+            try:
+                uart_text = self.uart_output.get("1.0", "end").strip()
+            except Exception:
+                uart_text = None
+        mac_model = self.mac_picker_var.get() or None
         from cd3217_analyzer.export_data import (
             GitHubPushError, collect_bundle, store_token, write_bundle)
 
@@ -3153,16 +3173,7 @@ class Application(ctk.CTk):
             def prog(msg):
                 ui(lambda: self.export_progress.configure(text=msg))
             try:
-                uart_text = None
                 selected_lower = selected
-                if "uart" in selected_lower:
-                    try:
-                        uart_text = self.uart_output.get("1.0", "end").strip()
-                    except Exception:
-                        uart_text = None
-                mac_model = None
-                if self.mac_picker_var.get():
-                    mac_model = self.mac_picker_var.get()
                 prog("Collecting data...")
                 bundle = collect_bundle(
                     self.adapter, selected_lower, name,

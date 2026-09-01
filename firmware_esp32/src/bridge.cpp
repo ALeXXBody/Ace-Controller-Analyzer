@@ -16,6 +16,14 @@
 // Max SPI full-duplex payload: response = status + rx, must fit 1-byte plen.
 #define BRIDGE_SPI_MAX 240
 
+// Open-drain output mode spells differently per core: ESP32 = OUTPUT_OPEN_DRAIN,
+// arduino-pico = OUTPUT_OPENDRAIN. Both are open-drain (low / released).
+#if defined(ARDUINO_ARCH_RP2040)
+#define CD_PIN_OD OUTPUT_OPENDRAIN
+#else
+#define CD_PIN_OD OUTPUT_OPEN_DRAIN
+#endif
+
 void UsbBridge::begin() {
   // Serial is initialised in main setup(); nothing extra needed here.
 }
@@ -114,6 +122,7 @@ void UsbBridge::runRead_(const uint8_t *f, size_t flen) {
   if (wstatus != 0) {
     resp[0] = 0xFF;                       // error (device NACK)
     sendResp_(0x02, resp, 1);
+    recoverBus_();                        // slave may be holding SDA low
     return;
   }
 
@@ -121,6 +130,7 @@ void UsbBridge::runRead_(const uint8_t *f, size_t flen) {
   if (got < rlen) {
     resp[0] = 0xFF;
     sendResp_(0x02, resp, 1);
+    recoverBus_();                        // slave may be holding SDA low
     return;
   }
   resp[0] = 0x00;
@@ -143,6 +153,66 @@ void UsbBridge::runWrite_(const uint8_t *f, size_t flen) {
   uint8_t st = Wire.endTransmission();
   resp[0] = (st == 0) ? 0x00 : 0xFF;
   sendResp_(0x03, resp, 1);
+  if (st != 0) recoverBus_();             // slave may be holding SDA low
+}
+
+// Re-attach the Wire peripheral to the I2C pins (after GPIO takeover).
+void UsbBridge::reattachWire_() {
+#ifdef ARDUINO_ARCH_RP2040
+  Wire.setSDA(I2C_SDA_GPIO);
+  Wire.setSCL(I2C_SCL_GPIO);
+  Wire.begin();
+#else
+  Wire.begin(I2C_SDA_GPIO, I2C_SCL_GPIO, 100000);
+#endif
+}
+
+// I2C bus clear (TI SCPA069 / NXP AN10241 style), for probing broken boards.
+//
+// When a probed chip is dead, half-powered or mid-garbled-byte, it can hold
+// SDA low forever: the master is one clock ahead of the slave's state
+// machine, which never sees its 9th clock and never releases SDA. Every
+// subsequent transaction then fails until the bus is cleared.
+//
+// Recovery: detach Wire, verify SDA really is stuck low, toggle SCL until
+// the slave releases SDA (up to 18 pulses — covers 16-bit non-standard
+// devices), synthesize a STOP, then re-attach Wire. On a healthy bus SDA is
+// high and this returns after two pin reads, touching nothing.
+void UsbBridge::recoverBus_() {
+  Wire.end();
+  pinMode(I2C_SDA_GPIO, INPUT_PULLUP);
+  pinMode(I2C_SCL_GPIO, INPUT_PULLUP);
+  delayMicroseconds(10);
+
+  if (digitalRead(I2C_SDA_GPIO) == HIGH) {
+    reattachWire_();                      // not stuck — nothing to clear
+    return;
+  }
+
+  // Free SCL so we can drive it: open-drain low / released high.
+  pinMode(I2C_SCL_GPIO, CD_PIN_OD);
+  digitalWrite(I2C_SCL_GPIO, HIGH);
+  delayMicroseconds(5);
+  for (int i = 0; i < 18 && digitalRead(I2C_SDA_GPIO) == LOW; i++) {
+    digitalWrite(I2C_SCL_GPIO, LOW);
+    delayMicroseconds(5);
+    digitalWrite(I2C_SCL_GPIO, HIGH);
+    delayMicroseconds(5);
+  }
+
+  if (digitalRead(I2C_SDA_GPIO) == LOW) {
+    // Still stuck — synthesize a STOP (SDA rising while SCL high) as a last
+    // resort, in case the slave waits for one.
+    pinMode(I2C_SDA_GPIO, CD_PIN_OD);
+    digitalWrite(I2C_SDA_GPIO, LOW);
+    delayMicroseconds(5);
+    digitalWrite(I2C_SCL_GPIO, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(I2C_SDA_GPIO, HIGH);
+    delayMicroseconds(5);
+  }
+
+  reattachWire_();
 }
 
 void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {

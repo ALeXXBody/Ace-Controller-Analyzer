@@ -112,15 +112,22 @@ class DiagnosticReport:
 class BusStats:
     """Aggregated I2C bus integrity counters for a scan session.
 
-    A high failure rate (NACKs / failed reads / contaminated rereads) is a
-    *bus* integrity signal, not a per-chip verdict: probing a USB-C board
-    adds capacitance to the I2C rails and shares the board's pull-ups, which
-    can eat into edge-timing margin (TI SLVA689) and make even a healthy
-    chip's transactions flaky. These counters let the tool report "bus is
-    marginal" separately from "chip is bad."
+    Two different signals live here and must not be conflated:
+
+    * *Recovered flakiness* (pings that only ACKed after a retry, garbled
+      identity reads that came back clean on a re-read) — a *bus margin*
+      signal: probing a USB-C board adds capacitance to the I2C rails and
+      shares the board's pull-ups, which eats edge-timing margin (TI
+      SLVA689). This is what "the tap is marginal, the chips may be fine"
+      means.
+    * *Hard failures* (an address that never ACKed, registers that never
+      read) — already reported per-chip as NO_RESPONSE / I2C_ERROR; a
+      genuinely dead chip produces them on every scan, so by themselves
+      they are NOT evidence of a bad probe.
     """
     pings: int = 0           # ping transactions issued
     ping_failures: int = 0   # ping attempts that did not ACK
+    ping_recovered: int = 0  # addresses that ACKed only after a retry
     reads: int = 0           # register read transactions issued
     read_failures: int = 0   # reads that raised / returned no data
     contaminated_rereads: int = 0  # identity reads that looked garbled & re-read
@@ -130,12 +137,14 @@ class BusStats:
         if not ok:
             self.ping_failures += 1
 
-    def add_read(self, ok: bool, contaminated: bool = False) -> None:
+    def add_recovered_ping(self) -> None:
+        """Count an address that answered only after >=1 NACKed attempt."""
+        self.ping_recovered += 1
+
+    def add_read(self, ok: bool) -> None:
         self.reads += 1
         if not ok:
             self.read_failures += 1
-        if contaminated:
-            self.contaminated_rereads += 1
 
     @property
     def nack_rate(self) -> float:
@@ -147,12 +156,14 @@ class BusStats:
 
     @property
     def marginal(self) -> bool:
-        """True when the bus looks noisy enough to distrust clean-per-chip
-        verdicts. Empirically tuned: any NACKs or contamination across a
-        scan, or a worst-case transaction failing, means re-check probe/pull-
-        ups/leads."""
-        return self.ping_failures > 0 or self.read_failures > 0 \
-            or self.contaminated_rereads > 0
+        """True when transactions flake but recover — the bus-margin signal.
+
+        Deliberately excludes hard failures: a dead chip NACKs every ping on
+        every scan (that is a chip fault, reported per-chip), whereas a
+        recovered-after-retry ping or a garbled-then-clean register read
+        only happens when the bus itself is marginal.
+        """
+        return self.ping_recovered > 0 or self.contaminated_rereads > 0
 
 
 class CD3217Analyzer:
@@ -259,6 +270,8 @@ class CD3217Analyzer:
             ok = self.adapter.ping(address)
             self.bus_stats.add_ping(ok)
             if ok:
+                if attempt:
+                    self.bus_stats.add_recovered_ping()
                 return True
             if attempt < self.PING_RETRIES:
                 time.sleep(self.PING_RETRY_DELAY)
@@ -719,24 +732,32 @@ class CD3217Analyzer:
     def bus_health_summary(self) -> str:
         """Human-readable bus-integrity line for the current session.
 
-        Reports the aggregate NACK/error/retry counters. When ``marginal``
-        is true it warns that the *bus* (probe loading / pull-ups / leads)
-        may be degrading transactions, independent of any per-chip verdict.
+        Distinguishes recovered flakiness (bus margin — probe loading,
+        pull-ups, leads) from hard failures (dead chips, already reported
+        per-chip), so a scan that poked a dead chip is not mistaken for a
+        bad probe and vice versa.
         """
         s = self.bus_stats
-        nack_n = s.ping_failures + s.read_failures
         if s.pings + s.reads == 0:
             return "Bus statistics: no transactions recorded."
+        nack_n = s.ping_failures + s.read_failures
         rate = s.nack_rate * 100
         msg = (f"Bus statistics: {s.pings} pings, {s.reads} register reads, "
                f"{nack_n} NACK/error attempts ({rate:.1f}% failed), "
                f"{s.contaminated_rereads} garbled-read rechecks.")
         if s.marginal:
-            msg += ("\n  WARN: bus shows contention/noise — this is a probe/"
-                    "cable/pull-up margin issue (TI SLVA689: added probe "
-                    "capacitance eats rise-time margin). Re-check SDA/SCL "
-                    "probe contact, lead length, and 3.3V pull-ups before "
-                    "trusting per-chip verdicts.")
+            msg += (f"\n  WARN: {s.ping_recovered} address(es) answered only "
+                    "after retries and/or "
+                    f"{s.contaminated_rereads} garbled read(s) recovered — the "
+                    "bus is marginal. This is a probe/cable/pull-up margin "
+                    "issue (TI SLVA689: added probe capacitance eats "
+                    "rise-time margin). Re-check SDA/SCL probe contact, "
+                    "lead length, and 3.3V pull-ups before trusting "
+                    "per-chip verdicts.")
+        elif nack_n:
+            msg += ("\n  Failures were hard (never recovered) — consistent "
+                    "with dead/absent chips, which are faulted per-device "
+                    "above; not by itself a probe problem.")
         else:
             msg += "\n  Bus clean: no NACKs or garbled reads recorded."
         return msg

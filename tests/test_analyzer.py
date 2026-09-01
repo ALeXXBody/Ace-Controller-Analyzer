@@ -450,19 +450,27 @@ class TestBusHealth(unittest.TestCase):
         self.assertIn("Bus clean", self.analyzer.bus_health_summary())
 
     def test_nack_marks_bus_marginal(self):
+        # A ping that only ACKs after a retry = recovered flakiness = the
+        # bus-margin signal (probe/pull-up margin), even though the chip is OK.
         self.mock_adapter.ping.side_effect = [False, True, True]
         self.analyzer.diagnose_device(0x38)
         s = self.analyzer.bus_stats
         self.assertEqual(s.ping_failures, 1)
+        self.assertEqual(s.ping_recovered, 1)
         self.assertTrue(s.marginal)
-        self.assertIn("WARN", self.analyzer.bus_health_summary())
+        summary = self.analyzer.bus_health_summary()
+        self.assertIn("WARN", summary)
+        self.assertIn("answered only after retries", summary)
 
-    def test_read_failure_marks_bus_marginal(self):
+    def test_hard_read_failure_not_marginal(self):
+        # Reads that never succeed are hard failures — a dead/absent chip
+        # produces them on every scan, so they are NOT a bus-margin signal.
         self.mock_adapter.read_bytes.side_effect = [OSError("nack")]
         self.analyzer.diagnose_device(0x38)
         s = self.analyzer.bus_stats
         self.assertGreaterEqual(s.read_failures, 1)
-        self.assertTrue(s.marginal)
+        self.assertFalse(s.marginal)
+        self.assertIn("hard", self.analyzer.bus_health_summary())
 
     def test_contaminated_read_counts_reread(self):
         def flaky(a, reg, length):
@@ -545,6 +553,7 @@ class TestReport(unittest.TestCase):
             bs = BusStats()
             bs.add_ping(True)
             bs.add_ping(False)
+            bs.add_recovered_ping()
             save_json_report(report, path, bus_stats=bus_stats_to_dict(bs))
             with open(path) as f:
                 data = json.load(f)
@@ -553,6 +562,7 @@ class TestReport(unittest.TestCase):
         self.assertEqual(d["silicon"], "CD3218")
         self.assertEqual(data["bus_stats"]["pings"], 2)
         self.assertEqual(data["bus_stats"]["ping_failures"], 1)
+        self.assertEqual(data["bus_stats"]["ping_recovered"], 1)
         self.assertTrue(data["bus_stats"]["bus_marginal"])
         self.assertEqual(data["bus_scan_results"], ["0x38"])
 

@@ -355,15 +355,15 @@ def decode_silicon(value: int) -> str:
 def decode_silicon_from_str(device_id: str) -> str:
     """Decode the silicon family from a ``device_id`` display string.
 
-    Accepts either the raw hex form the analyzer stores ("0xCD321804") or an
-    already-decoded 4CC ("CD3218"). Used as a backstop when the numeric DID
-    register value isn't available.
+    Accepts the raw hex form the analyzer stores ("0xCD321804"), an
+    already-decoded 4CC ("CD3218"), or a full part number ("CD3217B12").
+    Used as a backstop when the numeric DID register value isn't available.
     """
     if not device_id:
         return ""
     s = device_id.upper().strip()
     for fam in ("CD3218", "CD3217", "CD3215"):
-        if s == fam or s == f"0X{fam}" or f"0X{fam}" in s:
+        if fam in s:
             return fam
     return ""
 

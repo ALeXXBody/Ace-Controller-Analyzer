@@ -60,6 +60,8 @@ class UsbBridge {
   void runScan_();
   void runRead_(const uint8_t *f, size_t flen);
   void runWrite_(const uint8_t *f, size_t flen);
+  void reattachWire_();
+  void recoverBus_();
 };
 
 #endif // CD3217_BRIDGE_H

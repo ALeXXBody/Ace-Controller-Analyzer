@@ -66,6 +66,7 @@ def bus_stats_to_dict(bus_stats) -> Optional[dict]:
     return {
         "pings": bus_stats.pings,
         "ping_failures": bus_stats.ping_failures,
+        "ping_recovered": bus_stats.ping_recovered,
         "reads": bus_stats.reads,
         "read_failures": bus_stats.read_failures,
         "contaminated_rereads": bus_stats.contaminated_rereads,
