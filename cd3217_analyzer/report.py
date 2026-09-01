@@ -9,8 +9,15 @@ from typing import List, Optional
 from .analyzer import DeviceResult, DiagnosticReport, HealthStatus
 
 
-def save_json_report(report: DiagnosticReport, filepath: str) -> None:
-    """Save diagnostic report as JSON."""
+def save_json_report(report: DiagnosticReport, filepath: str,
+                     bus_stats: Optional[dict] = None) -> None:
+    """Save diagnostic report as JSON.
+
+    ``bus_stats`` (optional) is a serializable dict of session bus-integrity
+    counters (see CD3217Analyzer.bus_health_summary) — including it lets a
+    support dump show whether NACKs/garbled reads were seen, so a flaky probe
+    tap is never confused with a genuinely failing chip.
+    """
     data = {
         "timestamp": report.timestamp,
         "adapter_type": report.adapter_type,
@@ -19,6 +26,8 @@ def save_json_report(report: DiagnosticReport, filepath: str) -> None:
         "summary": report.summary,
         "notes": report.notes,
     }
+    if bus_stats is not None:
+        data["bus_stats"] = bus_stats
 
     for dev in report.devices:
         dev_data = {
@@ -26,6 +35,8 @@ def save_json_report(report: DiagnosticReport, filepath: str) -> None:
             "responds": dev.responds,
             "vendor_id": dev.vendor_id,
             "device_id": dev.device_id,
+            "did_raw": f"0x{dev.did_raw:08X}" if dev.did_raw is not None else None,
+            "silicon": dev.silicon or "",
             "mode": dev.mode,
             "device_type": dev.device_type,
             "health": dev.health.value,
@@ -46,6 +57,21 @@ def save_json_report(report: DiagnosticReport, filepath: str) -> None:
 
     with open(filepath, "w") as f:
         json.dump(data, f, indent=2)
+
+
+def bus_stats_to_dict(bus_stats) -> Optional[dict]:
+    """Serialize a CD3217Analyzer BusStats object for a JSON report."""
+    if bus_stats is None:
+        return None
+    return {
+        "pings": bus_stats.pings,
+        "ping_failures": bus_stats.ping_failures,
+        "reads": bus_stats.reads,
+        "read_failures": bus_stats.read_failures,
+        "contaminated_rereads": bus_stats.contaminated_rereads,
+        "nack_rate": round(bus_stats.nack_rate, 4),
+        "bus_marginal": bool(bus_stats.marginal),
+    }
 
 
 def load_json_report(filepath: str) -> dict:

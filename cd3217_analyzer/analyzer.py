@@ -24,6 +24,8 @@ from .registers import (
     VALID_ACE2_VIDS,
     PortMode,
     decode_mode_reg,
+    decode_silicon,
+    decode_silicon_from_str,
     decode_type_reg,
     decode_vid,
     is_ace2_address,
@@ -77,6 +79,8 @@ class DeviceResult:
     # Identification
     vendor_id: Optional[str] = None
     device_id: Optional[str] = None
+    did_raw: Optional[int] = None       # numeric DID register (0x01) value
+    silicon: str = ""                   # decoded family: CD3217/CD3218/CD3215
     mode: Optional[str] = None
     mode_raw: Optional[int] = None
     device_type: Optional[str] = None
@@ -102,6 +106,53 @@ class DiagnosticReport:
     devices: List[DeviceResult] = field(default_factory=list)
     summary: str = ""
     notes: str = ""
+
+
+@dataclass
+class BusStats:
+    """Aggregated I2C bus integrity counters for a scan session.
+
+    A high failure rate (NACKs / failed reads / contaminated rereads) is a
+    *bus* integrity signal, not a per-chip verdict: probing a USB-C board
+    adds capacitance to the I2C rails and shares the board's pull-ups, which
+    can eat into edge-timing margin (TI SLVA689) and make even a healthy
+    chip's transactions flaky. These counters let the tool report "bus is
+    marginal" separately from "chip is bad."
+    """
+    pings: int = 0           # ping transactions issued
+    ping_failures: int = 0   # ping attempts that did not ACK
+    reads: int = 0           # register read transactions issued
+    read_failures: int = 0   # reads that raised / returned no data
+    contaminated_rereads: int = 0  # identity reads that looked garbled & re-read
+
+    def add_ping(self, ok: bool) -> None:
+        self.pings += 1
+        if not ok:
+            self.ping_failures += 1
+
+    def add_read(self, ok: bool, contaminated: bool = False) -> None:
+        self.reads += 1
+        if not ok:
+            self.read_failures += 1
+        if contaminated:
+            self.contaminated_rereads += 1
+
+    @property
+    def nack_rate(self) -> float:
+        """Fraction of transaction attempts that did not complete cleanly."""
+        total = self.pings + self.reads
+        if not total:
+            return 0.0
+        return (self.ping_failures + self.read_failures) / total
+
+    @property
+    def marginal(self) -> bool:
+        """True when the bus looks noisy enough to distrust clean-per-chip
+        verdicts. Empirically tuned: any NACKs or contamination across a
+        scan, or a worst-case transaction failing, means re-check probe/pull-
+        ups/leads."""
+        return self.ping_failures > 0 or self.read_failures > 0 \
+            or self.contaminated_rereads > 0
 
 
 class CD3217Analyzer:
@@ -133,6 +184,12 @@ class CD3217Analyzer:
     def __init__(self, adapter: I2CAdapter, addresses: Optional[List[int]] = None):
         self.adapter = adapter
         self.addresses = addresses or list(KNOWN_ACE2_ADDRESSES.keys())
+        # Cumulative bus-integrity counters; reset per scan session.
+        self.bus_stats = BusStats()
+
+    def reset_bus_stats(self) -> None:
+        """Start a fresh bus-integrity accounting window (e.g. per scan)."""
+        self.bus_stats = BusStats()
 
     def scan_bus(self, start: int = 0x08, end: int = 0x77) -> List[int]:
         """Scan the entire I2C bus and return all responding addresses.
@@ -168,6 +225,7 @@ class CD3217Analyzer:
 
         try:
             raw = self.adapter.read_bytes(address, offset, length)
+            self.bus_stats.add_read(True)
             raw_int = int.from_bytes(raw, 'little')
 
             decoded = ""
@@ -186,6 +244,7 @@ class CD3217Analyzer:
                 decoded=decoded,
             )
         except Exception as e:
+            self.bus_stats.add_read(False)
             return None
 
     def _ping_with_retry(self, address: int) -> bool:
@@ -197,7 +256,9 @@ class CD3217Analyzer:
         delay distinguishes 'flaky right after a NACK' from 'really dead'.
         """
         for attempt in range(1 + self.PING_RETRIES):
-            if self.adapter.ping(address):
+            ok = self.adapter.ping(address)
+            self.bus_stats.add_ping(ok)
+            if ok:
                 return True
             if attempt < self.PING_RETRIES:
                 time.sleep(self.PING_RETRY_DELAY)
@@ -218,10 +279,15 @@ class CD3217Analyzer:
             # VID is a 16-bit field; any high-byte content is garbage.
             return (v & 0xFFFF0000) != 0
         if offset in (0x03, 0x04):
-            # 4CC registers: every byte must be printable ASCII (or 0x00 pad).
+            # 4CC registers: every byte must be printable ASCII, 0x00 padding,
+            # or a 0x04 length prefix (verified wire format: [0x04,'A','P','P']
+            # = "APP"). Anything else (0xFF undriven, byte-shifted junk) is
+            # contaminated.
             for i in range(4):
                 b = (v >> (i * 8)) & 0xFF
-                if b != 0x00 and not (0x20 <= b <= 0x7E):
+                if b == 0x00 or b == 0x04:
+                    continue
+                if not (0x20 <= b <= 0x7E):
                     return True
             return False
         return False
@@ -241,6 +307,7 @@ class CD3217Analyzer:
             return read
         if not self._register_suspicious(offset, read):
             return read
+        self.bus_stats.contaminated_rereads += 1
         for _ in range(self.REG_RETRIES):
             time.sleep(self.REG_RETRY_DELAY)
             retry = self.read_register(address, offset, length)
@@ -314,7 +381,10 @@ class CD3217Analyzer:
         # Step 4: Validate Device ID
         did_reg = result.registers.get(0x01)
         if did_reg:
+            result.did_raw = did_reg.raw_value
             result.device_id = did_reg.decoded or f"0x{did_reg.raw_value:08X}"
+            result.silicon = decode_silicon(did_reg.raw_value) \
+                or decode_silicon_from_str(result.device_id)
 
         # Step 5: Check Mode
         mode_reg = result.registers.get(0x03)
@@ -400,20 +470,20 @@ class CD3217Analyzer:
     # (CD3217B12 vs CD3218B12). VID/DID reveal what is actually installed.
 
     @staticmethod
-    def parse_silicon(device_id: Optional[str]) -> str:
-        """Extract the silicon family from a decoded Device ID.
+    def parse_silicon(device_id: Optional[str],
+                      did_raw: Optional[int] = None) -> str:
+        """Extract the silicon family from a Device ID.
 
-        Real Apple parts spell the family in the DID (verified on live
-        boards): 0xCD321804 -> 'CD3218', 0xCD321704 -> 'CD3217'.
-        Returns '' when the DID doesn't match the known pattern.
+        Prefers the raw numeric DID register (did_raw): Apple ACE2 parts spell
+        the family in the DID value itself (0xCD321804 -> "CD3218"). Falls
+        back to scanning a device_id display string for the family markers.
+        Returns '' when the DID doesn't carry a recognizable family.
         """
-        if not device_id:
-            return ""
-        did = device_id.upper()
-        for fam in ("CD3218", "CD3217", "CD3215"):
-            if f"0X{fam}" in did:
+        if did_raw is not None:
+            fam = decode_silicon(did_raw)
+            if fam:
                 return fam
-        return ""
+        return decode_silicon_from_str(device_id or "")
 
     def apply_socket_expectations(self, result: DeviceResult, position) -> None:
         """Validate the diagnosed chip against the board's socket data.
@@ -436,7 +506,8 @@ class CD3217Analyzer:
         if vid is not None:
             result.is_vanilla = vid == 0x0451
 
-        installed_silicon = self.parse_silicon(result.device_id)
+        installed_silicon = self.parse_silicon(result.device_id,
+                                               result.did_raw)
 
         if getattr(position, "chip_class", "") == "otp":
             if vid is not None and vid == 0x0451:
@@ -644,6 +715,31 @@ class CD3217Analyzer:
                 print(f"  0x{addr:02X}{marker}")
 
         print("=" * 70)
+
+    def bus_health_summary(self) -> str:
+        """Human-readable bus-integrity line for the current session.
+
+        Reports the aggregate NACK/error/retry counters. When ``marginal``
+        is true it warns that the *bus* (probe loading / pull-ups / leads)
+        may be degrading transactions, independent of any per-chip verdict.
+        """
+        s = self.bus_stats
+        nack_n = s.ping_failures + s.read_failures
+        if s.pings + s.reads == 0:
+            return "Bus statistics: no transactions recorded."
+        rate = s.nack_rate * 100
+        msg = (f"Bus statistics: {s.pings} pings, {s.reads} register reads, "
+               f"{nack_n} NACK/error attempts ({rate:.1f}% failed), "
+               f"{s.contaminated_rereads} garbled-read rechecks.")
+        if s.marginal:
+            msg += ("\n  WARN: bus shows contention/noise — this is a probe/"
+                    "cable/pull-up margin issue (TI SLVA689: added probe "
+                    "capacitance eats rise-time margin). Re-check SDA/SCL "
+                    "probe contact, lead length, and 3.3V pull-ups before "
+                    "trusting per-chip verdicts.")
+        else:
+            msg += "\n  Bus clean: no NACKs or garbled reads recorded."
+        return msg
 
     def register_dump(self, address: int) -> str:
         """Dump all readable registers from a device as formatted text."""

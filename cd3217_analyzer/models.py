@@ -244,3 +244,52 @@ def get_model(model_id: str) -> Optional[MacBookModel]:
 
 def model_ids() -> List[str]:
     return sorted(MACBOOK_MODELS.keys())
+
+
+def check_model_placement(model: MacBookModel,
+                          responding_addresses) -> Dict[int, dict]:
+    """Compare live bus scan results against a model's expected sockets.
+
+    Returns a dict keyed by address with one entry per relevant position:
+      * every expected socket address that had no responding chip -> MISSING
+      * every responding address that no socket expects -> UNEXPECTED
+
+    This catches the classic donor mistakes from repair.wiki before a chip
+    takes down the USB-C system:
+      - an OTP-ed Apple donor whose burned address does not match the socket
+        (responds somewhere the board doesn't use) -> UNEXPECTED
+      - a socket left empty / dead / unpowered chip -> MISSING
+    """
+    broadcast = 0x6B  # ACE2 all-call address — not a device
+    pos_by_addr = {p.address: p for p in model.positions}
+    out: Dict[int, dict] = {}
+    for addr in sorted(responding_addresses):
+        if addr == broadcast:
+            continue
+        if addr in pos_by_addr:
+            out[addr] = {
+                "ref": pos_by_addr[addr].ref,
+                "address": addr,
+                "verdict": "OK",
+                "message": "chip responds at this socket's expected address",
+            }
+        else:
+            out[addr] = {
+                "ref": None,
+                "address": addr,
+                "verdict": "UNEXPECTED",
+                "message": ("no socket on this board uses 0x{addr:02X} — wrong "
+                            "OTP donor address or misplaced chip").format(
+                                addr=addr),
+            }
+    for p in model.positions:
+        if p.address not in out:
+            out[p.address] = {
+                "ref": p.ref,
+                "address": p.address,
+                "verdict": "MISSING",
+                "message": (f"{p.ref} expected at 0x{p.address:02X} but nothing "
+                            "accepts this address — dead / unpowered / absent, "
+                            "or donor with the wrong burned address"),
+            }
+    return out

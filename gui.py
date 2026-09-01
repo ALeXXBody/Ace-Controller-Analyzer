@@ -1905,6 +1905,18 @@ class Application(ctk.CTk):
                 present = True
             alive = False
             if present:
+                # While a scan/diagnose/batch is running, the same CDC port is
+                # in use by the background worker. PINGing it from this thread
+                # only adds bus traffic and (before the v0.6.20 lock) raced
+                # frames. Skip the health ping during busy windows and just
+                # keep the port-presence check (pure OS enumeration, no serial
+                # I2C traffic); count no misses so a skipped check can't look
+                # like the board vanished.
+                if self.busy:
+                    state["misses"] = 0
+                    self.after(2000, lambda: threading.Thread(
+                        target=tick, daemon=True).start())
+                    return
                 alive = adapter.is_alive()
                 state["misses"] = 0 if alive else state["misses"] + 1
             if (not present) or state["misses"] >= 5:
@@ -2013,6 +2025,7 @@ class Application(ctk.CTk):
             if self.current_model:
                 expected = self._merge_expected(devices)
                 self.after(0, self._show_devices, expected, set(devices), True)
+                self.after(0, self._update_strap_reference)
             else:
                 self.after(0, self._show_devices, devices)
 
@@ -2031,6 +2044,7 @@ class Application(ctk.CTk):
             if self.current_model:
                 expected = self._merge_expected(found)
                 self.after(0, self._show_devices, expected, set(found), True)
+                self.after(0, self._update_strap_reference)
             else:
                 self.after(0, self._show_devices, found)
 
@@ -2177,6 +2191,7 @@ class Application(ctk.CTk):
                 # brief pause between devices so a dead chip's NACK does not
                 # contaminate the reads of the next healthy chip
                 time.sleep(0.08)
+            self._report_bus_health(analyzer)
             self.after(0, self._refresh_display)
 
         self._run_bg(work, "Diagnose all complete")
@@ -2248,6 +2263,26 @@ class Application(ctk.CTk):
             if p.address == result.address:
                 analyzer.apply_socket_expectations(result, p)
                 break
+
+    def _report_bus_health(self, analyzer: CD3217Analyzer) -> None:
+        """Surface the session's bus-integrity counters to the UI.
+
+        A flaky probe tap (extra capacitance / shared pull-ups, TI SLVA689)
+        can NACK healthy chips. When the analyzer saw NACKs/garbled reads we
+        say so explicitly instead of letting the chips take the blame.
+        """
+        try:
+            summary = analyzer.bus_health_summary()
+            level = "warn" if analyzer.bus_stats.marginal else "info"
+            first, _, rest = summary.partition("\n")
+            self.last_bus_stats = analyzer.bus_stats
+            self.after(0, self.log, first, level)
+            if rest:
+                for ln in rest.split("\n"):
+                    if ln.strip():
+                        self.after(0, self.log, ln.strip(), level)
+        except Exception as e:
+            self.after(0, self.log, f"Bus health: {e}", "err")
 
     def _show_result(self, result: DeviceResult):
         score = result.health_score
@@ -2439,6 +2474,7 @@ class Application(ctk.CTk):
             passed = sum(1 for r in self.batch_results if r.health == HealthStatus.PASS)
             warned = sum(1 for r in self.batch_results if r.health == HealthStatus.WARN)
             failed = sum(1 for r in self.batch_results if r.health == HealthStatus.FAIL)
+            self._report_bus_health(analyzer)
             self.after(
                 0, self.batch_status_var.set,
                 f"Done: {total_r} | {passed} pass | {warned} warn | {failed} fail"
@@ -2489,30 +2525,57 @@ class Application(ctk.CTk):
         for widget in self.strap_ref_frame.winfo_children():
             widget.destroy()
         if self.current_model:
-            items = [
-                (p.ref, format_hex_addr(p.address), p.addressing.upper(), f"Port {p.i2c_port}")
-                for p in self.current_model.positions
-            ]
+            from cd3217_analyzer.models import check_model_placement
+            live = list(getattr(self, "scan_results", None) or [])
+            placement = check_model_placement(self.current_model, live)
+            items = []
+            for p in self.current_model.positions:
+                info = placement.get(p.address, {})
+                verdict = info.get("verdict", "")
+                color = (C["green"] if verdict == "OK" else
+                         C["red"] if verdict == "MISSING" else
+                         C["yellow"])
+                strap = p.addr_pin or "—"
+                cls = p.chip_class or p.addressing
+                items.append((p.ref, format_hex_addr(p.address),
+                              p.addressing.upper(), strap, cls, verdict, color))
+            for pos, addr, typ, strap, cls, verdict, color in items:
+                row = ctk.CTkFrame(self.strap_ref_frame, fg_color=C["card"],
+                                   corner_radius=4, height=28)
+                row.pack(fill="x", pady=1)
+                row.pack_propagate(False)
+                ctk.CTkLabel(row, text=pos, font=F["mono_small"], width=100,
+                             anchor="w").pack(side="left", padx=8)
+                ctk.CTkLabel(row, text=addr, font=F["mono_small"],
+                             text_color=C["accent"], width=60).pack(side="left")
+                ctk.CTkLabel(row, text=typ, font=F["mono_small"],
+                             text_color=C["yellow"], width=52).pack(side="left")
+                ctk.CTkLabel(row, text=strap, font=F["mono_small"],
+                             text_color=C["dim"], width=52).pack(side="left")
+                ctk.CTkLabel(row, text=cls, font=F["mono_small"],
+                             text_color=C["accent"], width=44).pack(side="left")
+                ctk.CTkLabel(row, text=verdict, font=F["mono_small"],
+                             text_color=color, width=88).pack(side="left")
         else:
             items = [
-                ("UF400", "0x38", "STRAP", "P1"),
-                ("UF500", "0x3F", "STRAP", "P1"),
-                ("UB300", "0x20", "OTP", "P1"),
-                ("UB400", "0x74", "OTP", "P1"),
+                ("UF400", "0x38", "STRAP", "GND"),
+                ("UF500", "0x3F", "STRAP", "float"),
+                ("UB300", "0x20", "OTP", "—"),
+                ("UB400", "0x74", "OTP", "—"),
             ]
-        for pos, addr, typ, port in items:
-            row = ctk.CTkFrame(self.strap_ref_frame, fg_color=C["card"], corner_radius=4, height=28)
-            row.pack(fill="x", pady=1)
-            row.pack_propagate(False)
-            ctk.CTkLabel(row, text=pos, font=F["mono_small"], width=120, anchor="w").pack(
-                side="left", padx=8
-            )
-            ctk.CTkLabel(row, text=addr, font=F["mono_small"], text_color=C["accent"],
-                         width=70).pack(side="left")
-            ctk.CTkLabel(row, text=typ, font=F["mono_small"], text_color=C["yellow"],
-                         width=70).pack(side="left")
-            ctk.CTkLabel(row, text=port, font=F["mono_small"], text_color=C["dim"],
-                         width=60).pack(side="left")
+            for pos, addr, typ, strap in items:
+                row = ctk.CTkFrame(self.strap_ref_frame, fg_color=C["card"],
+                                   corner_radius=4, height=28)
+                row.pack(fill="x", pady=1)
+                row.pack_propagate(False)
+                ctk.CTkLabel(row, text=pos, font=F["mono_small"], width=100,
+                             anchor="w").pack(side="left", padx=8)
+                ctk.CTkLabel(row, text=addr, font=F["mono_small"],
+                             text_color=C["accent"], width=60).pack(side="left")
+                ctk.CTkLabel(row, text=typ, font=F["mono_small"],
+                             text_color=C["yellow"], width=52).pack(side="left")
+                ctk.CTkLabel(row, text=strap, font=F["mono_small"],
+                             text_color=C["dim"], width=52).pack(side="left")
 
     def _on_model_change(self, selection: str):
         if selection == "Auto-detect":
@@ -2922,8 +2985,10 @@ class Application(ctk.CTk):
         report.bus_scan_results = self.scan_results
         report.devices = list(self.devices.values())
         report.summary = f"GUI session — {len(self.devices)} device(s)"
+        from cd3217_analyzer.report import bus_stats_to_dict
+        bus_stats = bus_stats_to_dict(getattr(self, "last_bus_stats", None))
         try:
-            save_json_report(report, filepath)
+            save_json_report(report, filepath, bus_stats=bus_stats)
             self.log(f"Saved: {filepath}", "ok")
         except Exception as e:
             self.log(f"Save error: {e}", "err")

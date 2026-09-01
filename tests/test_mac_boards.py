@@ -108,6 +108,47 @@ class TestMacBoards(unittest.TestCase):
             joined = " ".join(b.connect).lower()
             self.assertIn("tap", joined, key)
 
+    def test_check_model_placement_all_ok(self):
+        from cd3217_analyzer.models import check_model_placement, get_model
+        m = get_model("A2251")
+        expected = [p.address for p in m.positions]
+        by_addr = check_model_placement(m, expected)
+        for p in m.positions:
+            self.assertEqual(by_addr[p.address]["verdict"], "OK")
+        self.assertEqual(len(by_addr), len(m.positions))
+
+    def test_check_model_placement_missing_and_unexpected(self):
+        from cd3217_analyzer.models import check_model_placement, get_model
+        m = get_model("A2251")
+        # only the two vanilla straps respond; an OTP donor answers off-map
+        live = [0x38, 0x3F, 0x7E]
+        by_addr = check_model_placement(m, live)
+        # responding vanilla sockets OK
+        self.assertEqual(by_addr[0x38]["verdict"], "OK")
+        self.assertEqual(by_addr[0x3F]["verdict"], "OK")
+        # expected OTP sockets empty -> MISSING
+        self.assertEqual(by_addr[0x3B]["verdict"], "MISSING")
+        self.assertEqual(by_addr[0x3C]["verdict"], "MISSING")
+        # 0x7E is not an A2251 address -> UNEXPECTED (mismatched OTP donor)
+        got = by_addr[0x7E]
+        self.assertEqual(got["verdict"], "UNEXPECTED")
+        self.assertIn("wrong OTP donor", got["message"])
+
+    def test_check_model_placement_skips_broadcast(self):
+        from cd3217_analyzer.models import check_model_placement, get_model
+        m = get_model("A2289")
+        by_addr = check_model_placement(m, [0x38, 0x3F, 0x6B])
+        self.assertNotIn(0x6B, by_addr)
+        self.assertEqual(by_addr[0x38]["verdict"], "OK")
+        self.assertEqual(by_addr[0x3F]["verdict"], "OK")
+
+    def test_check_model_placement_unknown_model_has_no_positions(self):
+        from cd3217_analyzer.models import check_model_placement
+        from cd3217_analyzer.models import MacBookModel
+        empty = MacBookModel("X", "Test", "000-0000", 0, [])
+        by_addr = check_model_placement(empty, [0x38])
+        self.assertEqual(by_addr[0x38]["verdict"], "UNEXPECTED")
+
 
 if __name__ == "__main__":
     unittest.main()

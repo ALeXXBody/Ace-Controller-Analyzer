@@ -394,12 +394,102 @@ class TestAnalyzer(unittest.TestCase):
         self.assertEqual(self.analyzer.parse_silicon("0xCD321704"), "CD3217")
         self.assertEqual(self.analyzer.parse_silicon("0x00000000"), "")
         self.assertEqual(self.analyzer.parse_silicon(None), "")
+        # raw DID path preferred over the display string
+        self.assertEqual(self.analyzer.parse_silicon(None, 0xCD321804), "CD3218")
+        self.assertEqual(self.analyzer.parse_silicon(None, 0xCD321704), "CD3217")
+        self.assertEqual(self.analyzer.parse_silicon("0xCD321804", 0xCD321704),
+                         "CD3217")
+        self.assertEqual(self.analyzer.parse_silicon("0x00000000", 0), "")
+        # raw path wins even when the string is ambiguous/garbage
+        self.assertEqual(self.analyzer.parse_silicon("0xDEADBEEF", 0xCD3215F0),
+                         "CD3215")
+        # ACE1 vs ACE2 generations both recognized
+        self.assertEqual(self.analyzer.parse_silicon("0xCD3215A0"), "CD3215")
 
     def test_health_score_zero_when_no_response(self):
         """Test health score is 0 when device doesn't respond."""
         self.mock_adapter.ping.return_value = False
         result = self.analyzer.diagnose_device(0x38)
         self.assertEqual(result.health_score, 0)
+
+    def test_register_suspicious_accepts_4cc_length_prefix(self):
+        """A healthy 4CC register read with a length prefix byte (verified
+        wire format [0x04,'A','P','P'] = 'APP') must NOT be flagged as
+        contaminated — a leading 0x04 is the length byte, not bus noise."""
+        from cd3217_analyzer.analyzer import RegisterRead
+        mode = RegisterRead(offset=0x03, name="Mode",
+                            raw_bytes=bytes([0x04, 0x41, 0x50, 0x50]),
+                            raw_value=0x50504104)
+        self.assertFalse(self.analyzer._register_suspicious(0x03, mode))
+        # real bus garbage (undriven 0xFF) still flags
+        bad = RegisterRead(offset=0x03, name="Mode",
+                           raw_bytes=bytes([0xFF, 0xFF, 0xFF, 0xFF]),
+                           raw_value=0xFFFFFFFF)
+        self.assertTrue(self.analyzer._register_suspicious(0x03, bad))
+
+
+class TestBusHealth(unittest.TestCase):
+    """Tests for the bus-integrity counter (NACK/retry/garbled-read)."""
+
+    def setUp(self):
+        self.mock_adapter = MagicMock()
+        self.mock_adapter.ping.return_value = True
+        self.mock_adapter.read_bytes.return_value = bytes([0x51, 0x04, 0x00, 0x00])
+        self.analyzer = CD3217Analyzer(self.mock_adapter, addresses=[0x38])
+
+    def test_clean_bus_no_counters(self):
+        self.analyzer.diagnose_device(0x38)
+        s = self.analyzer.bus_stats
+        self.assertGreater(s.pings, 0)
+        self.assertGreater(s.reads, 0)
+        self.assertEqual(s.ping_failures, 0)
+        self.assertEqual(s.read_failures, 0)
+        self.assertEqual(s.contaminated_rereads, 0)
+        self.assertFalse(s.marginal)
+        # bus_health_summary reports clean
+        self.assertIn("Bus clean", self.analyzer.bus_health_summary())
+
+    def test_nack_marks_bus_marginal(self):
+        self.mock_adapter.ping.side_effect = [False, True, True]
+        self.analyzer.diagnose_device(0x38)
+        s = self.analyzer.bus_stats
+        self.assertEqual(s.ping_failures, 1)
+        self.assertTrue(s.marginal)
+        self.assertIn("WARN", self.analyzer.bus_health_summary())
+
+    def test_read_failure_marks_bus_marginal(self):
+        self.mock_adapter.read_bytes.side_effect = [OSError("nack")]
+        self.analyzer.diagnose_device(0x38)
+        s = self.analyzer.bus_stats
+        self.assertGreaterEqual(s.read_failures, 1)
+        self.assertTrue(s.marginal)
+
+    def test_contaminated_read_counts_reread(self):
+        def flaky(a, reg, length):
+            if reg == 0x03:  # mode garbled on first try
+                return bytes([0xFF, 0xFF, 0xFF, 0xFF])
+            return bytes([0x51, 0x04, 0x00, 0x00])
+
+        self.mock_adapter.read_bytes.side_effect = flaky
+        self.analyzer.diagnose_device(0x38)
+        s = self.analyzer.bus_stats
+        self.assertGreaterEqual(s.contaminated_rereads, 1)
+        self.assertTrue(s.marginal)
+
+    def test_reset_bus_stats(self):
+        self.mock_adapter.ping.side_effect = [False, True, True]
+        self.analyzer.diagnose_device(0x38)
+        self.assertGreater(self.analyzer.bus_stats.ping_failures, 0)
+        self.analyzer.reset_bus_stats()
+        s = self.analyzer.bus_stats
+        self.assertEqual(s.ping_failures, 0)
+        self.assertEqual(s.reads, 0)
+        self.assertFalse(s.marginal)
+
+    def test_bus_stats_nack_rate(self):
+        self.analyzer.bus_stats.add_ping(True)
+        self.analyzer.bus_stats.add_ping(False)
+        self.assertEqual(self.analyzer.bus_stats.nack_rate, 0.5)
 
 
 class TestReport(unittest.TestCase):
@@ -432,6 +522,39 @@ class TestReport(unittest.TestCase):
         self.assertIn("[FAIL]", formatted)
         self.assertIn("0x3B", formatted)
         self.assertIn("NO_RESPONSE", formatted)
+
+    def test_save_json_report_includes_did_silicon_and_bus_stats(self):
+        import json
+        import tempfile
+        from cd3217_analyzer.analyzer import (
+            BusStats, DeviceResult, DiagnosticReport,
+        )
+        from cd3217_analyzer.report import (
+            bus_stats_to_dict, save_json_report,
+        )
+        with tempfile.TemporaryDirectory() as td:
+            path = f"{td}/report.json"
+            dev = DeviceResult(address=0x38)
+            dev.responds = True
+            dev.device_id = "0xCD321804"
+            dev.did_raw = 0xCD321804
+            dev.silicon = "CD3218"
+            report = DiagnosticReport(adapter_type="UsbBridgeAdapter")
+            report.bus_scan_results = [0x38]
+            report.devices = [dev]
+            bs = BusStats()
+            bs.add_ping(True)
+            bs.add_ping(False)
+            save_json_report(report, path, bus_stats=bus_stats_to_dict(bs))
+            with open(path) as f:
+                data = json.load(f)
+        d = data["devices"][0]
+        self.assertEqual(d["did_raw"], "0xCD321804")
+        self.assertEqual(d["silicon"], "CD3218")
+        self.assertEqual(data["bus_stats"]["pings"], 2)
+        self.assertEqual(data["bus_stats"]["ping_failures"], 1)
+        self.assertTrue(data["bus_stats"]["bus_marginal"])
+        self.assertEqual(data["bus_scan_results"], ["0x38"])
 
 
 if __name__ == "__main__":

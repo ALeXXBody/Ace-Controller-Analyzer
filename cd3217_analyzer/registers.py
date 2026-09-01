@@ -327,6 +327,47 @@ def decode_4cc(value: int) -> str:
     return decode_mode_reg(value)
 
 
+def decode_silicon(value: int) -> str:
+    """Decode the silicon family from a raw Device ID DID register.
+
+    Apple's ACE2 parts spell the family directly in the DID's numeric value:
+    0xCD321804 encodes "CD3218", 0xCD321704 encodes "CD3217" (the trailing
+    byte is a revision). Matching the family string against the canonical
+    uppercase hex digits of the value is therefore both simple and robust —
+    cleaner than a substring over a pre-formatted device_id string, because
+    it works regardless of how the value gets printed (padding, separators).
+
+    Returns one of the known family strings ("CD3217"/"CD3218"/"CD3215")
+    or '' when the DID doesn't carry a recognizable family.
+    """
+    if value is None:
+        return ""
+    try:
+        hex_digits = f"{value:08X}"
+    except (ValueError, TypeError):
+        return ""
+    for fam in ("CD3218", "CD3217", "CD3215"):
+        if fam in hex_digits:
+            return fam
+    return ""
+
+
+def decode_silicon_from_str(device_id: str) -> str:
+    """Decode the silicon family from a ``device_id`` display string.
+
+    Accepts either the raw hex form the analyzer stores ("0xCD321804") or an
+    already-decoded 4CC ("CD3218"). Used as a backstop when the numeric DID
+    register value isn't available.
+    """
+    if not device_id:
+        return ""
+    s = device_id.upper().strip()
+    for fam in ("CD3218", "CD3217", "CD3215"):
+        if s == fam or s == f"0X{fam}" or f"0X{fam}" in s:
+            return fam
+    return ""
+
+
 def decode_vid(value: int) -> str:
     """Decode Vendor ID register.
 
