@@ -966,6 +966,42 @@ class TestBatchRetry(unittest.TestCase):
         self.assertTrue(result.vendor_id.startswith("0x2804"))
         self.assertGreaterEqual(state["pass"], 2)   # a second pass happened
 
+    def test_truncation_merge_recovers_deviceinfo(self):
+        """v0.9.1: the chip prefixes each response (0x04/0x40...) and
+        truncates mid-data on slow setups; merging repeated reads
+        assembles the full DeviceInfo string."""
+        responses = [
+            b"\x40CD\xff\xff\xff",   # attempt 1: prefix + 2 chars
+            b"\x40\xff3217\xff\xff",  # attempt 2: later bytes
+            b"\x40CD3217   HW00\xff\xff",
+            b"\x40CD3217   HW0022 FW00\xff",
+        ]
+        calls = {"n": 0}
+
+        def rb(addr, reg, length):
+            if reg == 0x2F:
+                r = responses[min(calls["n"], len(responses) - 1)]
+                calls["n"] += 1
+                return (r + b"\xff" * 47)[:length]
+            if reg == 0x00:
+                return bytes([0x04, 0x28, 0x00, 0x00])
+            if reg == 0x01:
+                return bytes([0x04, 0x17, 0x32, 0xCD])
+            if reg in (0x03, 0x04):
+                return bytes([0x04, 0x41, 0x50, 0x50])
+            return bytes([0x5A] * length)
+
+        mock = MagicMock()
+        mock.ping.return_value = True
+        mock.read_bytes.side_effect = rb
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        result = an.diagnose_device(0x38)
+        merged = result.registers.get(0x2F)
+        self.assertIsNotNone(merged)
+        self.assertIn(b"CD3217", merged.raw_bytes)
+        self.assertIn(b"HW0022", merged.raw_bytes)
+        self.assertIn("CD3217", result.device_info)
+
     def test_retryable_includes_corrupted_registers(self):
         """v0.7.5: a CORRUPTED_REGISTERS FAIL is transport-shaped and must
         be retried by the Diagnose-All ladder."""

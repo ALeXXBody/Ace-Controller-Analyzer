@@ -154,19 +154,24 @@ def scan_otp(adapter: I2CAdapter, address: int, label: str = "",
                                  attempt + 1, 1 + read_retries)
                 data = None
         if data is not None:
-            # Truncation repair: slow chips deliver the first 1-2 bytes of
-            # a chunk then float the bus (0xFF tail). Re-read the dead
-            # bytes individually.
+            # Truncation repair (protocol-aware): each read response starts
+            # with a length-prefix byte, so byte-wise sub-reads are
+            # meaningless. Instead, MERGE repeated reads of the same
+            # chunk — different attempts truncate at different points, and
+            # the per-position union assembles the full content.
             data = bytearray(data)
-            for i in range(len(data)):
-                if data[i] == 0xFF:
-                    try:
-                        single = adapter.read_bytes(address, offset + i, 1)
-                        if single and single[0] != 0xFF:
-                            data[i] = single[0]
-                    except Exception:
-                        pass
+            if 0xFF in data:
+                for attempt in range(3):
                     time.sleep(read_spacing)
+                    try:
+                        again = adapter.read_bytes(address, offset, read_len)
+                    except Exception:
+                        continue
+                    for i, byte in enumerate(again):
+                        if data[i] == 0xFF and byte != 0xFF:
+                            data[i] = byte
+                    if 0xFF not in data:
+                        break
             data = bytes(data)
             if set(data) == {0xFF}:
                 dump.read_errors.append(offset)

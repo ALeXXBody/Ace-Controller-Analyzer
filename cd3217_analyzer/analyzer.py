@@ -415,24 +415,37 @@ class CD3217Analyzer:
                 break
         return n / len(raw_bytes) if raw_bytes else 0.0
 
-    def _read_register_chunked(self, address: int, offset: int,
-                               length: int) -> Optional[RegisterRead]:
-        """Re-read a register one byte at a time (with spacing + retries)
-        to defeat transaction truncation, and reassemble."""
-        out = bytearray()
-        for i in range(length):
-            b = None
-            for attempt in range(1 + self.REG_RETRIES):
-                try:
-                    b = self.adapter.read_bytes(address, offset + i, 1)
-                    if b:
-                        break
-                except Exception:
-                    b = None
-                time.sleep(self.CHUNK_FAIL_DELAY)
-            out.append(b[0] if b else 0xFF)
-            time.sleep(self.REG_SPACING)
-        raw_int = int.from_bytes(bytes(out), "little")
+    def _read_register_merged(self, address: int, offset: int,
+                              length: int,
+                              attempts: int = 4) -> Optional[RegisterRead]:
+        """Defeat truncation by MERGING repeated full-length reads.
+
+        The chip's I2C protocol prefixes every register response with a
+        length byte (0x04 for 4CC registers, 0x40 for DeviceInfo, ...) —
+        so byte-wise sub-reads are meaningless (each one restarts at the
+        prefix). When a slow/partially-powered chip truncates, it floats
+        the bus mid-response (0xFF tail), but DIFFERENT attempts truncate
+        at different points. Merging N spaced attempts byte-wise — taking
+        the first non-0xFF byte at each position — assembles the complete
+        response.
+        """
+        merged = bytearray([0xFF]) * 0  # start empty
+        merged = bytearray(b"\xFF" * length)
+        for attempt in range(max(1, attempts)):
+            try:
+                read = self.read_register(address, offset, length)
+            except Exception:
+                read = None
+            if read is None:
+                time.sleep(self.REG_FAIL_RETRY_DELAY)
+                continue
+            for i, b in enumerate(read.raw_bytes[:length]):
+                if merged[i] == 0xFF and b != 0xFF:
+                    merged[i] = b
+            if 0xFF not in merged:
+                break
+            time.sleep(self.REG_FAIL_RETRY_DELAY)
+        raw_int = int.from_bytes(bytes(merged), "little")
         decoded = ""
         if offset == 0x00:
             decoded = decode_vid(raw_int)
@@ -444,7 +457,7 @@ class CD3217Analyzer:
         return RegisterRead(
             offset=offset,
             name=reg_def.name if reg_def else f"0x{offset:02X}",
-            raw_bytes=bytes(out),
+            raw_bytes=bytes(merged),
             raw_value=raw_int,
             decoded=decoded,
         )
@@ -470,7 +483,7 @@ class CD3217Analyzer:
             # keep whichever snapshot carries more real data.
             if read is not None and length > 4 \
                     and self._tail_ff_fraction(read.raw_bytes) >= 0.4:
-                chunked = self._read_register_chunked(address, offset, length)
+                chunked = self._read_register_merged(address, offset, length)
                 if chunked is not None and chunked.raw_bytes:
                     if self._tail_ff_fraction(chunked.raw_bytes) \
                             < self._tail_ff_fraction(read.raw_bytes):
@@ -584,7 +597,7 @@ class CD3217Analyzer:
             if debuglog.is_enabled():
                 debuglog.log("DIAG 0x%02X DID 0x%08X does not decode — "
                              "chunked re-read", address, did_reg.raw_value)
-            fixed = self._read_register_chunked(address, 0x01, 4)
+            fixed = self._read_register_merged(address, 0x01, 4)
             if fixed is not None and decode_silicon(fixed.raw_value):
                 result.registers[0x01] = fixed
                 did_reg = fixed
