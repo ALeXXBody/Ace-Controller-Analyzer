@@ -93,7 +93,8 @@ SLVAE21A), Asahi/t8012dev notes, repair.wiki, badcaps threads.
 | 6.3 | A2442/A2779/A2780 true 7-bit socket addresses (app maps flagged UNVERIFIED). | Schematic + boardview for 820-02100 / 820-02230, or live capture cross-check with strap logic |
 | 6.4 | Prefix bytes for 0x14/0x15/0x29/0x2D (0x0B/0x12/0x3F observed once each) — length semantics? | Long trace campaign on a healthy board; correlate prefix vs response length |
 | 6.5 | Why the chip truncates on the user's A2251 setup: power state of the board during probing (asleep SMC? VIN_3V3 only?), vs the A2485 capture setup. | Repeat export with the Mac fully awake vs asleep; compare truncation rates (trace has per-read detail) |
-| 6.6 | Whether 50 kHz (I2CFREQ cmd) measurably reduces truncation on slow chips. | stress_test_margin + truncation-rate comparison at 100k vs 50k (trace) |
+| 6.6 | **Truncation is (at least partly) a CLOCK-STRETCH TIMEOUT at the bridge**: RP2040 Wire default timeout is 25 ms; a stretching CD3217 exceeding it gets its remaining response clocked in as 0xFF — exactly the observed signature. v0.9.2 raises the bridge timeout to 1000 ms (both cores) and halves the clock (50 kHz via I2CFREQ) for truncation repair passes. | VERIFIED mechanism (core source: `TwoWire::setTimeout(25)` default), field confirmation pending |
+| 6.8 | Wire lengths <10 cm are NOT the truncation cause; the stretch-timeout interface behavior is the primary suspect, wire contact still matters for the 0-bits-as-1s signature. | PROVISIONAL |
 | 6.7 | OTP write path: no public method for Apple OTP address programming; TI's documented flash-update-over-I²C is the model. Keep the write stub. | Research only; never experimental-write on a donor |
 
 ## 7. Maintenance rules

@@ -591,9 +591,11 @@ void setup() {
   Wire.setSDA(I2C_SDA_GPIO);
   Wire.setSCL(I2C_SCL_GPIO);
   Wire.begin();
+  Wire.setTimeout(1000);   // tolerate long ACE2 clock stretching (25 ms default aborts mid-response -> 0xFF tail)
   Serial.println("[i2c] Wire.setSDA/setSCL/begin() ok (100kHz)");
 #else
   Wire.begin(I2C_SDA_GPIO, I2C_SCL_GPIO, 100000);
+  Wire.setTimeOut(1000);   // same fix, ESP32 core (ms)
   Serial.println("[i2c] Wire.begin() ok (100kHz)");
 #endif
 

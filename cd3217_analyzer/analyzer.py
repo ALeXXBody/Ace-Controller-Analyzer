@@ -399,9 +399,11 @@ class CD3217Analyzer:
 
     # Truncation repair: a chip that is slow / partially powered delivers
     # the first 1-2 bytes of a read then floats SDA — the master clocks in
-    # 0xFF for the rest. Single-byte transactions with spacing recover the
-    # full content (the OTP path's per-byte pattern proved it).
+    # 0xFF for the rest. Merged reads recover most of it; the rest needs
+    # HALF CLOCK (50 kHz doubles the chip's per-byte fetch time).
     CHUNK_FAIL_DELAY = 0.12
+    SLOW_CLOCK_HZ = 50_000
+    truncation_seen = False
 
     @staticmethod
     def _tail_ff_fraction(raw_bytes: bytes) -> float:
@@ -462,6 +464,30 @@ class CD3217Analyzer:
             decoded=decoded,
         )
 
+    def _read_register_merged_slow(self, address: int, offset: int,
+                                   length: int) -> Optional[RegisterRead]:
+        """Merged re-read at HALF CLOCK: a truncating chip cannot fetch
+        bytes fast enough at 100 kHz; 50 kHz doubles its per-byte time.
+        Clock is always restored."""
+        has_clock = hasattr(self.adapter, "set_i2c_clock")
+        if has_clock:
+            try:
+                self.adapter.set_i2c_clock(self.SLOW_CLOCK_HZ)
+                if debuglog.is_enabled():
+                    debuglog.log("REG 0x%02X@0x%02X merged re-read at %d Hz",
+                                 address, offset, self.SLOW_CLOCK_HZ)
+            except Exception:
+                has_clock = False
+        try:
+            return self._read_register_merged(address, offset, length,
+                                              attempts=5)
+        finally:
+            if has_clock:
+                try:
+                    self.adapter.set_i2c_clock(100_000)
+                except Exception:
+                    pass
+
     def read_all_registers(self, address: int) -> Dict[int, RegisterRead]:
         """Read all important registers from a device."""
         results = {}
@@ -483,7 +509,9 @@ class CD3217Analyzer:
             # keep whichever snapshot carries more real data.
             if read is not None and length > 4 \
                     and self._tail_ff_fraction(read.raw_bytes) >= 0.4:
-                chunked = self._read_register_merged(address, offset, length)
+                self.truncation_seen = True
+                chunked = self._read_register_merged_slow(address, offset,
+                                                          length)
                 if chunked is not None and chunked.raw_bytes:
                     if self._tail_ff_fraction(chunked.raw_bytes) \
                             < self._tail_ff_fraction(read.raw_bytes):
@@ -597,7 +625,7 @@ class CD3217Analyzer:
             if debuglog.is_enabled():
                 debuglog.log("DIAG 0x%02X DID 0x%08X does not decode — "
                              "chunked re-read", address, did_reg.raw_value)
-            fixed = self._read_register_merged(address, 0x01, 4)
+            fixed = self._read_register_merged_slow(address, 0x01, 4)
             if fixed is not None and decode_silicon(fixed.raw_value):
                 result.registers[0x01] = fixed
                 did_reg = fixed

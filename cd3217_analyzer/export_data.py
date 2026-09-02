@@ -139,6 +139,7 @@ def collect_bundle(adapter, selected: List[str], name: str,
     }
 
     has_a2k = adapter is not None
+    reg_pass_truncated = False   # set by the registers pass; read by OTP
 
     if "info" in sel:
         log("Reading device INFO frame...")
@@ -180,6 +181,8 @@ def collect_bundle(adapter, selected: List[str], name: str,
                     regs_map, n_rechecks, v_status = _recheck_chip_registers(
                         analyzer, a, regs_map,
                         progress_cb=lambda m: log(m))
+                    reg_pass_truncated = reg_pass_truncated or \
+                        bool(getattr(analyzer, "truncation_seen", False))
                     regs[f"0x{a:02X}"] = regs_map
                     verification_regs[f"0x{a:02X}"] = {
                         "status": v_status, "rechecks": n_rechecks,
@@ -229,7 +232,18 @@ def collect_bundle(adapter, selected: List[str], name: str,
             otps = {}
             verification_otp = {}
             time.sleep(0.3)   # settle after the register pass
-            for idx, a in enumerate(addrs):
+            # If the register pass hit truncation, the chip is slow — scan
+            # OTP at half clock (I2CFREQ) and restore afterwards.
+            slow_clock = reg_pass_truncated \
+                and hasattr(adapter, "set_i2c_clock")
+            if slow_clock:
+                try:
+                    adapter.set_i2c_clock(50_000)
+                    log("  OTP pass at 50 kHz (chip truncating at 100 kHz)")
+                except Exception:
+                    slow_clock = False
+            try:
+              for idx, a in enumerate(addrs):
                 if idx:
                     time.sleep(0.3)
                 try:
@@ -252,6 +266,13 @@ def collect_bundle(adapter, selected: List[str], name: str,
                     }
                 except Exception as e:
                     bundle["errors"].append(f"otp 0x{a:02X}: {e}")
+            finally:
+                if slow_clock:
+                    try:
+                        adapter.set_i2c_clock(100_000)
+                        log("  clock restored to 100 kHz")
+                    except Exception:
+                        pass
             bundle["data"]["otp_dump"] = otps
             bundle["verification"]["otp_dump"] = verification_otp
             import hashlib

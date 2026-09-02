@@ -165,8 +165,14 @@ void UsbBridge::reattachWire_() {
   Wire.setSDA(I2C_SDA_GPIO);
   Wire.setSCL(I2C_SCL_GPIO);
   Wire.begin();
+  // ACE2 slaves clock-stretch while fetching internally (especially when
+  // partially powered). The 25 ms default aborts the stretched byte and
+  // the rest of the response reads as 0xFF — the "truncation" signature.
+  // Give the chip a full second.
+  Wire.setTimeout(1000);
 #else
   Wire.begin(I2C_SDA_GPIO, I2C_SCL_GPIO, 100000);
+  Wire.setTimeOut(1000);                  // same fix, ESP32 core (ms)
 #endif
 }
 
