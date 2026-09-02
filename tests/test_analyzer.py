@@ -664,14 +664,17 @@ class TestDeviceInfo(unittest.TestCase):
         self.assertTrue(self.analyzer.bus_stats.marginal)
 
     def test_did_plausible_ti_did_not_reread(self):
-        """S2: a non-0xCD DID (e.g. ACE1 donor) must NOT trigger rereads —
-        it is valid silicon, just not Apple."""
+        """S2/v0.9.0: a non-0xCD DID (e.g. ACE1 donor) triggers exactly one
+        byte-wise verification pass (harmless, read-only) and the original
+        DID is preserved when it still does not decode."""
         calls = {"0x01": 0}
 
         def rb(addr, reg, length):
             if reg == 0x01:
                 calls["0x01"] += 1
-                return bytes([0x01, 0x98, 0x65, 0x12])  # 0x12986501
+                if length >= 4:
+                    return bytes([0x01, 0x98, 0x65, 0x12])  # 0x12986501
+                return bytes([0x01])          # chunked single-byte reads
             if reg == 0x00:
                 return bytes([0x51, 0x04, 0x00, 0x00])
             if reg == 0x03:
@@ -681,8 +684,9 @@ class TestDeviceInfo(unittest.TestCase):
             return bytes([0x5A] * length)
 
         self.mock_adapter.read_bytes.side_effect = rb
-        self.analyzer.diagnose_device(0x38)
-        self.assertEqual(calls["0x01"], 1)
+        result = self.analyzer.diagnose_device(0x38)
+        self.assertEqual(calls["0x01"], 2)   # 1 direct + 1 verification byte
+        self.assertEqual(result.did_raw, 0x12659801)  # preserved
         self.assertEqual(self.analyzer.bus_stats.contaminated_rereads, 0)
 
     def test_device_info_garbled_read_is_reread(self):

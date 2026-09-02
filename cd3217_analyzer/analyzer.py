@@ -397,6 +397,58 @@ class CD3217Analyzer:
                 read = retry
         return read
 
+    # Truncation repair: a chip that is slow / partially powered delivers
+    # the first 1-2 bytes of a read then floats SDA — the master clocks in
+    # 0xFF for the rest. Single-byte transactions with spacing recover the
+    # full content (the OTP path's per-byte pattern proved it).
+    CHUNK_FAIL_DELAY = 0.12
+
+    @staticmethod
+    def _tail_ff_fraction(raw_bytes: bytes) -> float:
+        """Fraction of TRAILING bytes equal to 0xFF — the truncation
+        signature (valid data prefix, then the chip floats the bus)."""
+        n = 0
+        for b in reversed(raw_bytes):
+            if b == 0xFF:
+                n += 1
+            else:
+                break
+        return n / len(raw_bytes) if raw_bytes else 0.0
+
+    def _read_register_chunked(self, address: int, offset: int,
+                               length: int) -> Optional[RegisterRead]:
+        """Re-read a register one byte at a time (with spacing + retries)
+        to defeat transaction truncation, and reassemble."""
+        out = bytearray()
+        for i in range(length):
+            b = None
+            for attempt in range(1 + self.REG_RETRIES):
+                try:
+                    b = self.adapter.read_bytes(address, offset + i, 1)
+                    if b:
+                        break
+                except Exception:
+                    b = None
+                time.sleep(self.CHUNK_FAIL_DELAY)
+            out.append(b[0] if b else 0xFF)
+            time.sleep(self.REG_SPACING)
+        raw_int = int.from_bytes(bytes(out), "little")
+        decoded = ""
+        if offset == 0x00:
+            decoded = decode_vid(raw_int)
+        elif offset == 0x03:
+            decoded = decode_mode_reg(raw_int)
+        elif offset == 0x04:
+            decoded = decode_type_reg(raw_int)
+        reg_def = REGISTERS.get(offset)
+        return RegisterRead(
+            offset=offset,
+            name=reg_def.name if reg_def else f"0x{offset:02X}",
+            raw_bytes=bytes(out),
+            raw_value=raw_int,
+            decoded=decoded,
+        )
+
     def read_all_registers(self, address: int) -> Dict[int, RegisterRead]:
         """Read all important registers from a device."""
         results = {}
@@ -411,10 +463,27 @@ class CD3217Analyzer:
                 time.sleep(self.REG_SPACING)
             first = False
             reg_def = REGISTERS.get(offset)
-            if reg_def:
-                read = self._read_register_clean(address, offset, reg_def.length)
-            else:
-                read = self._read_register_clean(address, offset, 4)
+            length = reg_def.length if reg_def else 4
+            read = self._read_register_clean(address, offset, length)
+            # Truncation repair: when a read ends in a 0xFF tail (chip
+            # floated the bus mid-transaction), re-read byte-by-byte and
+            # keep whichever snapshot carries more real data.
+            if read is not None and length > 4 \
+                    and self._tail_ff_fraction(read.raw_bytes) >= 0.4:
+                chunked = self._read_register_chunked(address, offset, length)
+                if chunked is not None and chunked.raw_bytes:
+                    if self._tail_ff_fraction(chunked.raw_bytes) \
+                            < self._tail_ff_fraction(read.raw_bytes):
+                        if debuglog.is_enabled():
+                            debuglog.log(
+                                "REG 0x%02X@0x%02X truncated (%d%% tail "
+                                "0xFF) — chunked re-read recovered (%d%%)",
+                                address, offset,
+                                int(self._tail_ff_fraction(
+                                    read.raw_bytes) * 100),
+                                int(self._tail_ff_fraction(
+                                    chunked.raw_bytes) * 100))
+                        read = chunked
             if read:
                 results[offset] = read
         return results
@@ -508,6 +577,17 @@ class CD3217Analyzer:
 
         # Step 4: Validate Device ID
         did_reg = result.registers.get(0x01)
+        if did_reg and decode_silicon(did_reg.raw_value) == "" \
+                and did_reg.raw_value not in (0x00000000, 0xFFFFFFFF):
+            # Truncation signature: the 4-byte DID read lost its tail
+            # (e.g. 0xFF321704). Re-read byte-by-byte and re-derive.
+            if debuglog.is_enabled():
+                debuglog.log("DIAG 0x%02X DID 0x%08X does not decode — "
+                             "chunked re-read", address, did_reg.raw_value)
+            fixed = self._read_register_chunked(address, 0x01, 4)
+            if fixed is not None and decode_silicon(fixed.raw_value):
+                result.registers[0x01] = fixed
+                did_reg = fixed
         if did_reg:
             result.did_raw = did_reg.raw_value
             result.device_id = did_reg.decoded or f"0x{did_reg.raw_value:08X}"
