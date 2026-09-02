@@ -121,6 +121,36 @@ class TestValidateBundle(unittest.TestCase):
         self.assertTrue(any("garbled" in c["detail"]
                             for c in res["checks"] if "chip 0x38" in c["name"]))
 
+    def test_partially_garbled_vid_triggers_recheck(self):
+        """Real-world case (user's A2251 export): chip 0x3C read VID 0xFF04
+        — partially garbled, not all-FF — and slipped into the bundle. The
+        recheck must catch an unexpected VID and recover a clean one."""
+        adapter = MagicMock()
+        adapter.info.return_value = {"board": "pico", "sda": 8, "scl": 9}
+        reads = {"n": 0}
+
+        def rb(addr, reg, length):
+            reads["n"] += 1
+            if reads["n"] == 1:
+                return bytes.fromhex("ff042800")   # garbled VID (0xFF04)
+            return {
+                0x00: bytes.fromhex("04280000"),   # 0x2804 Apple
+                0x01: bytes.fromhex("041832cd"),
+                0x03: bytes.fromhex("20504150"),
+                0x04: bytes.fromhex("20493243"),
+                0x2F: b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P",
+            }.get(reg, bytes([0x5A] * length))[:length]
+
+        adapter.read_bytes.side_effect = rb
+        adapter.scan.return_value = [0x3C]
+        bundle = collect_bundle(adapter, ["registers"], "A2251",
+                                scan_results=[0x3C])
+        v = bundle["verification"]["register_dump"]["0x3C"]
+        self.assertIn(v["status"], ("ok", "recovered"))
+        self.assertEqual(
+            bundle["data"]["register_dump"]["0x3C"]["0x00"]["raw"],
+            "04280000")
+
     def test_low_otp_fill_flagged(self):
         otp = {f"0x{o:02X}": "aa" for o in range(0, 20)}
         b = self._bundle(sources=["registers", "otp"],

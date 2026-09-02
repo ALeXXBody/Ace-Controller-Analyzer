@@ -349,6 +349,17 @@ def _identity_garbled_count(regs_map: Dict[str, dict]) -> int:
         raw = (entry.get("raw") or "").lower()
         if not raw or set(raw) == {"0"} or set(raw) == {"f"}:
             n += 1
+            continue
+        if identity == "0x00":
+            # A PARTIALLY garbled VID (e.g. 0xFF04 instead of 0x2804) is the
+            # sneakiest corruption: not all-0x00/0xFF, so it used to slip
+            # through the recheck. A real ACE2 chip is always TI or Apple.
+            try:
+                vid = int.from_bytes(bytes.fromhex(raw), "little") & 0xFFFF
+                if vid not in (0x0451, 0x2804):
+                    n += 1
+            except Exception:
+                n += 1
     return n
 
 
