@@ -160,7 +160,12 @@ def collect_bundle(adapter, selected: List[str], name: str,
             if not addrs:
                 addrs = analyzer.scan_bus()
             verification_regs = {}
-            for a in addrs:
+            for idx, a in enumerate(addrs):
+                if idx:
+                    # Same medicine as Diagnose All: reading chip N+1
+                    # immediately after chip N's burst NACKs identity
+                    # registers on a probed bus. Settle between chips.
+                    time.sleep(0.3)
                 try:
                     rd = analyzer.read_all_registers(a)
                     regs_map = {
@@ -223,7 +228,10 @@ def collect_bundle(adapter, selected: List[str], name: str,
                 addrs = CD3217Analyzer(adapter).scan_bus()
             otps = {}
             verification_otp = {}
-            for a in addrs:
+            time.sleep(0.3)   # settle after the register pass
+            for idx, a in enumerate(addrs):
+                if idx:
+                    time.sleep(0.3)
                 try:
                     dump = scan_otp(adapter, a, label=f"0x{a:02X}")
                     otp_entry = {

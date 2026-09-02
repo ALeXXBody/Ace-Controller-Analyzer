@@ -199,6 +199,10 @@ class CD3217Analyzer:
     REG_RETRY_DELAY = 0.05      # s before re-reading a suspicious register
     REG_RETRIES = 2             # re-read attempts for identity registers
     REG_SPACING = 0.02          # s between consecutive register reads
+    REG_FAIL_RETRY_DELAY = 0.15  # s before re-reading a register that
+                                 # hard-failed (NACK) — longer than the
+                                 # garble-recheck delay because a NACKed
+                                 # chip/bus needs real settle time
     BOOT_SETTLE_DELAY = 0.5     # s before re-checking a BOOT mode read
     # S3 adaptive settle: when a diagnosis itself hit flakiness (recovered
     # ping / garbled read), let the bus settle before the next device so
@@ -362,6 +366,20 @@ class CD3217Analyzer:
         the bus time to settle and returns clean data.
         """
         read = self.read_register(address, offset, length)
+        # Hard failures (NACK/exception -> None) are retried too: an
+        # identity register that never answers is exactly the "missing
+        # VID/DID" data hole the export validator kept flagging.
+        none_retries = 0
+        while read is None and offset in self._RECHECK_REGS \
+                and none_retries < self.REG_RETRIES:
+            none_retries += 1
+            if debuglog.is_enabled():
+                debuglog.log("REG 0x%02X@0x%02X read failed — retry "
+                             "%d/%d after %.2fs settle", address, offset,
+                             none_retries, self.REG_RETRIES,
+                             self.REG_FAIL_RETRY_DELAY)
+            time.sleep(self.REG_FAIL_RETRY_DELAY)
+            read = self.read_register(address, offset, length)
         if read is None or offset not in self._RECHECK_REGS:
             return read
         if not self._register_suspicious(offset, read):

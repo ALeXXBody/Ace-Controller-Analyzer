@@ -1979,7 +1979,25 @@ class Application(ctk.CTk):
                      f"({boards[0]['desc'] or 'USB serial'}) on "
                      f"{port}", "ok")
         adapter = UsbBridgeAdapter(port=port)
-        adapter.open()
+        try:
+            adapter.open()
+        except Exception as e:
+            # One unopenable port (e.g. a phantom COM1 that is enumerated
+            # but not present) must not abort auto-detect — fall through
+            # and try the other candidate ports.
+            debuglog.log("connect: %s unopenable (%r) — trying other "
+                         "candidates", port, e)
+            self.log(f"Port {port} refused: {e} — trying other ports...",
+                     "warn")
+            from cd3217_analyzer.usb_bridge import scan_for_boards
+            fallback = [b["port"] for b in scan_for_boards(current_port=port)
+                        if b["port"] != port]
+            if not fallback:
+                raise
+            port = fallback[0]
+            self.bus_var.set(port)
+            adapter = UsbBridgeAdapter(port=port)
+            adapter.open()
         ok = False
         try:
             ok = adapter.handshake()
