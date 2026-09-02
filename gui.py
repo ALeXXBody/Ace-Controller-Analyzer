@@ -153,6 +153,25 @@ class Application(ctk.CTk):
         self._build_ui()
         self.after(150, self._drain_ui_queue)
         self.after(400, self._auto_detect)
+        if getattr(sys, "frozen", False) and os.name == "nt":
+            # Warn when the running exe is NOT the installed one (a copied
+            # folder keeps booting its own old version after updates).
+            def _check_install_location():
+                try:
+                    import winreg
+                    app_dir = os.path.dirname(os.path.abspath(sys.executable))
+                    with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                        "{8E4C3D2A-9F6B-4E7A-B1C5-"
+                                        "CD3217B12ANLZ}_is1") as k:
+                        loc, _ = winreg.QueryValueEx(k, "InstallLocation")
+                    if os.path.normcase(os.path.abspath(loc)) != \
+                            os.path.normcase(app_dir):
+                        self.log(f"Note: running the copy at {app_dir} — "
+                                 f"the installed app is at {loc}. Updates "
+                                 "apply to the installed one.", "warn")
+                except Exception:
+                    pass
+            self.after(2500, _check_install_location)
         # silent background update check (fails silently when offline)
         self.after(3000, self._auto_update_check)
 
@@ -421,7 +440,13 @@ class Application(ctk.CTk):
         self._run_update(rel)
 
     def _run_update(self, rel):
-        from cd3217_analyzer.updater import apply_update
+        from cd3217_analyzer.updater import apply_update, install_mode
+        # The installer must be able to replace the exe: release the COM
+        # port and stop the watcher FIRST, or Restart Manager fails to
+        # close us and the update silently doesn't complete (the old app
+        # keeps running and still reports its old version).
+        if install_mode() == "installed":
+            self._disconnect()
         self._updating = True
 
         dlg = ctk.CTkToplevel(self)
@@ -464,8 +489,22 @@ class Application(ctk.CTk):
             self.log("Update staged — restarting to finish...", "ok")
             self.destroy()
             return
-        # setup-launched / browser: Inno (or the browser) takes over
+        if action == "setup-launched":
+            # Exit ourselves NOW so the silent installer can replace the
+            # exe and relaunch the new version. If we stay open (holding
+            # the COM port), Restart Manager can't close us and the
+            # update never completes.
+            self.log("Closing the app so the installer can finish — it "
+                     "will relaunch automatically...", "ok")
+            dlg.destroy()
+            self.after(1200, self._exit_for_installer)
+            return
+        # browser: releases page took over
         dlg.destroy()
+
+    def _exit_for_installer(self):
+        self._disconnect()
+        self.destroy()
         if action == "setup-launched":
             self.log("Installer launched — follow the Setup window. "
                      "The app will be closed and restarted by Setup.", "ok")
