@@ -183,6 +183,33 @@ def collect_bundle(adapter, selected: List[str], name: str,
                     bundle["errors"].append(f"registers 0x{a:02X}: {e}")
             bundle["data"]["register_dump"] = regs
             bundle["verification"]["register_dump"] = verification_regs
+
+            # Golden identity profile per chip, derived from the VERIFIED
+            # data (this is what makes the export reusable as a reference).
+            from .registers import decode_silicon, parse_device_info
+            golden = bundle.setdefault("golden", {})
+            for a in addrs:
+                regs_map = regs.get(f"0x{a:02X}") or {}
+                try:
+                    vid = int.from_bytes(
+                        bytes.fromhex((regs_map.get("0x00") or {}).get(
+                            "raw", "")), "little") & 0xFFFF
+                    did = int.from_bytes(
+                        bytes.fromhex((regs_map.get("0x01") or {}).get(
+                            "raw", "")), "little")
+                except Exception:
+                    vid = did = None
+                ident = parse_device_info(bytes.fromhex(
+                    (regs_map.get("0x2F") or {}).get("raw", "") or "00"))
+                golden[f"0x{a:02X}"] = {
+                    "vid": f"0x{vid:04X}" if vid is not None else None,
+                    "did": f"0x{did:08X}" if did is not None else None,
+                    "silicon_did": decode_silicon(did) if did else "",
+                    "identity_string": ident.raw,
+                    "hw_version": ident.hw,
+                    "fw_version": ident.fw,
+                    "fw_variant": ident.variant,
+                }
         except Exception as e:
             bundle["errors"].append(f"register_dump: {e}")
             log(f"  registers failed: {e}")
@@ -219,6 +246,17 @@ def collect_bundle(adapter, selected: List[str], name: str,
                     bundle["errors"].append(f"otp 0x{a:02X}: {e}")
             bundle["data"]["otp_dump"] = otps
             bundle["verification"]["otp_dump"] = verification_otp
+            import hashlib
+            golden = bundle.setdefault("golden", {})
+            for a in addrs:
+                otp_entry = otps.get(f"0x{a:02X}") or {}
+                blob = "".join(otp_entry.get("registers", {}).get(
+                    f"0x{o:02X}", "") for o in range(0x00, 0x80, 4))
+                g = golden.setdefault(f"0x{a:02X}", {})
+                g["otp_filled"] = len(otp_entry.get("registers", {}))
+                g["otp_read_errors"] = len(otp_entry.get("read_errors", []))
+                g["otp_sha256"] = hashlib.sha256(
+                    blob.encode()).hexdigest()[:16] if blob else None
         except Exception as e:
             bundle["errors"].append(f"otp_dump: {e}")
             log(f"  otp failed: {e}")
@@ -337,11 +375,23 @@ def _sha256_file(path: str) -> str:
     return h.hexdigest()
 
 
-def _identity_garbled_count(regs_map: Dict[str, dict]) -> int:
-    """How many identity registers (VID/DID/Mode/Type) are missing or
-    garbled (all-0x00 / all-0xFF) in a collected chip register map."""
+def _identity_problem_count(regs_map: Dict[str, dict]) -> int:
+    """How many identity fields in a collected chip register map are
+    missing, garbled, or not SEMANTICALLY valid (golden-data grade).
+
+    Semantic checks — the user's exported data must be usable as a golden
+    reference, so "present but wrong" counts as bad:
+      * VID must be TI (0x0451) or Apple (0x2804) — catches partial
+        garbling like 0xFF04
+      * DID must decode to a known silicon family (CD3215/17/18) —
+        catches garbled top bytes like 0xFF321704
+      * DeviceInfo (0x2F) must parse into silicon + FW version — catches
+        truncated identity strings ("@CD")
+    """
+    from .registers import decode_silicon, parse_device_info
+
     n = 0
-    for identity in ("0x00", "0x01", "0x03", "0x04"):
+    for identity in ("0x00", "0x01", "0x03", "0x04", "0x2F"):
         entry = regs_map.get(identity)
         if not entry:
             n += 1
@@ -350,17 +400,26 @@ def _identity_garbled_count(regs_map: Dict[str, dict]) -> int:
         if not raw or set(raw) == {"0"} or set(raw) == {"f"}:
             n += 1
             continue
-        if identity == "0x00":
-            # A PARTIALLY garbled VID (e.g. 0xFF04 instead of 0x2804) is the
-            # sneakiest corruption: not all-0x00/0xFF, so it used to slip
-            # through the recheck. A real ACE2 chip is always TI or Apple.
-            try:
+        try:
+            if identity == "0x00":
                 vid = int.from_bytes(bytes.fromhex(raw), "little") & 0xFFFF
                 if vid not in (0x0451, 0x2804):
                     n += 1
-            except Exception:
-                n += 1
+            elif identity == "0x01":
+                did = int.from_bytes(bytes.fromhex(raw), "little")
+                if not decode_silicon(did):
+                    n += 1
+            elif identity == "0x2F":
+                ident = parse_device_info(bytes.fromhex(raw))
+                if not (ident.silicon and ident.fw):
+                    n += 1
+        except Exception:
+            n += 1
     return n
+
+
+# backwards-compatible alias
+_identity_garbled_count = _identity_problem_count
 
 
 def _recheck_chip_registers(analyzer, addr: int, regs_map: Dict[str, dict],
@@ -525,11 +584,48 @@ def validate_bundle(path: str) -> Dict:
                     raw = (entry.get("raw") or "").lower()
                     if not raw or set(raw) == {"0"} or set(raw) == {"f"}:
                         problems.append(f"{what} garbled (all-0x00/0xFF)")
+                # semantic (golden-grade) validation of identity fields
+                from .registers import decode_silicon, parse_device_info
+                try:
+                    did = int.from_bytes(bytes.fromhex(
+                        (regs_map.get("0x01") or {}).get("raw", "")),
+                        "little")
+                    if not decode_silicon(did):
+                        problems.append("DID does not decode to a known "
+                                        "silicon (garbled)")
+                except Exception:
+                    problems.append("DID unreadable")
+                try:
+                    ident = parse_device_info(bytes.fromhex(
+                        (regs_map.get("0x2F") or {}).get("raw", "") or "00"))
+                    if not (ident.silicon and ident.fw):
+                        problems.append(
+                            "identity string incomplete/truncated")
+                except Exception:
+                    problems.append("DeviceInfo unreadable")
                 if problems:
                     add(f"chip {addr}", "warn", "; ".join(problems))
                 else:
                     add(f"chip {addr}", "ok",
-                        f"{len(regs_map)} registers, identity readable")
+                        f"{len(regs_map)} registers, golden identity valid")
+
+            # golden section present and complete?
+            golden = bundle.get("golden") or {}
+            for addr in sorted(regs.keys()):
+                g = golden.get(addr)
+                if not g:
+                    add(f"golden {addr}", "warn", "missing golden profile")
+                    continue
+                missing = [k for k in ("vid", "did", "silicon_did",
+                                       "fw_version", "otp_sha256")
+                           if not g.get(k)]
+                if missing:
+                    add(f"golden {addr}", "warn",
+                        "incomplete: " + ", ".join(missing))
+                else:
+                    add(f"golden {addr}", "ok",
+                        f"{g.get('silicon_did')} FW{g.get('fw_version')} "
+                        f"{g.get('fw_variant', '')}".strip())
     if "otp" in sources:
         otps = data.get("otp_dump") or {}
         for addr, dump in sorted(otps.items()):

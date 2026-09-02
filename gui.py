@@ -102,6 +102,23 @@ def chip_class(addr: int) -> str:
     return ""
 
 
+# The board is only flashed when its FIRMWARE actually changed. Bump this
+# tuple ONLY in a release that modifies firmware_esp32/ sources — every
+# app-only release keeps older board firmware working (protocol-compatible).
+LAST_FIRMWARE_CHANGE = (0, 7, 1)   # v0.7.1: firmware all-call scan filter
+
+
+def _parse_semver(text):
+    """'0.7.7' -> (0, 7, 7); returns None when unparsable."""
+    import re as _re
+    if not text:
+        return None
+    m = _re.match(r"v?(\d+)\.(\d+)(?:\.(\d+))?", str(text).strip())
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+
+
 class Application(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -476,6 +493,19 @@ class Application(ctk.CTk):
         fw = (info or {}).get("version")
         if not board:
             return
+        # Only update the board when firmware code actually changed: a
+        # board on/above LAST_FIRMWARE_CHANGE is protocol-current, and
+        # re-flashing it on every app release is disruptive for no gain.
+        fw_tuple = _parse_semver(fw)
+        if fw_tuple is not None and fw_tuple >= LAST_FIRMWARE_CHANGE:
+            debuglog.log("board update check skipped: fw %s >= last "
+                         "firmware change v%s", fw,
+                         ".".join(map(str, LAST_FIRMWARE_CHANGE)))
+            return
+        if fw_tuple is not None:
+            self.log(f"Board firmware {fw} predates the last firmware "
+                     f"change (v{'.'.join(map(str, LAST_FIRMWARE_CHANGE))})"
+                     " — checking for updates...", "info")
 
         def work():
             from cd3217_analyzer.updater import (fetch_latest_release,

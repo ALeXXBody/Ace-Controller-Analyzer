@@ -26,7 +26,9 @@ def _mk_regs(vendor_hex="04280000", did_hex="041832cd",
         "0x04": {"name": "Type", "raw": type_hex, "value": "0x49324320",
                  "decoded": "I2C"},
         "0x2F": {"name": "DeviceInfo",
-                 "raw": info_hex or "40434433323137202020",
+                 "raw": info_hex or "40434433323137202020"
+                        "4857303032322046573030322e3137302e3030205a41434532"
+                        "2d4a333136503031500000",
                  "value": "0x0", "decoded": ""},
     }
     return regs
