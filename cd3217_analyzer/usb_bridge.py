@@ -63,6 +63,7 @@ class UsbBridgeAdapter(I2CAdapter):
         # frames, is_alive() then reports false repeatedly, and the watcher
         # wrongly disconnects the board).
         self._lock = threading.Lock()
+        self._closing = False
 
     # ---- connection ---------------------------------------------------------
     def open(self) -> None:
@@ -77,6 +78,7 @@ class UsbBridgeAdapter(I2CAdapter):
         # PermissionError(13, "A device attached to the system is not
         # functioning", winerror 31). It recovers on its own — retry with
         # backoff instead of surfacing a failure the user must click away.
+        self._closing = False
         last_exc = None
         for attempt in range(1, 5):
             try:
@@ -108,13 +110,39 @@ class UsbBridgeAdapter(I2CAdapter):
                 pass
 
     def close(self) -> None:
-        if self._ser:
+        # Serialize with an in-flight _transact: closing mid-read is what
+        # produced the cryptic pyserial "'NoneType' object has no attribute
+        # 'hEvent'" crash AND wedged the Windows driver state so the port
+        # could not be reopened without a replug. _closing stops new
+        # transactions immediately; the actual close waits for (or runs
+        # after) the in-flight one so we never tear down mid-read.
+        self._closing = True
+
+        if self._lock.acquire(timeout=0.25):
+            # lock held: close inline (do NOT re-acquire — threading.Lock
+            # is not reentrant, the double-acquire deadlocked the tests)
             try:
-                self._ser.close()
-            except Exception:
-                pass
+                if self._ser:
+                    try:
+                        self._ser.close()
+                    except Exception:
+                        pass
+                    finally:
+                        self._ser = None
             finally:
-                self._ser = None
+                self._lock.release()
+        else:
+            # a transaction is in flight — close as soon as it finishes
+            def _deferred_close():
+                with self._lock:
+                    if self._ser:
+                        try:
+                            self._ser.close()
+                        except Exception:
+                            pass
+                        finally:
+                            self._ser = None
+            threading.Thread(target=_deferred_close, daemon=True).start()
 
     @property
     def is_open(self) -> bool:
@@ -141,8 +169,19 @@ class UsbBridgeAdapter(I2CAdapter):
         between retries is not discarded.
         """
         self._require_open()
+        if self._closing:
+            raise IOError("board connection is closing")
         with self._lock:
-            return self._transact_locked(cmd, payload, retries)
+            if self._closing or self._ser is None:
+                raise IOError("board connection is closing")
+            try:
+                return self._transact_locked(cmd, payload, retries)
+            except (AttributeError, ValueError) as e:
+                # pyserial internals tearing down mid-read during close()
+                if self._closing:
+                    raise IOError("board connection was closed during the "
+                                  "transaction") from e
+                raise
 
     def _transact_locked(self, cmd: int, payload: bytes = b"",
                          retries: int = 2) -> bytes:

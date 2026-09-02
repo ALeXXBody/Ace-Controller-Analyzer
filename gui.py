@@ -2059,7 +2059,8 @@ class Application(ctk.CTk):
         # Grace period: right after connect (esp. after an OTA update) the
         # board can still be settling — a PING miss in that window must not
         # count toward a false "board removed".
-        state = {"misses": 0, "grace_until": time.time() + 8.0}
+        state = {"misses": 0, "absent": 0,
+                 "grace_until": time.time() + 8.0}
         self._board_watch_stop = threading.Event()
 
         def tick():
@@ -2072,6 +2073,19 @@ class Application(ctk.CTk):
                 present = port_exists(port)
             except Exception:
                 present = True
+            if not present:
+                # A single OS-enumeration blip (right after connect, after
+                # an OTA re-enumeration) must not kill the session: the
+                # port must be missing on TWO consecutive checks, and the
+                # post-connect grace period applies here too.
+                state["absent"] += 1
+                if (time.time() < state["grace_until"]
+                        or state["absent"] < 2):
+                    self._ui(lambda: threading.Thread(
+                        target=tick, daemon=True).start())
+                    return
+            else:
+                state["absent"] = 0
             alive = False
             if present:
                 # While a scan/diagnose/batch is running, the same CDC port is
@@ -2213,6 +2227,22 @@ class Application(ctk.CTk):
                     if self._ping_stable(p.address):
                         devices.append(p.address)
                         recovered.append(p.address)
+            if not devices and self.current_model and not self._cancelled():
+                # Right after an OTA/board reboot the first full-bus scan
+                # can come back completely empty (I2C peripheral settle).
+                # One automatic retry after a short settle, before declaring
+                # every socket MISSING.
+                debuglog.log("SCAN empty — retrying once after settle")
+                self._ui(self.log, "Scan came back empty — retrying once "
+                         "after a settle...", "warn")
+                time.sleep(1.5)
+                devices = [a for a in self.adapter.scan(0x08, 0x77)
+                           if a != ACE2_BROADCAST_ADDRESS]
+                found2 = set(devices)
+                for p2 in self.current_model.positions:
+                    if p2.address not in found2 and self._ping_stable(p2.address):
+                        devices.append(p2.address)
+                        recovered.append(p2.address)
             devices = sorted(set(devices))
             self.scan_results = devices
             debuglog.log("SCAN done: found %s", [hex(a) for a in devices])
