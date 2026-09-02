@@ -1984,43 +1984,47 @@ class Application(ctk.CTk):
         else:
             self._connect()
 
-    def _connect_board_bridge(self) -> Optional[UsbBridgeAdapter]:
+    def _connect_board_bridge(self, port: Optional[str]) -> Optional[UsbBridgeAdapter]:
         """Connect to a CD3217 board over USB; returns None on failure.
 
         Quick path first: the remembered last-working port (pre-filled in
         Bus/Port). If it fails to open or doesn't answer the bridge
         protocol, scan the other ports for another board.
         """
-        remembered = normalize_port(self.bus_var.get())
-        candidates = []
+        remembered = port  # captured on the UI thread before the worker
+        # QUICK PATH: try the remembered port first — one open + handshake.
+        # A full port scan here froze connect for many seconds.
         if remembered:
-            candidates.append(remembered)
+            self.log(f"Trying {remembered} (last used)...", "info")
+            adapter = self._connect_bridge_on_port(remembered)
+            if adapter is not None:
+                return adapter
+        # Fallback: scan the other serial ports for a board.
+        self.log("Scanning for a CD3217 board on other ports..."
+                 if remembered else
+                 "Scanning for boards...", "info")
+        candidates = []
         from cd3217_analyzer.usb_bridge import scan_for_boards
         try:
             for b in scan_for_boards(current_port=remembered):
-                if b["port"] not in candidates:
+                if b["port"] != remembered:
                     candidates.append(b["port"])
         except Exception as e:
             self.log(f"Board scan error: {e}", "warn")
-        if not remembered and not candidates:
-            self.log("No CD3217 board found on any serial port. "
-                     "Plug it in (or set the COM port in "
-                     "Bus/Port) and retry.", "warn")
-            return None
-        for i, port in enumerate(candidates):
-            if i:
-                self.log(f"Trying next port {port}...", "info")
-            else:
-                self.log(f"Trying {port}"
-                         + (" (last used)" if remembered else ""), "info")
+        for port in candidates:
+            self.log(f"Trying {port}...", "info")
             adapter = self._connect_bridge_on_port(port)
             if adapter is not None:
-                self.bus_var.set(port)
+                self._ui(self.bus_var.set, port)
                 return adapter
         if remembered:
             self.log("The remembered port no longer answers and no other "
                      "CD3217 board was found. Plug the board in and "
                      "retry.", "warn")
+        else:
+            self.log("No CD3217 board found on any serial port. "
+                     "Plug it in (or set the COM port in "
+                     "Bus/Port) and retry.", "warn")
         return None
 
     def _connect_bridge_on_port(self, port: str) -> Optional[UsbBridgeAdapter]:
@@ -2095,10 +2099,28 @@ class Application(ctk.CTk):
                 pass
 
     def _connect(self):
+        if self.busy:
+            return
         if self.spi_adapter:
             self._flash_disconnect()
         selection = self.adapter_var.get()
+        port = normalize_port(self.bus_var.get())
         self.log(f"Connecting to {selection}...")
+        # The whole connect flow (port opens, handshakes, scans) is I/O —
+        # run it on a worker. Doing it on the UI thread froze the window
+        # for the entire multi-port scan ("Not responding").
+        # UI state (selection/port) is captured HERE, on the UI thread:
+        # workers must never read StringVars either (same Tcl-lock hazard
+        # as widget calls — it stalls the worker for as long as the main
+        # thread isn't servicing Tcl).
+        bus_number = (self.bus_var.get() or "1").strip() or "1"
+        self._set_busy(True, f"Connecting to {selection}...")
+        self._run_bg(lambda: self._connect_worker(selection, port,
+                                                  bus_number),
+                     "Connected")
+
+    def _connect_worker(self, selection: str, port: Optional[str],
+                        bus_number: str = "1"):
         try:
             if selection.startswith("Auto-detect"):
                 adapter = detect_adapter()
@@ -2108,7 +2130,7 @@ class Application(ctk.CTk):
                     # shouldn't have to pick the adapter type manually).
                     self.log("No FTDI/SMBus adapter found — "
                              "scanning for a CD3217 board...")
-                    adapter = self._connect_board_bridge()
+                    adapter = self._connect_board_bridge(port)
                     if adapter is None:
                         self.log("Auto-detect found nothing: no FTDI, no "
                                  "SMBus, no CD3217 board. Plug a board in "
@@ -2118,10 +2140,10 @@ class Application(ctk.CTk):
                 adapter = FTDIAdapter()
                 adapter.open()
             elif selection in ("SMBus (Linux)", "CH341"):
-                adapter = SMBusAdapter(bus_number=int(self.bus_var.get() or "1"))
+                adapter = SMBusAdapter(bus_number=int(bus_number or "1"))
                 adapter.open()
             elif selection == "USB Bridge (board)":
-                adapter = self._connect_board_bridge()
+                adapter = self._connect_board_bridge(port)
                 if adapter is None:
                     return
             else:
@@ -2141,25 +2163,8 @@ class Application(ctk.CTk):
                and not getattr(adapter, "_bus", None):
                 adapter.open()
 
-            self.adapter = adapter
-            self.connected = True
-            self._update_conn_status(True)
-            self.log(f"Connected: {type(adapter).__name__}", "ok")
-            # Remember the working interface for the next session.
-            try:
-                from cd3217_analyzer.export_data import save_settings
-                save_settings({
-                    "last_adapter": selection,
-                    "last_port": (self.bus_var.get() or "").strip()
-                    if selection in ("USB Bridge (board)",
-                                     "Auto-detect (FTDI / board)") else "",
-                    "last_model": self.current_model.model_id
-                    if self.current_model else "",
-                })
-            except Exception:
-                pass
-            if isinstance(adapter, UsbBridgeAdapter):
-                self._start_board_watcher(adapter)
+            # success: finish on the UI thread (state, watcher, settings)
+            self._ui(self._finalize_connect, adapter, selection)
         except Exception as e:
             debuglog.log("CONNECT FAILED: %r", e)
             hint = ""
@@ -2167,6 +2172,28 @@ class Application(ctk.CTk):
                 hint = ("  (the port may be held by another program or the "
                         "board is still re-enumerating — wait 3 s and retry)")
             self.log(f"Connection failed: {e}{hint}", "err")
+
+    def _finalize_connect(self, adapter, selection: str):
+        """UI-thread bookkeeping after a successful connect."""
+        self.adapter = adapter
+        self.connected = True
+        self._update_conn_status(True)
+        self.log(f"Connected: {type(adapter).__name__}", "ok")
+        # Remember the working interface for the next session.
+        try:
+            from cd3217_analyzer.export_data import save_settings
+            save_settings({
+                "last_adapter": selection,
+                "last_port": (self.bus_var.get() or "").strip()
+                if selection in ("USB Bridge (board)",
+                                 "Auto-detect (FTDI / board)") else "",
+                "last_model": self.current_model.model_id
+                if self.current_model else "",
+            })
+        except Exception:
+            pass
+        if isinstance(adapter, UsbBridgeAdapter):
+            self._start_board_watcher(adapter)
 
     # ─── Board presence watcher ───────────────────────────────────────────
 
