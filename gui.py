@@ -152,6 +152,7 @@ class Application(ctk.CTk):
 
         self._build_ui()
         self.after(150, self._drain_ui_queue)
+        self.after(200, self._restore_last_session)
         self.after(400, self._auto_detect)
         if getattr(sys, "frozen", False) and os.name == "nt":
             # Warn when the running exe is NOT the installed one (a copied
@@ -1986,58 +1987,52 @@ class Application(ctk.CTk):
     def _connect_board_bridge(self) -> Optional[UsbBridgeAdapter]:
         """Connect to a CD3217 board over USB; returns None on failure.
 
-        Uses the Bus/Port field when set; otherwise scans serial ports for a
-        board answering the bridge protocol (best match first). Handles the
-        handshake, firmware logging, Board-tab refresh and the firmware
-        update offer.
+        Quick path first: the remembered last-working port (pre-filled in
+        Bus/Port). If it fails to open or doesn't answer the bridge
+        protocol, scan the other ports for another board.
         """
-        port = normalize_port(self.bus_var.get())
-        if not port:
-            # No port given: scan USB serial ports for a board that
-            # answers our bridge protocol (best match first).
-            self.log("No port given — scanning for boards...")
-            from cd3217_analyzer.usb_bridge import scan_for_boards
-            try:
-                boards = scan_for_boards()
-            except Exception as e:
-                boards = []
-                self.log(f"Board scan error: {e}", "warn")
-            if not boards:
-                self.log("No CD3217 board found on any serial port. "
-                         "Plug it in (or set the COM port in "
-                         "Bus/Port) and retry.", "warn")
-                return None
-            if len(boards) > 1:
-                names = ", ".join(f"{b['board']} on {b['port']}"
-                                  for b in boards)
-                self.log(f"Multiple boards found ({names}); "
-                         f"using {boards[0]['board']} on "
-                         f"{boards[0]['port']}", "warn")
-            port = boards[0]["port"]
-            self.bus_var.set(port)
-            self.log(f"Board found: {boards[0]['board']} "
-                     f"({boards[0]['desc'] or 'USB serial'}) on "
-                     f"{port}", "ok")
+        remembered = normalize_port(self.bus_var.get())
+        candidates = []
+        if remembered:
+            candidates.append(remembered)
+        from cd3217_analyzer.usb_bridge import scan_for_boards
+        try:
+            for b in scan_for_boards(current_port=remembered):
+                if b["port"] not in candidates:
+                    candidates.append(b["port"])
+        except Exception as e:
+            self.log(f"Board scan error: {e}", "warn")
+        if not remembered and not candidates:
+            self.log("No CD3217 board found on any serial port. "
+                     "Plug it in (or set the COM port in "
+                     "Bus/Port) and retry.", "warn")
+            return None
+        for i, port in enumerate(candidates):
+            if i:
+                self.log(f"Trying next port {port}...", "info")
+            else:
+                self.log(f"Trying {port}"
+                         + (" (last used)" if remembered else ""), "info")
+            adapter = self._connect_bridge_on_port(port)
+            if adapter is not None:
+                self.bus_var.set(port)
+                return adapter
+        if remembered:
+            self.log("The remembered port no longer answers and no other "
+                     "CD3217 board was found. Plug the board in and "
+                     "retry.", "warn")
+        return None
+
+    def _connect_bridge_on_port(self, port: str) -> Optional[UsbBridgeAdapter]:
+        """Open + handshake one specific port; None when it's not a board.
+        The caller's candidate loop handles fallback to other ports."""
         adapter = UsbBridgeAdapter(port=port)
         try:
             adapter.open()
         except Exception as e:
-            # One unopenable port (e.g. a phantom COM1 that is enumerated
-            # but not present) must not abort auto-detect — fall through
-            # and try the other candidate ports.
-            debuglog.log("connect: %s unopenable (%r) — trying other "
-                         "candidates", port, e)
-            self.log(f"Port {port} refused: {e} — trying other ports...",
-                     "warn")
-            from cd3217_analyzer.usb_bridge import scan_for_boards
-            fallback = [b["port"] for b in scan_for_boards(current_port=port)
-                        if b["port"] != port]
-            if not fallback:
-                raise
-            port = fallback[0]
-            self.bus_var.set(port)
-            adapter = UsbBridgeAdapter(port=port)
-            adapter.open()
+            debuglog.log("connect: %s unopenable (%r)", port, e)
+            self.log(f"Port {port} refused: {e}", "warn")
+            return None
         ok = False
         try:
             ok = adapter.handshake()
@@ -2045,8 +2040,8 @@ class Application(ctk.CTk):
             ok = False
         if not ok:
             adapter.close()
-            self.log(f"USB bridge on {port} did not respond to PING. "
-                     "Is the board running CD3217 firmware?", "err")
+            self.log(f"USB bridge on {port} did not respond to PING.",
+                     "warn")
             return None
         # Log which firmware the board is actually running so a wrong
         # flash (e.g. pico2 firmware on a Pico 1) is obvious, and
@@ -2069,6 +2064,35 @@ class Application(ctk.CTk):
         except Exception:
             pass
         return adapter
+
+    def _restore_last_session(self):
+        """Pre-select the last working interface/port/model so Connect is
+        one click instead of a port hunt."""
+        from cd3217_analyzer.export_data import load_settings
+        st = load_settings()
+        if not st:
+            return
+        adapter = st.get("last_adapter") or ""
+        if adapter:
+            try:
+                self.adapter_var.set(adapter)
+            except Exception:
+                pass
+        port = (st.get("last_port") or "").strip()
+        if port:
+            self.bus_var.set(port)
+            self.log(f"Remembered connection: {adapter or 'board'} on "
+                     f"{port} — Connect will try it first.", "info")
+        model = (st.get("last_model") or "").upper()
+        if model:
+            try:
+                from cd3217_analyzer.boards import MAC_BOARDS
+                for b in MAC_BOARDS.values():
+                    if b.model.upper().startswith(model):
+                        self._on_mac_picked(b.model)
+                        break
+            except Exception:
+                pass
 
     def _connect(self):
         if self.spi_adapter:
@@ -2121,6 +2145,19 @@ class Application(ctk.CTk):
             self.connected = True
             self._update_conn_status(True)
             self.log(f"Connected: {type(adapter).__name__}", "ok")
+            # Remember the working interface for the next session.
+            try:
+                from cd3217_analyzer.export_data import save_settings
+                save_settings({
+                    "last_adapter": selection,
+                    "last_port": (self.bus_var.get() or "").strip()
+                    if selection in ("USB Bridge (board)",
+                                     "Auto-detect (FTDI / board)") else "",
+                    "last_model": self.current_model.model_id
+                    if self.current_model else "",
+                })
+            except Exception:
+                pass
             if isinstance(adapter, UsbBridgeAdapter):
                 self._start_board_watcher(adapter)
         except Exception as e:

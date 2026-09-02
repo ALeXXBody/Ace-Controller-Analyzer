@@ -191,5 +191,33 @@ class TestValidateBundle(unittest.TestCase):
         self.assertTrue(cov and "only 1/4" in cov[0]["detail"])
 
 
+class TestSettings(unittest.TestCase):
+    def test_roundtrip(self):
+        from cd3217_analyzer.export_data import (
+            load_settings, save_settings, settings_path)
+        with tempfile.TemporaryDirectory() as td:
+            sp = os.path.join(td, "settings.json")
+            orig = os.path.join(os.path.expanduser("~"), ".cd3217_analyzer")
+            import unittest.mock as um
+            with um.patch(
+                    "cd3217_analyzer.export_data.settings_path",
+                    return_value=sp):
+                save_settings({"last_adapter": "USB Bridge (board)",
+                               "last_port": "COM10"})
+                st = load_settings()
+        self.assertEqual(st["last_port"], "COM10")
+        self.assertEqual(st["last_adapter"], "USB Bridge (board)")
+
+    def test_missing_file_returns_empty(self):
+        from cd3217_analyzer.export_data import load_settings
+        import unittest.mock as um
+        with tempfile.TemporaryDirectory() as td:
+            sp = os.path.join(td, "none.json")
+            with um.patch(
+                    "cd3217_analyzer.export_data.settings_path",
+                    return_value=sp):
+                self.assertEqual(load_settings(), {})
+
+
 if __name__ == "__main__":
     unittest.main()

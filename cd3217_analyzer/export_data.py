@@ -74,6 +74,34 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def settings_path() -> str:
+    """Location of the app settings file (user-local)."""
+    base = os.path.expanduser("~")
+    d = os.path.join(base, ".cd3217_analyzer")
+    return os.path.join(d, "settings.json")
+
+
+def load_settings() -> dict:
+    try:
+        with open(settings_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_settings(updates: dict) -> None:
+    """Merge ``updates`` into the user-local settings file."""
+    try:
+        os.makedirs(os.path.dirname(settings_path()), exist_ok=True)
+        data = load_settings()
+        data.update(updates)
+        with open(settings_path(), "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
 def token_path() -> str:
     """Location of the stored GitHub token (user-local, protected file)."""
     base = os.path.expanduser("~")
