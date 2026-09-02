@@ -72,8 +72,31 @@ class UsbBridgeAdapter(I2CAdapter):
             # Already open — never open a held CDC port twice. A second open on
             # Windows' usbser.sys wedges the driver / denies access.
             return
-        self._ser = serial.Serial(self.port, self.baud, timeout=self.timeout,
-                                  write_timeout=self.timeout)
+        # Windows RP2040 CDC quirk: right after a probe-open/close cycle (or
+        # mid re-enumeration) usbser.sys refuses the open with
+        # PermissionError(13, "A device attached to the system is not
+        # functioning", winerror 31). It recovers on its own — retry with
+        # backoff instead of surfacing a failure the user must click away.
+        last_exc = None
+        for attempt in range(1, 5):
+            try:
+                self._ser = serial.Serial(self.port, self.baud,
+                                          timeout=self.timeout,
+                                          write_timeout=self.timeout)
+                break
+            except Exception as e:
+                last_exc = e
+                # pyserial wraps the driver error in SerialException — match
+                # on the embedded message, not the exception type.
+                msg = str(e)
+                retryable = ("PermissionError" in msg
+                             or "Cannot configure port" in msg)
+                if debuglog.is_enabled():
+                    debuglog.log("OPEN %s attempt %d/%d failed: %s",
+                                 self.port, attempt, 4, msg)
+                if not retryable or attempt >= 4:
+                    raise
+                time.sleep(1.5 * attempt)
         # Drain once. Opening asserts DTR/RTS which can reset the board; give it
         # a beat to (re)enumerate, then drop any boot banner so it can't pollute
         # frame parsing. We do NOT re-flush before every send.

@@ -3670,13 +3670,13 @@ class Application(ctk.CTk):
                         f"Exported {name} — local: {local_path}; pushed: "
                         f"{url}", "ok"))
                     ui(lambda: dlg.destroy())
-                    ui(self._show_export_done, local_path,
-                       f"Also pushed to GitHub:\n{url}")
+                    ui(lambda: self._show_export_done(
+                        local_path, f"Also pushed to GitHub:\n{url}"))
                 else:
                     ui(lambda: self.log(
                         f"Exported {name} — saved to {local_path}", "ok"))
                     ui(lambda: dlg.destroy())
-                    ui(self._show_export_done, local_path, None)
+                    ui(lambda: self._show_export_done(local_path, None))
             except GitHubPushError as e:
                 ui(lambda: self.export_progress.configure(
                     text=f"Push failed: {e}"))
