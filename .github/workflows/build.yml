@@ -22,6 +22,16 @@ jobs:
       - name: Install dependencies
         run: pip install pyinstaller customtkinter smbus2 pyserial pillow
 
+      - name: Stamp app version from tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}" -replace '^v', ''
+          $file = "cd3217_analyzer/__init__.py"
+          (Get-Content $file -Raw) -replace '__version__ = "[^"]*"',
+            "__version__ = `"$tag`"" | Set-Content $file -NoNewline
+          Write-Host "App version stamped: $tag"
+          Select-String -Path $file -Pattern '__version__'
+
       - name: Build .exe
         run: >
           pyinstaller
