@@ -3554,25 +3554,52 @@ class Application(ctk.CTk):
         ).pack(side="right")
 
     def _show_export_done(self, local_path: str, extra: Optional[str] = None):
-        """'Download complete' popup after an export: shows exactly where
-        the data went and offers to open the folder."""
+        """'Download complete' popup after an export: verifies the written
+        bundle (parse + integrity + completeness) and shows exactly where
+        the data went, with an Open-folder action."""
+        from cd3217_analyzer.export_data import validate_bundle
+        try:
+            verdict = validate_bundle(local_path)
+        except Exception as e:
+            verdict = None
+            self.log(f"Bundle verification error: {e}", "warn")
+
+        ok = bool(verdict and verdict["valid"])
+        title = ("✓ Export complete — verified"
+                 if ok else "⚠ Export finished — needs attention")
+        color = C["green"] if ok else C["yellow"]
         dlg = ctk.CTkToplevel(self)
         dlg.title("Export complete")
-        dlg.geometry("560x240")
+        dlg.geometry("600x420")
         dlg.attributes("-topmost", True)
         ctk.CTkLabel(
-            dlg, text="✓ Export complete", font=F["heading"],
-            text_color=C["green"]
+            dlg, text=title, font=F["heading"], text_color=color
         ).pack(anchor="w", padx=18, pady=(16, 6))
         ctk.CTkLabel(
             dlg, text=f"Saved to:\n{local_path}", font=F["small"],
-            text_color=C["text"], justify="left", wraplength=500
+            text_color=C["text"], justify="left", wraplength=540
         ).pack(anchor="w", padx=18, pady=4)
         if extra:
             ctk.CTkLabel(
                 dlg, text=extra, font=F["small"], text_color=C["dim"],
-                justify="left", wraplength=500
+                justify="left", wraplength=540
             ).pack(anchor="w", padx=18, pady=4)
+        if verdict:
+            body = f"Verification: {verdict['summary']}\n"
+            for c in verdict["checks"]:
+                mark = "✓" if c["level"] == "ok" else (
+                    "!" if c["level"] == "critical" else "•")
+                body += f"  {mark} {c['name']}"
+                if c["detail"]:
+                    body += f" — {c['detail']}"
+                body += "\n"
+            box = ctk.CTkTextbox(dlg, font=F["mono_small"],
+                                 fg_color=C["entry"], text_color=C["text"])
+            box.pack(fill="both", expand=True, padx=18, pady=8)
+            box.insert("1.0", body.rstrip())
+            box.configure(state="disabled")
+            self.log(f"Bundle verification: {verdict['summary']} "
+                     f"({local_path})", "ok" if ok else "warn")
         btns = ctk.CTkFrame(dlg, fg_color="transparent")
         btns.pack(side="bottom", fill="x", padx=18, pady=(6, 14))
 

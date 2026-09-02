@@ -456,6 +456,21 @@ def cmd_stress(analyzer: CD3217Analyzer, address: int) -> None:
     sys.exit(0 if res["verdict"] == "ample-margin" else 1)
 
 
+def cmd_verify_export(path: str) -> None:
+    """Handle --verify-export: offline bundle completeness check."""
+    from .export_data import validate_bundle
+    res = validate_bundle(path)
+    print(f"Verifying: {path}")
+    print(f"Result: {res['summary']}")
+    for c in res["checks"]:
+        mark = {"ok": "✓", "warn": "•", "critical": "!"}[c["level"]]
+        line = f"  {mark} {c['name']}"
+        if c["detail"]:
+            line += f" — {c['detail']}"
+        print(line)
+    sys.exit(0 if res["valid"] else 1)
+
+
 def cmd_bus_check(args) -> None:
     """Handle --bus-check: I2C idle levels through a connected board."""
     from .usb_bridge import (UsbBridgeAdapter, list_bridge_ports,
@@ -850,6 +865,10 @@ Examples:
                        help="Measure the I2C lines' idle levels through a "
                             "connected board (1=HIGH healthy, 0=held LOW) "
                             "and exit")
+    group.add_argument("--verify-export", metavar="PATH",
+                       help="Verify an exported bundle .json: format, "
+                            "sha256 integrity, per-chip register/OTP "
+                            "completeness, model coverage; exit 0 = valid")
     group.add_argument("--stress", metavar="ADDR",
                        help="Bus-speed stress probe on ADDR: identity "
                             "registers re-read at 100 kHz vs 400 kHz; "
@@ -890,6 +909,10 @@ Examples:
     # Handle --board-update
     if args.board_update:
         cmd_board_update(args)
+
+    if args.verify_export:
+        cmd_verify_export(args.verify_export)
+        return
 
     if args.bus_check:
         cmd_bus_check(args)

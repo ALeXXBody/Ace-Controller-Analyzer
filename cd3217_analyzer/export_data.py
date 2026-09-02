@@ -31,7 +31,7 @@ import time
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from . import __version__ as APP_VERSION
 
@@ -134,6 +134,7 @@ def collect_bundle(adapter, selected: List[str], name: str,
         "mac_model": mac_model,
         "sources": sorted(sel),
         "data": {},
+        "verification": {},
         "errors": [],
     }
 
@@ -158,10 +159,11 @@ def collect_bundle(adapter, selected: List[str], name: str,
                 addrs = sorted(devices.keys())
             if not addrs:
                 addrs = analyzer.scan_bus()
+            verification_regs = {}
             for a in addrs:
                 try:
                     rd = analyzer.read_all_registers(a)
-                    regs[f"0x{a:02X}"] = {
+                    regs_map = {
                         f"0x{o:02X}": {
                             "name": r.name, "raw": r.raw_bytes.hex(),
                             "value": f"0x{r.raw_value:X}",
@@ -169,9 +171,18 @@ def collect_bundle(adapter, selected: List[str], name: str,
                         }
                         for o, r in rd.items()
                     }
+                    # accuracy gate: verify + recheck garbled identity data
+                    regs_map, n_rechecks, v_status = _recheck_chip_registers(
+                        analyzer, a, regs_map,
+                        progress_cb=lambda m: log(m))
+                    regs[f"0x{a:02X}"] = regs_map
+                    verification_regs[f"0x{a:02X}"] = {
+                        "status": v_status, "rechecks": n_rechecks,
+                    }
                 except Exception as e:
                     bundle["errors"].append(f"registers 0x{a:02X}: {e}")
             bundle["data"]["register_dump"] = regs
+            bundle["verification"]["register_dump"] = verification_regs
         except Exception as e:
             bundle["errors"].append(f"register_dump: {e}")
             log(f"  registers failed: {e}")
@@ -184,10 +195,11 @@ def collect_bundle(adapter, selected: List[str], name: str,
             if not addrs:
                 addrs = CD3217Analyzer(adapter).scan_bus()
             otps = {}
+            verification_otp = {}
             for a in addrs:
                 try:
                     dump = scan_otp(adapter, a, label=f"0x{a:02X}")
-                    otps[f"0x{a:02X}"] = {
+                    otp_entry = {
                         "address": a,
                         "registers": {
                             f"0x{o:02X}": d.hex()
@@ -195,9 +207,18 @@ def collect_bundle(adapter, selected: List[str], name: str,
                         },
                         "read_errors": dump.read_errors,
                     }
+                    # accuracy gate: verify + rescan low-fill OTP dumps
+                    otp_entry, n_rechecks, v_status = _recheck_chip_otp(
+                        adapter, a, otp_entry,
+                        progress_cb=lambda m: log(m))
+                    otps[f"0x{a:02X}"] = otp_entry
+                    verification_otp[f"0x{a:02X}"] = {
+                        "status": v_status, "rechecks": n_rechecks,
+                    }
                 except Exception as e:
                     bundle["errors"].append(f"otp 0x{a:02X}: {e}")
             bundle["data"]["otp_dump"] = otps
+            bundle["verification"]["otp_dump"] = verification_otp
         except Exception as e:
             bundle["errors"].append(f"otp_dump: {e}")
             log(f"  otp failed: {e}")
@@ -286,7 +307,11 @@ def _data_dir() -> str:
 
 def write_bundle(bundle: Dict, name: str,
                  out_dir: Optional[str] = None) -> str:
-    """Write the bundle to ``out_dir/<Name>.json`` and return the path."""
+    """Write the bundle to ``out_dir/<Name>.json`` and return the path.
+
+    Also writes a ``<Name>.json.sha256`` sidecar so the file's integrity
+    can be proven later (validate_bundle checks it; so can `sha256sum -c`).
+    """
     if out_dir is None:
         out_dir = _data_dir()
     stem = sanitize_name(name)
@@ -294,7 +319,296 @@ def write_bundle(bundle: Dict, name: str,
     path = os.path.join(out_dir, f"{stem}.json")
     with open(path, "w") as f:
         json.dump(bundle, f, indent=2)
+    try:
+        digest = _sha256_file(path)
+        with open(path + ".sha256", "w") as f:
+            f.write(f"{digest}  {os.path.basename(path)}\n")
+    except Exception:
+        pass
     return path
+
+
+def _sha256_file(path: str) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _identity_garbled_count(regs_map: Dict[str, dict]) -> int:
+    """How many identity registers (VID/DID/Mode/Type) are missing or
+    garbled (all-0x00 / all-0xFF) in a collected chip register map."""
+    n = 0
+    for identity in ("0x00", "0x01", "0x03", "0x04"):
+        entry = regs_map.get(identity)
+        if not entry:
+            n += 1
+            continue
+        raw = (entry.get("raw") or "").lower()
+        if not raw or set(raw) == {"0"} or set(raw) == {"f"}:
+            n += 1
+    return n
+
+
+def _recheck_chip_registers(analyzer, addr: int, regs_map: Dict[str, dict],
+                            progress_cb=None) -> Tuple[Dict[str, dict], int, str]:
+    """Verify one chip's collected register data; re-read up to twice when
+    identity registers are garbled/missing, keeping the cleanest snapshot.
+    Returns (best_map, rechecks_used, status) with status in
+    ok / recovered / degraded."""
+    from .analyzer import CD3217Analyzer  # for the decode pipeline
+
+    def rebuild(rd):
+        return {f"0x{o:02X}": {
+            "name": r.name, "raw": r.raw_bytes.hex(),
+            "value": f"0x{r.raw_value:X}", "decoded": r.decoded,
+        } for o, r in rd.items()}
+
+    initial_bad = _identity_garbled_count(regs_map)
+    best_map, best_bad = regs_map, initial_bad
+    rechecks = 0
+    while best_bad and rechecks < 2:
+        rechecks += 1
+        if progress_cb:
+            progress_cb(f"  0x{addr:02X}: {best_bad} garbled identity "
+                        f"register(s) — recheck {rechecks}/2")
+        try:
+            rd2 = analyzer.read_all_registers(addr)
+        except Exception:
+            break
+        regs2 = rebuild(rd2)
+        n2 = _identity_garbled_count(regs2)
+        if n2 < best_bad:
+            best_map, best_bad = regs2, n2
+    if best_bad == 0:
+        status = "ok"
+    elif best_bad < initial_bad:
+        status = "recovered"
+    else:
+        status = "degraded"
+    return best_map, rechecks, status
+
+
+def _recheck_chip_otp(adapter, addr: int, otp_entry: Dict,
+                      progress_cb=None) -> Tuple[Dict, int, str]:
+    """Same idea for one chip's OTP scan: if the fill is suspiciously low,
+    rescan up to twice and keep the more complete dump."""
+    from .otp import scan_otp
+
+    def filled(d):
+        return len(d.get("registers") or {})
+
+    best, best_filled = otp_entry, filled(otp_entry)
+    rechecks = 0
+    while best_filled < 30 and rechecks < 2:
+        rechecks += 1
+        if progress_cb:
+            progress_cb(f"  0x{addr:02X}: OTP {best_filled}/32 — recheck "
+                        f"{rechecks}/2")
+        try:
+            dump = scan_otp(adapter, addr, label=f"0x{addr:02X}")
+        except Exception:
+            break
+        cand = {
+            "address": addr,
+            "registers": {f"0x{o:02X}": d.hex()
+                          for o, d in dump.registers.items()},
+            "read_errors": dump.read_errors,
+        }
+        if filled(cand) > best_filled:
+            best, best_filled = cand, filled(cand)
+    if best_filled >= 30:
+        status = "ok" if rechecks == 0 else "recovered"
+    elif rechecks and best_filled > filled(otp_entry):
+        status = "recovered"
+    else:
+        status = "degraded"
+    return best, rechecks, status
+
+
+def validate_bundle(path: str) -> Dict:
+    """Verify an exported bundle was written correctly and is complete.
+
+    Returns a dict:
+        {"path":..., "valid": bool, "summary": str,
+         "checks": [{"name","level","detail"}...]}
+    level: "ok" | "warn" | "critical". valid=False only on criticals
+    (unparseable file, wrong format, integrity mismatch, zero chips).
+    """
+    checks: List[Dict] = []
+
+    def add(name, level, detail=""):
+        checks.append({"name": name, "level": level, "detail": detail})
+
+    # 1. file + JSON parse
+    if not os.path.exists(path):
+        return {"path": path, "valid": False,
+                "summary": "file does not exist", "checks": checks}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            bundle = json.load(f)
+        add("JSON parses", "ok", f"{os.path.getsize(path):,} bytes")
+    except Exception as e:
+        add("JSON parses", "critical", f"corrupt file: {e}")
+        return {"path": path, "valid": False,
+                "summary": "file is corrupt (not valid JSON)",
+                "checks": checks}
+
+    # 2. format identity
+    fmt = bundle.get("format")
+    if fmt == "cd3217-analyzer/board-export":
+        add("format", "ok", f"version {bundle.get('format_version')}")
+    else:
+        add("format", "critical", f"unexpected: {fmt!r}")
+
+    # 3. integrity sidecar (proves the file is exactly what was written)
+    sidecar = path + ".sha256"
+    if os.path.exists(sidecar):
+        try:
+            with open(sidecar) as f:
+                expected = f.read().split()[0].strip().lower()
+            actual = _sha256_file(path)
+            if actual == expected:
+                add("integrity (sha256)", "ok", expected[:16] + "…")
+            else:
+                add("integrity (sha256)", "critical",
+                    "file changed after export (hash mismatch)")
+        except Exception as e:
+            add("integrity (sha256)", "warn", f"sidecar unreadable: {e}")
+    else:
+        add("integrity (sha256)", "warn",
+            "no .sha256 sidecar (bundle from an older version)")
+
+    # 4. metadata completeness
+    for key in ("name", "generated_utc", "app_version", "adapter_type"):
+        if bundle.get(key):
+            add(f"metadata.{key}", "ok", str(bundle[key])[:40])
+        else:
+            add(f"metadata.{key}", "warn", "missing")
+    if bundle.get("mac_model"):
+        add("metadata.mac_model", "ok", str(bundle["mac_model"]))
+    else:
+        add("metadata.mac_model", "warn",
+            "not recorded — export was made without a model selected")
+
+    # 5. per-source completeness
+    data = bundle.get("data") or {}
+    sources = bundle.get("sources") or []
+    chip_count = None
+    if "registers" in sources:
+        regs = data.get("register_dump") or {}
+        chip_count = len(regs)
+        if not regs:
+            add("register_dump", "critical", "no chips captured")
+        else:
+            for addr, regs_map in sorted(regs.items()):
+                problems = []
+                for identity, what in (("0x00", "VID"), ("0x01", "DID"),
+                                       ("0x03", "Mode")):
+                    entry = regs_map.get(identity)
+                    if not entry:
+                        problems.append(f"{what} missing")
+                        continue
+                    raw = (entry.get("raw") or "").lower()
+                    if not raw or set(raw) == {"0"} or set(raw) == {"f"}:
+                        problems.append(f"{what} garbled (all-0x00/0xFF)")
+                if problems:
+                    add(f"chip {addr}", "warn", "; ".join(problems))
+                else:
+                    add(f"chip {addr}", "ok",
+                        f"{len(regs_map)} registers, identity readable")
+    if "otp" in sources:
+        otps = data.get("otp_dump") or {}
+        for addr, dump in sorted(otps.items()):
+            filled = len(dump.get("registers") or {})
+            errs = len(dump.get("read_errors") or [])
+            if filled >= 30:
+                add(f"otp {addr}", "ok", f"{filled}/32 registers")
+            else:
+                add(f"otp {addr}", "warn",
+                    f"only {filled}/32 registers readable "
+                    f"({errs} read errors) — rescan recommended")
+    if "flash" in sources:
+        fd = data.get("flash_dump") or {}
+        length = fd.get("length") or 0
+        hexlen = len(fd.get("hex") or "")
+        if length and hexlen == length * 2:
+            add("flash_dump", "ok", f"{length:,} bytes")
+        else:
+            add("flash_dump", "critical",
+                f"size mismatch: length={length}, hex={hexlen // 2} bytes")
+    if "info" in sources and not data.get("info"):
+        add("info", "warn", "source selected but empty")
+
+    # 5b. collection-time verification (recheck) results
+    verif = bundle.get("verification") or {}
+    all_v = []
+    for section in ("register_dump", "otp_dump"):
+        all_v.extend((verif.get(section) or {}).values())
+    if all_v:
+        bad = [v for v in all_v if v.get("status") not in ("ok", None)]
+        rechecked = sum(1 for v in all_v if (v.get("rechecks") or 0) > 0)
+        if not bad:
+            add("collection recheck", "ok",
+                f"{len(all_v)} dataset(s) verified clean"
+                + (f", {rechecked} auto-recovered" if rechecked else ""))
+        else:
+            add("collection recheck", "warn",
+                f"{len(bad)}/{len(all_v)} dataset(s) imperfect after "
+                f"recheck — consider re-exporting")
+
+    # 5c. data accuracy: unexpected VID / generation mismatch per chip
+    if "registers" in sources:
+        for addr, regs_map in sorted((data.get("register_dump") or {}).items()):
+            vid_entry = (regs_map.get("0x00") or {})
+            try:
+                vid_raw = vid_entry.get("raw") or ""
+                if vid_raw and set(vid_raw) not in ({"0"}, {"f"}):
+                    vid = int.from_bytes(bytes.fromhex(vid_raw), "little") & 0xFFFF
+                    if vid not in (0x0451, 0x2804):
+                        add(f"chip {addr} VID", "warn",
+                            f"0x{vid:04X} is neither TI (0x0451) nor Apple "
+                            "(0x2804) — wrong chip or garbled read")
+            except Exception:
+                pass
+
+    # 6. collection errors recorded during export
+    errors = bundle.get("errors") or []
+    if errors:
+        for e in errors:
+            add("collection error", "warn", str(e)[:80])
+
+    # 7. model expectation: chips captured vs chips on the board
+    mac_model = bundle.get("mac_model")
+    if mac_model and chip_count is not None:
+        try:
+            from .models import get_model
+            m = get_model(str(mac_model))
+            if m:
+                expected = len(m.positions)
+                if chip_count >= expected:
+                    add("model coverage", "ok",
+                        f"{chip_count}/{expected} sockets captured")
+                else:
+                    add("model coverage", "warn",
+                        f"only {chip_count}/{expected} sockets captured — "
+                        "run Diagnose All before exporting")
+        except Exception:
+            pass
+
+    criticals = [c for c in checks if c["level"] == "critical"]
+    warns = [c for c in checks if c["level"] == "warn"]
+    valid = not criticals
+    if not valid:
+        summary = f"INVALID — {len(criticals)} critical problem(s)"
+    elif warns:
+        summary = f"complete with {len(warns)} warning(s)"
+    else:
+        summary = "complete"
+    return {"path": path, "valid": valid, "summary": summary,
+            "checks": checks}
 
 
 # ──────────────────────────────────────────────────────────────────────────
