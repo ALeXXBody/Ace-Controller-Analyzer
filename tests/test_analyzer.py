@@ -895,8 +895,11 @@ class TestBatchRetry(unittest.TestCase):
         from cd3217_analyzer.analyzer import CD3217Analyzer
         r = MagicMock()
         r.health = HealthStatus.FAIL
-        r.faults = [FaultType.WRONG_VID]          # genuine wrong chip
-        self.assertFalse(CD3217Analyzer.is_retryable_failure(r))
+        # WRONG_VID is retryable since v0.8.4: a CD3217-family chip always
+        # reports TI/Apple, so an unexpected VID is wire corruption, which
+        # the user's "2 faulty in Diagnose All, all good per-chip" proved.
+        r.faults = [FaultType.WRONG_VID]
+        self.assertTrue(CD3217Analyzer.is_retryable_failure(r))
         r.health = HealthStatus.PASS
         r.faults = []
         self.assertFalse(CD3217Analyzer.is_retryable_failure(r))

@@ -2571,7 +2571,7 @@ class Application(ctk.CTk):
             # the manual per-chip clicks show. Re-diagnose transport
             # failures after a settle (keeps the best verdict, never
             # downgrades a PASS).
-            retry_settles = (0.0, 0.8, 1.6)
+            retry_settles = (0.0, 0.8, 2.0, 4.0)
             prev_flaky = False
             for addr in addrs:
                 if self._cancelled():

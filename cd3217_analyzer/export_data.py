@@ -478,9 +478,20 @@ def _recheck_chip_otp(adapter, addr: int, otp_entry: Dict,
     def filled(d):
         return len(d.get("registers") or {})
 
+    def content_ok(d):
+        """Fill alone is not enough: a NACK-free but corrupted read
+        returns 32/32 'filled' registers full of 0xFF-pattern junk (real
+        case: VID bytes reading 0xFF04). Verify the VID bytes."""
+        try:
+            raw = bytes.fromhex(d.get("registers", {}).get("0x00", ""))
+            vid = int.from_bytes(raw[:2], "little")
+            return vid in (0x0451, 0x2804)
+        except Exception:
+            return False
+
     best, best_filled = otp_entry, filled(otp_entry)
     rechecks = 0
-    while best_filled < 30 and rechecks < 2:
+    while (best_filled < 30 or not content_ok(best)) and rechecks < 2:
         rechecks += 1
         if progress_cb:
             progress_cb(f"  0x{addr:02X}: OTP {best_filled}/32 — recheck "
@@ -497,9 +508,10 @@ def _recheck_chip_otp(adapter, addr: int, otp_entry: Dict,
         }
         if filled(cand) > best_filled:
             best, best_filled = cand, filled(cand)
-    if best_filled >= 30:
+    if best_filled >= 30 and content_ok(best):
         status = "ok" if rechecks == 0 else "recovered"
-    elif rechecks and best_filled > filled(otp_entry):
+    elif rechecks and (best_filled > filled(otp_entry)
+                       or content_ok(best)):
         status = "recovered"
     else:
         status = "degraded"
@@ -688,6 +700,49 @@ def validate_bundle(path: str) -> Dict:
                             "(0x2804) — wrong chip or garbled read")
             except Exception:
                 pass
+
+    # 5d. cross-dataset consistency: DID/VID from the register dump must
+    # match the same bytes reconstructed from the independent OTP dump.
+    # A mismatch (or 0xFF-heavy data) is the signature of a probe/pull-up
+    # drive problem: 0-bits reading as 1s (e.g. 0xCD -> 0xFF).
+    regs_data = data.get("register_dump") or {}
+    otp_data = data.get("otp_dump") or {}
+    for addr in sorted(set(regs_data) & set(otp_data),
+                       key=lambda k: int(k, 16)):
+        try:
+            space = {}
+            for o, h in (otp_data[addr].get("registers") or {}).items():
+                for i, byte in enumerate(bytes.fromhex(h)):
+                    space[int(o, 16) + i] = byte
+            otp_vid = int.from_bytes(
+                bytes(space.get(o, 0xFF) for o in (0x00, 0x01)), "little")
+            otp_did = int.from_bytes(
+                bytes(space.get(o, 0xFF) for o in range(0x01, 0x05)),
+                "little")
+            rd_vid = int.from_bytes(bytes.fromhex(
+                (regs_data[addr].get("0x00") or {}).get("raw", "ff" * 4)),
+                "little") & 0xFFFF
+            rd_did = int.from_bytes(bytes.fromhex(
+                (regs_data[addr].get("0x01") or {}).get("raw", "ff" * 4)),
+                "little")
+            ff_bytes = sum(1 for o in (0x00, 0x01, 0x02, 0x03, 0x04)
+                           if space.get(o, 0xFF) == 0xFF)
+            if otp_vid != rd_vid or otp_did != rd_did:
+                add(f"cross-check {addr}", "warn",
+                    f"register dump (VID 0x{rd_vid:04X}, DID 0x{rd_did:08X}) "
+                    f"disagrees with OTP dump (VID 0x{otp_vid:04X}, DID "
+                    f"0x{otp_did:08X}) — the two independent reads must "
+                    "match; they don't, so the wire corrupted data. "
+                    "Re-seat the probe, shorten leads, verify 3.3V and "
+                    "pull-up strength (0-bits reading as 0xFF = SDA low-"
+                    "drive failure at the probe, not chip damage)")
+            elif ff_bytes >= 3:
+                add(f"cross-check {addr}", "warn",
+                    f"{ff_bytes}/5 identity bytes read as 0xFF — probe/"
+                    "pull-up low-drive problem: re-seat probe, shorten "
+                    "leads, check 3.3V")
+        except Exception:
+            pass
 
     # 6. collection errors recorded during export
     errors = bundle.get("errors") or []

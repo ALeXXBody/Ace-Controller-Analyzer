@@ -497,7 +497,10 @@ class CD3217Analyzer:
                 result.faults.append(FaultType.WRONG_VID)
                 result.fault_details.append(
                     f"Vendor ID is 0x{vid_reg.raw_value:08X} (expected one of "
-                    f"{', '.join(f'0x{v:04X}' for v in sorted(VALID_ACE2_VIDS))})"
+                    f"{', '.join(f'0x{v:04X}' for v in sorted(VALID_ACE2_VIDS))})."
+                    " A real CD3217-family chip always reports one of those — "
+                    "an unexpected VID is nearly always a garbled read on a "
+                    "marginal probe, and the Diagnose-All ladder will retry it"
                 )
         else:
             result.faults.append(FaultType.I2C_ERROR)
@@ -1083,7 +1086,8 @@ class CD3217Analyzer:
             return True
         if result.health == HealthStatus.FAIL:
             transport = {FaultType.NO_RESPONSE, FaultType.I2C_ERROR,
-                         FaultType.CORRUPTED_REGISTERS}
+                         FaultType.CORRUPTED_REGISTERS,
+                         FaultType.WRONG_VID}
             return any(f in transport for f in result.faults)
         return False
 
