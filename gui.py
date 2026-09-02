@@ -105,7 +105,8 @@ def chip_class(addr: int) -> str:
 # The board is only flashed when its FIRMWARE actually changed. Bump this
 # tuple ONLY in a release that modifies firmware_esp32/ sources — every
 # app-only release keeps older board firmware working (protocol-compatible).
-LAST_FIRMWARE_CHANGE = (0, 7, 1)   # v0.7.1: firmware all-call scan filter
+LAST_FIRMWARE_CHANGE = (0, 9, 2)   # v0.9.2: Wire.setTimeout(1000) — the
+# clock-stretch truncation fix. Bump ONLY when firmware_esp32/ changes.
 
 
 def _parse_semver(text):
