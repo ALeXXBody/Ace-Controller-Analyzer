@@ -154,6 +154,13 @@ def download_file(url: str, dest: str,
                 done += len(chunk)
                 if progress_cb:
                     progress_cb(done, total)
+    # Strip the Mark-of-the-Web: a downloaded Setup.exe with MOTW can trip
+    # SmartScreen during the silent self-update and the install never runs.
+    if os.name == "nt":
+        try:
+            os.remove(dest + ":Zone.Identifier")
+        except OSError:
+            pass
     return dest
 
 
