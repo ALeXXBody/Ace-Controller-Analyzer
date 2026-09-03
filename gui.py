@@ -105,9 +105,9 @@ def chip_class(addr: int) -> str:
 # The board is only flashed when its FIRMWARE actually changed. Bump this
 # tuple ONLY in a release that modifies firmware_esp32/ sources — every
 # app-only release keeps older board firmware working (protocol-compatible).
-LAST_FIRMWARE_CHANGE = (0, 11, 8)  # v0.11.8: Wire.setTimeout(1000, true)
-# = self-resetting I2C peripheral after a stuck-bus timeout (kills the
-# bridge-stall "Write timeout" state).
+LAST_FIRMWARE_CHANGE = (0, 11, 10)  # v0.11.10: configurable auto-baud
+# window (CMD 0x24 v2). Bump ONLY when firmware_esp32/ changes — the
+# release_bump.py guard enforces this (see docs/IC_FINDINGS.md §4.9).
 # "aca-analyzer"/"aca", web UI title. Bump ONLY when firmware_esp32/
 # changes (see docs/IC_FINDINGS.md §4.9).
 
