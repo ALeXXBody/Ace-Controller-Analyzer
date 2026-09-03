@@ -610,7 +610,7 @@ def _comports():
 
 def scan_for_boards(current_port: Optional[str] = None,
                     timeout: float = 0.8) -> List[dict]:
-    """Find CD3217 analyzer boards on the USB serial ports.
+    """Find ACA bridge boards on the USB serial ports.
 
     A "board" is a serial port where our bridge firmware answers PING and
     reports its INFO (board name). Candidate ports are prioritized by USB

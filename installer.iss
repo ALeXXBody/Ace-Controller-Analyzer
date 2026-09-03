@@ -1,4 +1,4 @@
-; CD3217B12 Analyzer — Inno Setup installer script
+; ACA - ACE Controller Analyzer — Inno Setup installer script
 ; Built on CI (Inno Setup 6 is preinstalled on windows-latest runners).
 ; Compiles the PyInstaller onedir output into a proper Windows installer:
 ; Program Files install, Start Menu + optional desktop shortcuts, uninstaller.
@@ -8,7 +8,7 @@
 #ifndef AppVersion
 #define AppVersion "0.3.0"
 #endif
-#define AppPublisher "CD3217 Analyzer Project"
+#define AppPublisher "ACA Project"
 #define AppExeName "ACA.exe"
 
 [Setup]

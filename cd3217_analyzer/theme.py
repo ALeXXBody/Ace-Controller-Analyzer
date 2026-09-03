@@ -1,4 +1,4 @@
-"""Shared visual theme for the CD3217 analyzer GUI."""
+"""Shared visual theme for the ACA GUI."""
 
 COLORS = {
     "bg": "#0b1220",

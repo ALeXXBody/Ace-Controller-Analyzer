@@ -1,4 +1,4 @@
-"""Comprehensive debug trace for the CD3217 analyzer.
+"""Comprehensive debug trace for ACA (ACE Controller Analyzer).
 
 Activated by a GUI switch (Log tab). When enabled, every bridge
 transaction, I2C-level error, retry decision, watcher tick and app-level

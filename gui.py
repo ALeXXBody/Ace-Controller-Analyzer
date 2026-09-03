@@ -105,8 +105,9 @@ def chip_class(addr: int) -> str:
 # The board is only flashed when its FIRMWARE actually changed. Bump this
 # tuple ONLY in a release that modifies firmware_esp32/ sources — every
 # app-only release keeps older board firmware working (protocol-compatible).
-LAST_FIRMWARE_CHANGE = (0, 10, 0)  # v0.10.0: BUSCHK v2 rail-blip sampling.
-# Bump ONLY when firmware_esp32/ changes (see docs/IC_FINDINGS.md §4.9).
+LAST_FIRMWARE_CHANGE = (0, 11, 1)  # v0.11.1: rebrand — AP SSID/mDNS host
+# "aca-analyzer"/"aca", web UI title. Bump ONLY when firmware_esp32/
+# changes (see docs/IC_FINDINGS.md §4.9).
 
 
 def _parse_semver(text):
@@ -235,7 +236,8 @@ class Application(ctk.CTk):
         brand = ctk.CTkFrame(top, fg_color="transparent")
         brand.pack(side="left", padx=12, pady=10)
         ctk.CTkLabel(
-            brand, text="CD3217 Analyzer", font=F["title"], text_color=C["accent"]
+            brand, text="ACA - ACE Controller Analyzer", font=F["title"],
+                 text_color=C["accent"]
         ).pack(anchor="w")
         ctk.CTkLabel(
             brand,
@@ -1830,7 +1832,7 @@ class Application(ctk.CTk):
             return
         try:
             with open(filepath, "w", encoding="utf-8") as f:
-                f.write(f"CD3217 Analyzer v{__version__} debug trace\n")
+                f.write(f"ACA v{__version__} debug trace\n")
                 f.write(f"saved {datetime.now().isoformat()}\n")
                 f.write("\n".join(debuglog.entries()) + "\n")
             self.log(f"Debug log saved: {filepath} "

@@ -53,7 +53,7 @@ ACA communicates over I²C to read device registers, validate chip health, decod
 1. Go to **[Releases](https://github.com/ALeXXBody/cd3217-analyzer/releases)** and download `CD3217B12_Analyzer_Setup.exe`
 2. Run it — installs to your user Programs folder (no admin prompt), adds a
    Start Menu entry and optional Desktop shortcut, and registers an uninstaller.
-3. Launch **CD3217B12 Analyzer** from the Start Menu. No Python needed.
+3. Launch **ACA - ACE Controller Analyzer** from the Start Menu. No Python needed.
 
 ### Option 2: Portable (no install)
 

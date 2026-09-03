@@ -1,4 +1,4 @@
-"""Self-update mechanism for the CD3217 Analyzer app.
+"""Self-update mechanism for the ACA app.
 
 Checks the latest GitHub release and updates whichever build is running:
 

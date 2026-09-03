@@ -1,8 +1,8 @@
 /*
  * CD3217-Analyzer — ESP32 / RP2040 standalone unit
  *
- * Brings up a WiFi SoftAP (SSID "cd3217-analyzer") + mDNS (cd3217.local)
- * and serves a web UI at http://cd3217.local that runs a hardware I2C scan
+ * Brings up a WiFi SoftAP (SSID "aca-analyzer") + mDNS (aca.local)
+ * and serves a web UI at http://aca.local that runs a hardware I2C scan
  * of the CD3217 breakout and lists all ACK-ing addresses.
  *
  * Boards with WiFi  (ESP32-S3/C3/classic, Pico W, Pico 2 W): the full web UI
@@ -49,12 +49,12 @@
 // ---- WiFi (only compiled for WiFi-capable boards) ----------------------------
 #ifdef CD3217_HAS_WIFI
 #ifndef AP_SSID
-#define AP_SSID "cd3217-analyzer"
+#define AP_SSID "aca-analyzer"
 #endif
 #ifndef AP_PASS
 #define AP_PASS "cd3217analyzer"   // >= 8 chars required by softAP
 #endif
-#define MDNS_HOST "cd3217"
+#define MDNS_HOST "aca"
 
 WebServer server(80);
 
@@ -63,7 +63,7 @@ static const char index_html[] PROGMEM = R"rawliteral(
 <html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CD3217 Analyzer</title>
+<title>ACA - ACE Controller Analyzer</title>
 <style>
   body{font-family:system-ui,sans-serif;background:#111;color:#eee;margin:0;padding:16px}
   h1{font-size:20px;margin:0 0 4px}
@@ -89,7 +89,7 @@ static const char index_html[] PROGMEM = R"rawliteral(
   .bar>div{background:#2b6cb0;height:100%;width:0%;transition:width .15s}
 </style>
 </head><body>
-<h1>CD3217 Analyzer</h1>
+<h1>ACA - ACE Controller Analyzer</h1>
 <div class="sub">board: __BOARD__ &middot; AP: __AP__ &middot; IP: __IP__</div>
 
 <div class="tabs">
