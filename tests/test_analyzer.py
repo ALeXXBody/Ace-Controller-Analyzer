@@ -546,7 +546,7 @@ class TestRDO(unittest.TestCase):
                 0x01: bytes([0x04, 0x17, 0x32, 0xCD]),
                 0x03: bytes([0x04, 0x41, 0x50, 0x50]),
                 0x04: bytes([0x04, 0x49, 0x32, 0x43]),
-                0x26: bytes([0xE1, 0x20, 0x03, 0x50]),   # 20V/2.25A PDO#5 contract
+                0x36: bytes([0xE1, 0x20, 0x03, 0x50]),   # 20V/2.25A PDO#5 contract (ActiveRDO @0x36)
             }
             return data.get(reg, bytes([0x5A] * length))[:length]
 
@@ -555,7 +555,7 @@ class TestRDO(unittest.TestCase):
         mock.read_bytes.side_effect = rb
         an = CD3217Analyzer(mock, addresses=[0x3A])
         result = an.diagnose_device(0x3A)
-        rdo = result.registers.get(0x26)
+        rdo = result.registers.get(0x36)
         self.assertIsNotNone(rdo)
         self.assertIn("20.0V", rdo.decoded)
 
@@ -935,7 +935,15 @@ def _clean_regs(holder=None):
         if reg == 0x2F:
             return (b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"
                     + b"\x00" * 4)[:length]
-        return bytes([0x00] * length)
+        if reg == 0x26:
+            return bytes([0x00, 0x00, 0x00, 0x00])
+        if reg == 0x36:
+            return bytes([0xE1, 0x20, 0x03, 0x50])
+        if reg == 0x35:
+            return bytes([0x00, 0x32, 0x00, 0x00])
+        if reg == 0x30:
+            return (b"\x03\x00" + (200 << 10 | 300).to_bytes(4, "little"))[:length]
+        return bytes([0x5A] * length)
     return rb
 
 
@@ -1006,7 +1014,15 @@ class TestAdaptiveSettle(unittest.TestCase):
         if reg == 0x2F:
             return (b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"
                     + b"\x00" * 4)[:length]
-        return bytes([0x00] * length)
+        if reg == 0x26:
+            return bytes([0x00, 0x00, 0x00, 0x00])
+        if reg == 0x36:
+            return bytes([0xE1, 0x20, 0x03, 0x50])
+        if reg == 0x35:
+            return bytes([0x00, 0x32, 0x00, 0x00])
+        if reg == 0x30:
+            return (b"\x03\x00" + (200 << 10 | 300).to_bytes(4, "little"))[:length]
+        return bytes([0x5A] * length)
 
     def _mk(self, rb, ping=True):
         from cd3217_analyzer.analyzer import CD3217Analyzer

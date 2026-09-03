@@ -43,13 +43,14 @@ class TestRecheck(unittest.TestCase):
 
         def rb(addr, reg, length):
             state["reads"] += 1
-            if garbage_first_pass and state["reads"] <= 4:
+            if garbage_first_pass and state["reads"] <= 8:
                 return bytes([0xFF] * length)      # first pass garbled
             return {
                 0x00: bytes.fromhex("04280000"),
                 0x01: bytes.fromhex("041832cd"),
                 0x03: bytes.fromhex("20504150"),
                 0x04: bytes.fromhex("20493243"),
+                0x36: bytes.fromhex("e1200350"),
                 0x2F: b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P\x00\x00",
             }.get(reg, bytes([0x5A] * length))[:length]
 

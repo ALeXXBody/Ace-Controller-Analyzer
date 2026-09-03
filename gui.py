@@ -2965,7 +2965,7 @@ class Application(ctk.CTk):
         # Live PD contract (register 0x26 RDO): what the port has actually
         # negotiated — the direct pointer for 0V/5V/20V power complaints.
         contract = "N/A"
-        rdo_reg = result.registers.get(0x26)
+        rdo_reg = result.registers.get(0x36)
         if rdo_reg is not None:
             # The RDO is only meaningful while a SOURCE (the power meter)
             # is attached to THIS port. The other ports legitimately read

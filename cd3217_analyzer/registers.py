@@ -1,3 +1,5 @@
+from typing import List
+
 """CD3217B12 (Apple ACE2) register definitions and known-good values.
 
 Based on:
@@ -178,13 +180,30 @@ REGISTERS = {
     ),
     # --- PD Status Registers ---
     0x26: RegisterDef(
-        offset=0x26, length=4, name="RDO",
-        description="Live PD contract (Request Data Object): "
-                    "voltage/current the port has negotiated",
+        offset=0x26, length=4, name="PowerPath",
+        description="Power path status",
     ),
     0x29: RegisterDef(
-        offset=0x29, length=4, name="PowerStatus",
-        description="Power status / VBUS state",
+        offset=0x29, length=4, name="PortControl",
+        description="Port control / role-swap configuration",
+    ),
+    0x30: RegisterDef(
+        offset=0x30, length=28, name="RXSourceCaps",
+        description="Source Capabilities received from the supply "
+                    "(header + up to 6 PDOs): what voltages the supply "
+                    "OFFERS",
+    ),
+    0x35: RegisterDef(
+        offset=0x35, length=4, name="ActivePDO",
+        description="The PDO the current contract is based on",
+    ),
+    0x36: RegisterDef(
+        offset=0x36, length=4, name="ActiveRDO",
+        description="The RDO of the current contract (0 = none)",
+    ),
+    0x3F: RegisterDef(
+        offset=0x3F, length=2, name="PowerStatus",
+        description="Power status: B0 = role (0=Source, 1=Sink)",
     ),
     0x2D: RegisterDef(
         offset=0x2D, length=12, name="BootFlags",
@@ -433,6 +452,47 @@ def parse_device_info(raw_bytes) -> DeviceIdentity:
     return ident
 
 
+def decode_pdo(raw: int) -> str:
+    """Decode one USB-PD Power Data Object (32-bit).
+
+    Fixed Supply (B31:30 = 00): B19:10 = voltage in 100 mV, B9:0 = max
+    current in 10 mA. Other supply types (Battery/Variable/APDO) are
+    reported by their type marker.
+    """
+    supply = (raw >> 30) & 0x3
+    if supply == 0:
+        volts = ((raw >> 10) & 0x3FF) * 100
+        ma = (raw & 0x3FF) * 10
+        return f"Fixed {volts / 1000.0:.1f}V/{ma / 1000.0:.2f}A"
+    if supply == 1:
+        return "Battery"
+    if supply == 2:
+        return "Variable"
+    return "APDO (PPS)"
+
+
+def decode_source_caps(raw_bytes: bytes) -> List[str]:
+    """Decode a Source Capabilities message (register 0x30).
+
+    Layout: 2-byte message header (B14:12 = number of PDOs), then 4-byte
+    PDOs. Returns one human-readable string per PDO — the list of
+    voltages the attached supply OFFERS this port.
+    """
+    out = []
+    if len(raw_bytes) < 4:
+        return out
+    header = int.from_bytes(raw_bytes[0:2], "little")
+    n_pdos = (header >> 12) & 0x7
+    for i in range(min(n_pdos, 6)):
+        off = 2 + i * 4
+        if off + 4 > len(raw_bytes):
+            break
+        pdo = int.from_bytes(raw_bytes[off:off + 4], "little")
+        if pdo:
+            out.append(f"PDO{i + 1}: {decode_pdo(pdo)}")
+    return out
+
+
 def decode_rdo(value: int) -> str:
     """Decode a Request Data Object (register 0x26) — the live PD
     contract a port has negotiated.
@@ -453,6 +513,21 @@ def decode_rdo(value: int) -> str:
     a = milliamps / 1000.0
     return (f"{v:.1f}V/{a:.2f}A (PDO #{obj_pos})"
             if obj_pos else f"{v:.1f}V/{a:.2f}A")
+
+
+def decode_power_status(value: int) -> str:
+    """Decode the Power Status register (0x3F, 2 bytes).
+
+    Byte 0 B0 = power role: 0 = SOURCE (the port provides power),
+    1 = SINK (the board is DRAWING through this port). A bench setup
+    that feeds the board through one port shows that port as SINK —
+    its 5V sink contract is the board's power input, not a fault.
+    """
+    role = value & 0x1
+    ext = (value >> 1) & 0x1
+    role_txt = "SINK — the board is drawing power through this port" \
+        if role else "SOURCE — this port is providing power"
+    return role_txt + (" (externally powered)" if ext else "")
 
 
 def decode_vid(value: int) -> str:

@@ -31,6 +31,9 @@ from .registers import (
     decode_type_reg,
     decode_vid,
     decode_rdo,
+    decode_pdo,
+    decode_source_caps,
+    decode_power_status,
     is_ace2_address,
     parse_device_info,
 )
@@ -189,7 +192,7 @@ class CD3217Analyzer:
     # Key registers for health assessment
     HEALTH_CHECK_REGS = [0x00, 0x01, 0x03, 0x04, 0x0F]
     # Registers to read for detailed analysis
-    DETAIL_REGS = [0x26, 0x00, 0x01, 0x03, 0x04, 0x0F, 0x06, 0x14, 0x15, 0x29, 0x2D, 0x2F]
+    DETAIL_REGS = [0x26, 0x35, 0x36, 0x3F, 0x00, 0x01, 0x03, 0x04, 0x0F, 0x06, 0x14, 0x15, 0x29, 0x2D, 0x2F]
 
     # Bus settling: right after a NACKed address (dead chip) or bus
     # contention, the next transactions can return garbage or fail. The
@@ -270,8 +273,15 @@ class CD3217Analyzer:
                 decoded = decode_mode_reg(raw_int)
             elif offset == 0x04:
                 decoded = decode_type_reg(raw_int)
-            elif offset == 0x26:
+            elif offset == 0x36:
                 decoded = decode_rdo(raw_int)
+            elif offset == 0x35:
+                decoded = decode_pdo(raw_int)
+            elif offset == 0x30:
+                decoded = " | ".join(decode_source_caps(raw_bytes)) \
+                    or "no source capabilities"
+            elif offset == 0x3F:
+                decoded = decode_power_status(raw_int)
 
             return RegisterRead(
                 offset=offset,
