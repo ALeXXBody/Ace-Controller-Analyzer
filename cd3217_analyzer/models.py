@@ -295,19 +295,23 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A1932": MacBookModel(
         model_id="A1932", name="MacBook Air Retina 13\" 2018/19",
         board_id="820-01521", chip_count=2, positions=[],
-        notes="T2-era MBA; 2 USB-C ports. Needs schematic/boardview.",
+        notes="T2-era MBA; 2 USB-C ports. BOM-verified: 2x CD3215 "
+              "(ACE1, C0) — U3100/U3200 (820-01521 schematic). Address "
+              "map still needed.",
         needs_data=True),
     "A1989": MacBookModel(
         model_id="A1989", name="MacBook Pro 13\" 2018/19 (4-port)",
         board_id="820-00850", chip_count=4, positions=[],
-        notes="T2-era MBP; 4 USB-C ports. Needs schematic/boardview.",
+        notes="T2-era MBP; 4 USB-C ports. 2018 = CD3215 (ACE1); "
+              "2019 = CD3217 (ACE2). Address map still needed.",
         needs_data=True),
     "A1990": MacBookModel(
         model_id="A1990", name="MacBook Pro 15\" 2018/20",
         board_id="820-01041/820-01326/820-01814/820-01827",
         chip_count=4, positions=[],
         notes="T2-era MBP; 4 USB-C ports; four board revisions. "
-              "Needs schematic/boardview.",
+              "820-01041 (2018) BOM-verified: 4x CD3215 (ACE1, C0) — "
+              "U3100/U3200/UB300/UB400. Address map still needed.",
         needs_data=True),
     "A2681": MacBookModel(
         model_id="A2681", name="MacBook Air M2 13\" 2022",
