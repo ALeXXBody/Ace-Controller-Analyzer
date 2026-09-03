@@ -102,6 +102,20 @@ class TestMacBoards(unittest.TestCase):
             "U3100_R": (0x3C, "float", "CD3217B12", "otp"),
         })
 
+    def test_a2780_verified_map(self):
+        """v0.10.2: A2780 map VERIFIED from the 820-02890 schematic —
+        fitted straps 84.5K/140K/GND/Float, all ACE_WILL_BE_OTPED:NO."""
+        from cd3217_analyzer.models import get_model
+        m = get_model("A2780")
+        self.assertEqual(m.board_id, "820-02890")
+        by_ref = {p.ref: (p.address, p.addr_pin, p.silicon)
+                  for p in m.positions}
+        self.assertEqual(by_ref["UF400"], (0x38, "GND", "CD3217B12"))
+        self.assertEqual(by_ref["UF500"], (0x3F, "float", "CD3217B12"))
+        self.assertEqual(by_ref["UG400"], (0x3B, "140K", "CD3217B12"))
+        self.assertEqual(by_ref["U5500"], (0x3A, "84.5K", "CD3218B12"))
+        self.assertNotIn("UNVERIFIED", m.notes or "")
+
     def test_a2337_a2179_use_seven_bit_addresses(self):
         """L1 regression: A2337/A2179 schematics list 0x70/0x7E, which are
         the 8-BIT WRITE forms (0x38<<1, 0x3F<<1). The chips answer at the

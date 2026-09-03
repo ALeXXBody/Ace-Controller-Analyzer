@@ -177,7 +177,7 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2779": MacBookModel(
         model_id="A2779",
         name="MacBook Pro 14\" M2 Pro/Max (2023)",
-        board_id="820-02230",
+        board_id="820-02230",  # NOTE: A2780 = 820-02890 (different board!)
         chip_count=4,
         positions=[
             CD3217Position("UB300", 0x20, "otp", notes="Port 1 — Debug/TBT"),
@@ -193,18 +193,35 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2780": MacBookModel(
         model_id="A2780",
         name="MacBook Pro 16\" M2 Pro/Max (2023)",
-        board_id="820-02230",
+        board_id="820-02890",
         chip_count=4,
         positions=[
-            CD3217Position("UB300", 0x20, "otp", notes="Port 1 — Debug/TBT"),
-            CD3217Position("UB400", 0x74, "otp", notes="Port 1 — Debug/TBT"),
-            CD3217Position("UF500", 0x39, "strap", "GND", 2, "Port 2 — SMC"),
-            CD3217Position("UF600", 0x10, "strap", "GND", 2, "Port 2 — SMC"),
+            # VERIFIED from the 820-02890 schematic: fitted strap resistors
+            # R5510 (84.5K, MagSafe) and RG351 (140K, port 2), ATC0 GND /
+            # ATC1 Float — all chips ACE_WILL_BE_OTPED:NO (strap-driven).
+            # Build variants with 0-ohm straps = factory-OTPed chips whose
+            # addresses are burned (answering per their role instead).
+            CD3217Position("UF400", 0x38, "strap", "GND", 1,
+                           silicon="CD3217B12",
+                           notes="UPC0 port 0 — CD3217B12GACER; I2C_ADDR "
+                                 "to GND (ATC0)"),
+            CD3217Position("UF500", 0x3F, "strap", "float", 1,
+                           silicon="CD3217B12",
+                           notes="UPC1 port 1 — CD3217B12GACER; I2C_ADDR "
+                                 "floating (ATC1)"),
+            CD3217Position("UG400", 0x3B, "strap", "140K", 1,
+                           silicon="CD3217B12",
+                           notes="UPC2 port 2 — CD3217B12GACER; I2C_ADDR "
+                                 "140K via RG351 (ATC2)"),
+            CD3217Position("U5500", 0x3A, "strap", "84.5K", 1,
+                           silicon="CD3218B12",
+                           notes="UPC5 MagSafe — CD3218B12ACE2; I2C_ADDR "
+                                 "84.5K via R5510 (ATC3)"),
         ],
-        notes=("Same address map as A2442/A2485 — UNVERIFIED for 820-02230; "
-               "repair.wiki's A2442-family schematic table (7-bit "
-               "0x38/0x3F/0x3B/0x3A) contradicts it. Verify against the "
-               "820-02230 schematic + boardview before trusting verdicts."),
+        notes=("VERIFIED against the 820-02890 schematic (strap resistors "
+               "fitted, all ACE_WILL_BE_OTPED:NO). Build variants with "
+               "0-ohm I2C_ADDR straps are factory-OTPed and answer at "
+               "burned addresses instead."),
     ),
 
     # ── 2-port T2 models ──────────────────────────────────────────
