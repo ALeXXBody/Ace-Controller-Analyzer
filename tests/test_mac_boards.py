@@ -27,10 +27,13 @@ class TestMacBoards(unittest.TestCase):
         self.assertEqual(b.ports, 4)
 
     def test_all_entries_have_required_fields(self):
+        from cd3217_analyzer.models import MACBOOK_MODELS as mmod_keys
         for key, b in MAC_BOARDS.items():
             self.assertTrue(b.model, key)
-            self.assertTrue(b.board_nos or getattr(b, "needs_data", False),
-                        key)
+            # board_nos may be empty only when the model is registered in
+            # models.py with a TBD board number (M4 Max, not yet published)
+            self.assertTrue(
+                b.board_nos or key.upper() in mmod_keys, key)
             self.assertTrue(b.ports >= 2, key)
             self.assertTrue(b.ace, key)
             self.assertTrue(b.bus, key)

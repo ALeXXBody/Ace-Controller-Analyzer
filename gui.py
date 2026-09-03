@@ -1143,7 +1143,7 @@ class Application(ctk.CTk):
         picker = ctk.CTkOptionMenu(
             row, variable=self.mac_picker_var,
             values=[""] + sorted(
-                (f"{'*' if getattr(b, 'needs_data', False) else ''}"
+                (f"{'*' if self._model_star(k) else ''}"
                  f"{k.upper()} ({b.board_nos[0] if b.board_nos else '820-TBD'})"
                  for k, b in MAC_BOARDS.items()),
                 key=str.lower),
@@ -1164,6 +1164,13 @@ class Application(ctk.CTk):
         sc.grid_columnconfigure(0, weight=1)
         self.mac_detail = sc
         self._show_mac_info(None)
+
+    def _model_star(self, key: str) -> bool:
+        """'*' marks models without a verified socket map — derived from
+        models.py (single source of truth), so the mark clears the moment
+        a schematic is analysed and positions are filled."""
+        model = get_model(key.upper())
+        return (model is None) or model.needs_data
 
     def _on_mac_picked(self, name):
         from cd3217_analyzer.boards import MAC_BOARDS

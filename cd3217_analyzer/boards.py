@@ -196,13 +196,12 @@ class MacBookInfo:
     def __init__(self, model, board_nos, ports, ace,
                  addresses="* needs schematic/boardview",
                  connect=None, notes=None,
-                 bus="AP I2C / SMC I2C", needs_data=False):
+                 bus="AP I2C / SMC I2C"):
         connect = connect or ["USB-C ports: tap SDA/SCL + GND on the I2C "
                               "nets near the CD3217(s)"]
         notes = notes or []
         self.model = model            # Apple model (A1706 ...)
         self.board_nos = board_nos    # list of 820-XXXXX logic board numbers
-        self.needs_data = needs_data  # True = no schematic/boardview yet
         self.ports = ports            # number of USB-C/Thunderbolt charge ports
         self.ace = ace                # "CD3217 (ACE2)" or "CD3215 (ACE1)"
         self.bus = bus                # host bus name(s), e.g. "SMC_I2C1 / AP_I2C0"
@@ -262,7 +261,6 @@ _mac("a1707", model="MacBook Pro 15\" 2016/17", board_nos=["820-00928", "820-002
 _mac("a1989", model="MacBook Pro 13\" 2018/19 Touch Bar", board_nos=["820-00850"],
      ports=4, ace="CD3215 (ACE1)", bus="SMC I2C (SMBUS_SMC_*) / AP I2C0",
      addresses="no pub. address map",
-     needs_data=True,
      connect=[
          "USB-C/Thunderbolt ports: 4 (one CD3215 per port)",
          "Tap SDA/SCL + GND on a SMBUS_SMC_* / AP I2C0 pull-up/series "
@@ -273,7 +271,6 @@ _mac("a1989", model="MacBook Pro 13\" 2018/19 Touch Bar", board_nos=["820-00850"
 _mac("a1990", model="MacBook Pro 15\" 2018/19", board_nos=["820-01041", "820-01326"],
      ports=4, ace="CD3215 (ACE1) / CD3217 (ACE2, 2019)", bus="SMC I2C / AP I2C0",
      addresses="no pub. address map",
-     needs_data=True,
      connect=[
          "USB-C/Thunderbolt ports: 4 (one controller per port)",
          "Tap SDA/SCL + GND on a pull-up/series resistor of the SMC / "
@@ -284,7 +281,6 @@ _mac("a1990", model="MacBook Pro 15\" 2018/19", board_nos=["820-01041", "820-013
 _mac("a1932", model="MacBook Air 2018/19", board_nos=["820-01521"],
      ports=2, ace="CD3215 (ACE1)", bus="SMC I2C / AP I2C0",
      addresses="no pub. address map",
-     needs_data=True,
      connect=[
          "USB-C ports: 2 (one CD3215 per port)",
          "Tap SDA/SCL + GND on a pull-up/series resistor near a CD3215, or "
@@ -476,105 +472,105 @@ _mac("a2485", model="MacBook Pro 16\" M1 Pro/Max 2021", board_nos=["820-02100", 
 _mac("a2681", model="MacBook Air M2 13\" 2022",
      board_nos=["820-02536"], ports=2, ace="CD3217 (ACE2)",
      bus="per-port I2C (XA/XB)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["USB-C ports: 2; tap SDA/SCL + GND on the I2C nets near "
               "the CD3217s"],
      notes=["Apple M2"])
 
 _mac("a2941", model="MacBook Air M2 15\" 2023",
      board_nos=["820-03160"], ports=2, ace="CD3217 (ACE2)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["USB-C ports: 2; tap SDA/SCL + GND on the I2C nets near "
               "the CD3217s"],
      notes=["Apple M2"])
 
 _mac("a3113", model="MacBook Air M3 13\" 2024",
      board_nos=["820-03285"], ports=2, ace="CD3217-family (TBD)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["USB-C ports: 2; tap SDA/SCL + GND on the I2C nets near "
               "the CD3217-family controllers"],
      notes=["Apple M3; controller family TBD"])
 
 _mac("a3114", model="MacBook Air M3 15\" 2024",
      board_nos=["820-03286"], ports=2, ace="CD3217-family (TBD)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["USB-C ports: 2; tap SDA/SCL + GND on the I2C nets near "
               "the CD3217-family controllers"],
      notes=["Apple M3; controller family TBD"])
 
 _mac("a3240", model="MacBook Air M4 13\" 2025",
      board_nos=["820-03597-A"], ports=2, ace="CD3217-family (TBD)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["USB-C ports: 2; tap SDA/SCL + GND on the I2C nets near "
               "the CD3217-family controllers"],
      notes=["Apple M4; controller family TBD"])
 
 _mac("a3241", model="MacBook Air M4 15\" 2025",
      board_nos=["820-03681"], ports=2, ace="CD3217-family (TBD)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["USB-C ports: 2; tap SDA/SCL + GND on the I2C nets near "
               "the CD3217-family controllers"],
      notes=["Apple M4; controller family TBD"])
 
 _mac("a2918", model="MacBook Pro 14\" M3 (2023, 2-port)",
      board_nos=["820-02757"], ports=2, ace="CD3217-family (TBD)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["Thunderbolt ports: 2 + MagSafe3; tap SDA/SCL + GND on "
               "the I2C nets near the controllers"],
      notes=["Apple M3; controller family TBD"])
 
 _mac("a2992", model="MacBook Pro 14\" M3 Pro/Max (2023)",
      board_nos=["820-02918"], ports=3, ace="CD3217-family (TBD)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["Thunderbolt ports: 3 + MagSafe3; tap SDA/SCL + GND on "
               "the I2C nets near the controllers"],
      notes=["Apple M3 Pro/Max; controller family TBD"])
 
 _mac("a2991", model="MacBook Pro 16\" M3 Pro/Max (2023)",
      board_nos=["820-02935"], ports=3, ace="CD3217-family (TBD)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["Thunderbolt ports: 3 + MagSafe3; tap SDA/SCL + GND on "
               "the I2C nets near the controllers"],
      notes=["Apple M3 Pro/Max; controller family TBD"])
 
 _mac("a3112", model="MacBook Pro 14\" M4 (2024)",
      board_nos=["820-03129"], ports=3, ace="CD3217-family (TBD)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["Thunderbolt ports: 3 + MagSafe3; tap SDA/SCL + GND on "
               "the I2C nets near the controllers"],
      notes=["Apple M4; controller family TBD"])
 
 _mac("a3401", model="MacBook Pro 14\" M4 Pro (2024)",
      board_nos=["820-03400"], ports=3, ace="CD3217-family (TBD)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["Thunderbolt ports: 3 + MagSafe3; tap SDA/SCL + GND on "
               "the I2C nets near the controllers"],
      notes=["Apple M4 Pro; controller family TBD"])
 
 _mac("a3185", model="MacBook Pro 14\" M4 Max (2024)",
      board_nos=[], ports=3, ace="CD3217-family (TBD)",
-     addresses="* board number not yet published", needs_data=True,
+     addresses="* board number not yet published",
      connect=["Thunderbolt ports: 3 + MagSafe3; tap SDA/SCL + GND on "
               "the I2C nets near the controllers"],
      notes=["Apple M4 Max; controller family TBD"])
 
 _mac("a3403", model="MacBook Pro 16\" M4 Pro (2024)",
      board_nos=["820-03400-B?"], ports=3, ace="CD3217-family (TBD)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["Thunderbolt ports: 3 + MagSafe3; tap SDA/SCL + GND on "
               "the I2C nets near the controllers"],
      notes=["Apple M4 Pro; controller family TBD"])
 
 _mac("a3186", model="MacBook Pro 16\" M4 Max (2024)",
      board_nos=[], ports=3, ace="CD3217-family (TBD)",
-     addresses="* board number not yet published", needs_data=True,
+     addresses="* board number not yet published",
      connect=["Thunderbolt ports: 3 + MagSafe3; tap SDA/SCL + GND on "
               "the I2C nets near the controllers"],
      notes=["Apple M4 Max; controller family TBD"])
 
 _mac("a1989", model="MacBook Pro 13\" 2018/19 (4-port)",
      board_nos=["820-00850"], ports=4, ace="CD3217 (ACE2)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["USB-C ports: 4; tap SDA/SCL + GND on the I2C nets near "
               "the CD3217s"],
      notes=["T2-era MBP"])
@@ -582,7 +578,7 @@ _mac("a1989", model="MacBook Pro 13\" 2018/19 (4-port)",
 _mac("a1990", model="MacBook Pro 15\" 2018/20",
      board_nos=["820-01041", "820-01326", "820-01814", "820-01827"],
      ports=4, ace="CD3217 (ACE2)",
-     addresses="* needs schematic/boardview", needs_data=True,
+     addresses="* needs schematic/boardview",
      connect=["USB-C ports: 4; tap SDA/SCL + GND on the I2C nets near "
               "the CD3217s"],
      notes=["T2-era MBP; four board revisions"])
