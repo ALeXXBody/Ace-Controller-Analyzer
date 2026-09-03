@@ -23,7 +23,7 @@ import urllib.request
 import zipfile
 from typing import Callable, Optional
 
-GITHUB_REPO = "ALeXXBody/cd3217-analyzer"
+GITHUB_REPO = "ALeXXBody/Ace-Controller-Analyzer"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 SETUP_ASSET = "ACA_Setup.exe"
@@ -45,7 +45,7 @@ BOARD_FIRMWARE_ASSETS = {
 _UNINSTALL_KEY = (r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
                   r"\{8E4C3D2A-9F6B-4E7A-B1C5-CD3217B12ANLZ}_is1")
 
-UA = f"cd3217-analyzer-updater/{getattr(__import__('cd3217_analyzer'), '__version__', '?')}"
+UA = f"aca-updater/{getattr(__import__('cd3217_analyzer'), '__version__', '?')}"
 
 
 # ─── version compare ─────────────────────────────────────────────────────────

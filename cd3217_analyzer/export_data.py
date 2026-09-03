@@ -35,7 +35,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from . import __version__ as APP_VERSION
 
-GITHUB_REPO = "ALeXXBody/cd3217-analyzer"
+GITHUB_REPO = "ALeXXBody/Ace-Controller-Analyzer"
 DATA_BRANCH = "main"          # exports land in samples/ on the default branch
 DATA_DIR = "samples"          # top-level folder, easy to browse in the repo
 
@@ -882,7 +882,7 @@ def _api(url: str, token: str, data: Optional[dict] = None,
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("User-Agent", f"cd3217-analyzer/{APP_VERSION}")
+    req.add_header("User-Agent", f"aca/{APP_VERSION}")
     if data is not None:
         body = json.dumps(data).encode()
         req.add_header("Content-Type", "application/json")
