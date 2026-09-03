@@ -2967,7 +2967,11 @@ class Application(ctk.CTk):
         contract = "N/A"
         rdo_reg = result.registers.get(0x26)
         if rdo_reg is not None:
-            contract = rdo_reg.decoded or "no contract"
+            # The RDO is only meaningful while a SOURCE (the power meter)
+            # is attached to THIS port. The other ports legitimately read
+            # "no contract" — nothing is attached to them.
+            contract = rdo_reg.decoded or ("no contract — attach the "
+                                           "power meter to THIS port")
         self.info_labels["contract"].configure(text=contract)
         self.info_labels["time"].configure(text=f"{result.scan_time_ms:.1f} ms")
 
