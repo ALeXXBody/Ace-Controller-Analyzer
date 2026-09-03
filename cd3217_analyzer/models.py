@@ -58,7 +58,7 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2179": MacBookModel(
         model_id="A2179",
         name="MacBook Air 13\" i5 (2020, Intel)",
-        board_id="820-01996",
+        board_id="820-01958",
         chip_count=2,
         positions=[
             # Same strap pattern as A2337; schematic 0x70/0x7E are 8-bit
@@ -129,19 +129,32 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2442": MacBookModel(
         model_id="A2442",
         name="MacBook Pro 14\" M1 Pro/Max (2021)",
-        board_id="820-02100",
+        board_id="820-02098/820-02443",
         chip_count=4,
         positions=[
-            CD3217Position("UB300", 0x20, "otp", notes="Port 1 — Debug/TBT (SDA=B5, SCL=A4)"),
-            CD3217Position("UB400", 0x74, "otp", notes="Port 1 — Debug/TBT"),
-            CD3217Position("UF500", 0x39, "strap", "GND", 2, "Port 2 — SMC (SDA=B7, SCL=A6)"),
-            CD3217Position("UF600", 0x10, "strap", "GND", 2, "Port 2 — SMC"),
+            # VERIFIED from the 820-02443 schematic's own address table
+            # (ACE2-0=0x38, ACE2-1=0x3F, ACE2-2=0x3B, ACE2-5=0x3A) and the
+            # chip refdes UF400/UF500/UG400/U5500 (CD3217B12BCE).
+            # ACE2-2/ACE2-5 straps document GND/Float = factory-programming
+            # config; their live addresses are burned (OTP).
+            CD3217Position("UF400", 0x38, "strap", "GND", 1,
+                           chip_class="vanilla", silicon="CD3217B12",
+                           notes="ACE2-0 (DEBUG) — port 0; strap GND"),
+            CD3217Position("UF500", 0x3F, "strap", "float", 1,
+                           chip_class="vanilla", silicon="CD3217B12",
+                           notes="ACE2-1 (DEBUG) — port 1; strap NC/float"),
+            CD3217Position("UG400", 0x3B, "otp", "GND", 1,
+                           chip_class="otp", silicon="CD3217B12",
+                           notes="ACE2-2 (DEBUG) — port 2; OTPed to 0x3B "
+                                 "(strap GND is the factory config)"),
+            CD3217Position("U5500", 0x3A, "otp", "float", 1,
+                           chip_class="otp", silicon="CD3217B12",
+                           notes="ACE2-5 (DEBUG) — MagSafe-side; OTPed to "
+                                 "0x3A (strap Float; 84.5K option NOSTUFF)"),
         ],
-        notes=("UNVERIFIED map: repair.wiki quotes the A2442 schematic I2C0 "
-               "table as 7-bit 0x38/0x3F/0x3B/0x3A (8-bit 0x70/0x7E/0x76/0x74) "
-               "+ all-call 0x6B — which contradicts the addresses here. Do "
-               "not trust placement verdicts on this model until verified "
-               "against the 820-02100 schematic + boardview."),
+        notes=("VERIFIED against the 820-02443 schematic's ACE2 address "
+               "table + boardview (user-provided). Same layout as A2485: "
+               "vanilla straps 0x38/0x3F, OTP-burned 0x3B/0x3A."),
     ),
     "A2485": MacBookModel(
         model_id="A2485",
@@ -177,7 +190,7 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2779": MacBookModel(
         model_id="A2779",
         name="MacBook Pro 14\" M2 Pro/Max (2023)",
-        board_id="820-02230",  # NOTE: A2780 = 820-02890 (different board!)
+        board_id="820-02841",  # NOTE: A2780 = 820-02890 (different board!)
         chip_count=4,
         positions=[
             CD3217Position("UB300", 0x20, "otp", notes="Port 1 — Debug/TBT"),
@@ -257,7 +270,7 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2159": MacBookModel(
         model_id="A2159",
         name="MacBook Pro 13\" i5 (2019, T2)",
-        board_id="820-01843",
+        board_id="820-01598",
         chip_count=2,
         positions=[
             CD3217Position("UB300", 0x50, "otp", notes="Port 1"),

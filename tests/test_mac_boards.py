@@ -102,6 +102,41 @@ class TestMacBoards(unittest.TestCase):
             "U3100_R": (0x3C, "float", "CD3217B12", "otp"),
         })
 
+    def test_model_board_ids_match_boards_py(self):
+        """v0.10.5 regression guard: every models.py board_id must appear
+        in the boards.py board_nos for the same A-code (slash-separated
+        board_id = multiple valid variants, e.g. A2442 Pro/Max)."""
+        import re
+        from cd3217_analyzer import boards as bmod
+        from cd3217_analyzer import models as mmod
+        mismatches = []
+        for code, model in mmod.MACBOOK_MODELS.items():
+            info = bmod.MAC_BOARDS.get(code.lower())
+            if info is None:
+                mismatches.append(f"{code}: no boards.py entry")
+                continue
+            valid = set(info.board_nos)
+            ids = [x.strip() for x in model.board_id.split("/")]
+            for bid in ids:
+                if bid not in valid:
+                    mismatches.append(
+                        f"{code}: model board_id {bid} not in boards.py "
+                        f"{sorted(valid)}")
+        self.assertEqual(mismatches, [], "; ".join(mismatches))
+
+    def test_a2442_verified_map(self):
+        """v0.10.5: A2442 map VERIFIED from the 820-02443 schematic's own
+        ACE2 address table (was a wrong placeholder before)."""
+        from cd3217_analyzer.models import get_model
+        m = get_model("A2442")
+        self.assertEqual(m.board_id, "820-02098/820-02443")
+        by_ref = {p.ref: (p.address, p.chip_class) for p in m.positions}
+        self.assertEqual(by_ref["UF400"], (0x38, "vanilla"))
+        self.assertEqual(by_ref["UF500"], (0x3F, "vanilla"))
+        self.assertEqual(by_ref["UG400"], (0x3B, "otp"))
+        self.assertEqual(by_ref["U5500"], (0x3A, "otp"))
+        self.assertNotIn("UNVERIFIED", m.notes or "")
+
     def test_a2780_verified_map(self):
         """v0.10.2: A2780 map VERIFIED from the 820-02890 schematic —
         fitted straps 84.5K/140K/GND/Float, all ACE_WILL_BE_OTPED:NO."""

@@ -389,12 +389,46 @@ _mac("a2338", model="MacBook Pro 13\" M1/M2 2020-22", board_nos=["820-02020"],
      notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups",
             "Addresses verified (Asahi / repair.wiki)"])
 
+_mac("a2779", model="MacBook Pro 14\" M2 Pro/Max 2023", board_nos=["820-02841"],
+     ports=3, ace="CD3217 (ACE2)", bus="AP I2C0 / SMC I2C1",
+     addresses="expected same family as A2780: 0x38, 0x3F, 0x3B, 0x3A; "
+               "verify against the 820-02841 schematic",
+     connect=[
+         "Thunderbolt ports: 3 + MagSafe3",
+         "Probe/tap SDA/SCL + GND on the UPC I2C nets; expected "
+         "addresses match the A2780 family (UF/UG chips)"],
+     notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups"])
+
+_mac("a2780", model="MacBook Pro 16\" M2 Pro/Max 2023", board_nos=["820-02890"],
+     ports=3, ace="CD3217/CD3218 (ACE2)", bus="AP I2C0 / SMC I2C1",
+     addresses="0x38, 0x3F, 0x3B, 0x3A; all-call 0x6B (schematic-verified)",
+     connect=[
+         "Thunderbolt ports: 3 + MagSafe3 (four ACE2: UF400, UF500, "
+         "UG400, U5500-CD3218)",
+         "TEST POINT CONNECTOR JF200 (user-verified on 820-02890): "
+         "carries I2C_UPC_SDA/SCL + the 3V3-side I2C_UPC01_SDA/SCL nets "
+         "the CD3217s answer on — probe/tap SDA/SCL + GND here",
+         "Schematic straps: UF400 GND, UF500 Float, UG400 140K, U5500 "
+         "84.5K (all ACE_WILL_BE_OTPED:NO)"],
+     notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups"])
+
+_mac("a2179", model="MacBook Air 13\" 2020 Intel", board_nos=["820-01958"],
+     ports=2, ace="CD3217 (ACE2)", bus="per-port I2C (XA/XB)",
+     addresses="0x38, 0x3F (strap GND / NC)",
+     connect=[
+         "USB-C ports: 2 (two CD3217)",
+         "Tap SDA/SCL + GND on the I2C pull-up/series resistor near the "
+         "CD3217; straps: one chip GND -> 0x38, the other NC -> 0x3F"],
+     notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups"])
+
 _mac("a2442", model="MacBook Pro 14\" M1 Pro/Max 2021", board_nos=["820-02098", "820-02443"],
      ports=3, ace="CD3217 (ACE2)", bus="AP I2C0 / SMC I2C1",
      addresses="AP_I2C0: 0x38, 0x3F, 0x3B, 0x3A; SMC_I2C1: 0x38, 0x3F, 0x6B",
      connect=[
          "Thunderbolt ports: 3 (three CD3217); the 4th power path is "
          "MagSafe3, not a controller",
+         "TEST POINT CONNECTOR JF200 (user-verified on 820-02443): "
+         "carries the UPC I2C nets — probe SDA/SCL + GND here",
          "Tap SDA/SCL + GND on a pull-up/series resistor of the AP I2C0 / "
          "SMC I2C1 nets near a CD3217, or the CD3217 BGA pins (B5/A4, B7/A6)",
          "I2C address map documented in repair.wiki (AP_I2C0 p.56, "
@@ -427,7 +461,7 @@ _mac("a2485", model="MacBook Pro 16\" M1 Pro/Max 2021", board_nos=["820-02100", 
          "CD3218B12 system/charge part -- the app flags wrong-class installs "
          "as CHIP_MISMATCH at diagnose"])
 
-_mac("a2779", model="MacBook Air M2 2022", board_nos=["820-02167"],
+_mac("a2681", model="MacBook Air M2 13\" 2022", board_nos=["820-02536"],
      ports=2, ace="CD3217 (ACE2)", bus="I2C0 / I2C1",
      addresses="no pub. address map",
      connect=[
