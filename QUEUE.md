@@ -41,6 +41,16 @@ A3114: M3-era ACE3-generation controllers, part numbers don't extract
 from the PDFs and straps are NC — remain '*' pending a live capture
 (protocol compatibility with the TI register map is unknown).
 
+### 7. [PENDING] Live captures for the starred boards (user hardware)
+> "A1932 A1989 A1990 A2992 A3..." — schematic table audit showed none of
+> these publish port-controller addresses (all ACE/CD32 rows absent).
+
+Live-capture procedure per board: connect ACA via the known test
+points, Scan Bus, Diagnose All, export, send the JSON. From the capture
+I fill the model map and clear the '*'. Boards: A1932, A1989, A1990
+(CD3215 ACE1 — protocol-compatible), A2992/A3113/A3114 (ACE3 — capture
+also answers whether the TI register protocol applies at all).
+
 ### 3. [PENDING] Verify A2289/A2338 (820-02098) socket map
 The schematic's ACE2 table body was found (ACE2-0/1/2/5 + BANK 1 ALL
 CALL) but the address column is layout-scrambled. Options: re-extract
