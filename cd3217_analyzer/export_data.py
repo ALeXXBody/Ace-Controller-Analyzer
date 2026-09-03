@@ -750,46 +750,49 @@ def validate_bundle(path: str) -> Dict:
             except Exception:
                 pass
 
-    # 5d. cross-dataset consistency: DID/VID from the register dump must
-    # match the same bytes reconstructed from the independent OTP dump.
-    # A mismatch (or 0xFF-heavy data) is the signature of a probe/pull-up
-    # drive problem: 0-bits reading as 1s (e.g. 0xCD -> 0xFF).
+    # 5d. cross-dataset consistency: the OTP scan and the register dump
+    # both read the SAME 4-byte registers at pointers 0x00 (VID),
+    # 0x04 (Type), 0x14/0x15 (events), 0x29, 0x2D. Same-pointer reads
+    # must agree byte-for-byte; a disagreement is real wire corruption.
+    # NOTE (IC_FINDINGS §5.4): reconstructing a byte-addressable space
+    # from the stride-4 OTP chunks and comparing it to the DID read at
+    # pointer 0x01 is INVALID — the pointer selects a 4-byte register,
+    # and the stride-4 scan never reads pointer 0x01 (the DID).
     regs_data = data.get("register_dump") or {}
     otp_data = data.get("otp_dump") or {}
+    _cmp_pairs = {"0x00": "0x00", "0x04": "0x04", "0x14": "0x14",
+                  "0x15": "0x15", "0x29": "0x29", "0x2D": "0x2D"}
     for addr in sorted(set(regs_data) & set(otp_data),
                        key=lambda k: int(k, 16)):
         try:
-            space = {}
-            for o, h in (otp_data[addr].get("registers") or {}).items():
-                for i, byte in enumerate(bytes.fromhex(h)):
-                    space[int(o, 16) + i] = byte
-            otp_vid = int.from_bytes(
-                bytes(space.get(o, 0xFF) for o in (0x00, 0x01)), "little")
-            otp_did = int.from_bytes(
-                bytes(space.get(o, 0xFF) for o in range(0x01, 0x05)),
-                "little")
-            rd_vid = int.from_bytes(bytes.fromhex(
-                (regs_data[addr].get("0x00") or {}).get("raw", "ff" * 4)),
-                "little") & 0xFFFF
-            rd_did = int.from_bytes(bytes.fromhex(
-                (regs_data[addr].get("0x01") or {}).get("raw", "ff" * 4)),
-                "little")
-            ff_bytes = sum(1 for o in (0x00, 0x01, 0x02, 0x03, 0x04)
-                           if space.get(o, 0xFF) == 0xFF)
-            if otp_vid != rd_vid or otp_did != rd_did:
-                add(f"cross-check {addr}", "warn",
-                    f"register dump (VID 0x{rd_vid:04X}, DID 0x{rd_did:08X}) "
-                    f"disagrees with OTP dump (VID 0x{otp_vid:04X}, DID "
-                    f"0x{otp_did:08X}) — the two independent reads must "
-                    "match; they don't, so the wire corrupted data. "
-                    "Re-seat the probe, shorten leads, verify 3.3V and "
-                    "pull-up strength (0-bits reading as 0xFF = SDA low-"
-                    "drive failure at the probe, not chip damage)")
-            elif ff_bytes >= 3:
-                add(f"cross-check {addr}", "warn",
-                    f"{ff_bytes}/5 identity bytes read as 0xFF — probe/"
-                    "pull-up low-drive problem: re-seat probe, shorten "
-                    "leads, check 3.3V")
+            chunks = otp_data[addr].get("registers") or {}
+            compared = 0
+            for chunk_ptr, reg_ptr in _cmp_pairs.items():
+                otp_hex = (chunks.get(chunk_ptr) or "").lower()
+                reg_raw = (regs_data[addr].get(reg_ptr) or {}).get(
+                    "raw", "").lower()
+                if not otp_hex or not reg_raw:
+                    continue
+                compared += 1
+                # lengths may differ (register reads can exceed the 4-byte
+                # OTP chunk) — compare the overlapping prefix
+                n = min(len(otp_hex), len(reg_raw))
+                if otp_hex[:n] != reg_raw[:n]:
+                    add(f"cross-check {addr} @ {reg_ptr}", "warn",
+                        f"register dump and OTP dump disagree for the same "
+                        f"register ({reg_raw[:n]} vs {otp_hex[:n]}) — the "
+                        "wire corrupted one of them. Re-seat the probe, "
+                        "shorten leads, verify 3.3V and pull-up strength")
+            if compared:
+                ok_pair = compared - len([
+                    c for c in checks
+                    if c["name"].startswith(f"cross-check {addr} @")
+                    and c["level"] == "warn"])
+                if not any(c["name"].startswith(f"cross-check {addr}")
+                           and c["level"] == "warn" for c in checks):
+                    add(f"cross-check {addr}", "ok",
+                        f"{compared} same-pointer register(s) match "
+                        "across both dumps")
         except Exception:
             pass
 
