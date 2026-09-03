@@ -252,7 +252,7 @@ class Application(ctk.CTk):
         )
         self.model_var = ctk.StringVar(value="Auto-detect")
         model_names = ["Auto-detect"] + [
-            f"{m.model_id} — {m.name}" for m in list_models()
+            f"{m.model_id} ({m.board_id})" for m in list_models()
         ]
         self.model_menu = ctk.CTkOptionMenu(
             controls,
@@ -1171,6 +1171,14 @@ class Application(ctk.CTk):
                 self._show_mac_info(b)
                 mac_key = key.upper()  # e.g. "a2485" -> "A2485"
                 self.current_model = get_model(mac_key)
+                # keep the header model menu in sync (two-way selection)
+                if self.current_model:
+                    try:
+                        self.model_var.set(
+                            f"{self.current_model.model_id} "
+                            f"({self.current_model.board_id})")
+                    except Exception:
+                        pass
                 if self.current_model:
                     self.log(
                         f"Board: {self.current_model.name} — "
@@ -3213,7 +3221,7 @@ class Application(ctk.CTk):
             self.current_model = None
             self.log("Model: Auto-detect")
         else:
-            model_id = selection.split("—")[0].split("-")[0].strip()
+            model_id = selection.split(" ")[0].strip()
             self.current_model = get_model(model_id)
             if self.current_model:
                 self.log(f"Model: {self.current_model.name}")
@@ -3221,6 +3229,17 @@ class Application(ctk.CTk):
                 self.batch_addr_var.set(",".join(addrs))
                 if self.current_model.positions:
                     self.quick_addr_var.set(format_hex_addr(self.current_model.positions[0].address))
+            # keep the Board-tab model picker in sync (two-way selection)
+            if model_id:
+                try:
+                    from cd3217_analyzer.boards import MAC_BOARDS
+                    for k, b in MAC_BOARDS.items():
+                        if k.upper() == model_id:
+                            self.mac_picker_var.set(
+                                f"{k.upper()} ({b.board_nos[0]})")
+                            break
+                except Exception:
+                    pass
         self._update_strap_reference()
 
     # ─── OTP ───────────────────────────────────────────────────────────────

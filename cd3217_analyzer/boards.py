@@ -284,14 +284,19 @@ _mac("a1932", model="MacBook Air 2018/19", board_nos=["820-01521"],
 
 _mac("a2159", model="MacBook Pro 13\" 2019/20 (2-port)", board_nos=["820-01598"],
      ports=2, ace="CD3217 (ACE2)", bus="SMC I2C1 / AP I2C0",
-     addresses="no pub. address map",
+     addresses="0x38, 0x3F (per-port I2C_XA/XB buses; schematic 820-01598)",
      connect=[
-         "USB-C ports: 2 (one CD3217 per port)",
-         "Tap SDA/SCL + GND on a pull-up/series resistor of SMC I2C1 / "
-         "AP I2C0 near a CD3217, or the CD3217 BGA pins (B5/A4, B7/A6)",
-         "2-port = strap-configured ACE2 (interchangeable)"],
+         "USB-C ports: 2 (two CD3217: U3100 = port XA, U3200 = port XB)",
+         "TEST POINT CONNECTOR J3000 (user-verified on 820-01598): "
+         "carries the UPC I2C nets (I2C_UPC_X_SDA2/SCL2, TBT XA/XB) — "
+         "probe SDA/SCL + GND here",
+         "Alternatively tap SDA/SCL + GND on a pull-up/series resistor "
+         "of I2C_UPC_X near U3100/U3200, or the CD3217 BGA pins "
+         "(B5/A4, B7/A6)"],
      notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups",
-            "ACE2 first appears 2019 (with A2141/A2159)"])
+            "ACE2 first appears 2019 (with A2141/A2159)",
+            "U3100 strap GND -> 0x38; U3200 strap NC -> 0x3F "
+            "(schematic 820-01598)"])
 
 _mac("a2141", model="MacBook Pro 16\" 2019", board_nos=["820-01700"],
      ports=4, ace="CD3217 (ACE2)", bus="SMC I2C1 / AP I2C0",
@@ -360,8 +365,12 @@ _mac("a2337", model="MacBook Air M1 2020", board_nos=["820-02016"],
      addresses="0x38, 0x3F (I2C0); 0x6B (I2C1 bank)",
      connect=[
          "USB-C ports: 2 (two CD3217: UF400, UF500)",
-         "Tap SDA/SCL + GND on a pull-up/series resistor of the I2C0 / "
-         "I2C1 nets near UF400/UF500, or the CD3217 BGA pins (B5/A4, B7/A6)",
+         "TEST POINT CONNECTOR JF200 (schematic-verified, 820-02016):",
+         "  pin 4 = I2C_UPC_SDA, pin 6 = I2C_UPC_SCL  <- probe THESE",
+         "  pin 3 = I2C_SMC_UPC_SCL, pin 5 = I2C_SMC_UPC_SDA (SMC-side "
+         "bus; the same CD3217s also appear there)",
+         "  GND = board shield/screw. JF200 also carries reset/UART "
+         "(pins 1/2/7/8) — leave unconnected",
          "Low-risk alternative: software readout via Asahi Linux "
          "/dev/i2c nodes instead of soldering"],
      notes=["3.3 V open-drain bus; high-Z probe, no extra pull-ups",
