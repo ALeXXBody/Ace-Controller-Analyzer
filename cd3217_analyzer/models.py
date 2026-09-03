@@ -14,7 +14,10 @@ class CD3217Position:
     i2c_port: int = 1
     notes: str = ""
     # Verified socket expectations (schematic/boardview + repair data):
-    chip_class: str = ""   # "otp" = needs OTP-ed Apple donor, "vanilla" = strap-addressed TI part OK
+    # chip_class = the socket's ADDRESS MECHANISM ("vanilla" = strap-
+    # addressed, "otp" = burned). It is NOT the silicon type: every
+    # Apple-factory chip reports VID 0x2804 in both socket kinds.
+    chip_class: str = ""
     silicon: str = ""      # e.g. "CD3217B12", "CD3218B12"
 
 

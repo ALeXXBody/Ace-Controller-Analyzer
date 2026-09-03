@@ -854,18 +854,22 @@ class CD3217Analyzer:
                 )
             elif vid is not None and vid == 0x2804:
                 result.fault_details.append(
-                    f"{position.ref}: Apple OTP-ed chip (VID 0x2804) as expected"
+                    f"{position.ref}: Apple factory chip (VID 0x2804) as "
+                    "expected for this OTP-addressed socket"
                 )
         elif getattr(position, "chip_class", "") == "vanilla":
             if vid is not None and vid == 0x0451:
                 result.fault_details.append(
-                    f"{position.ref}: vanilla TI chip in vanilla socket "
-                    "(OK — strap supplies the address)"
+                    f"{position.ref}: stock TI chip (VID 0x0451) — unusual "
+                    "on an original Apple board; functionally fine, the "
+                    "strap supplies the address"
                 )
             elif vid is not None and vid == 0x2804:
                 result.fault_details.append(
-                    f"{position.ref}: Apple OTP-ed chip in vanilla socket "
-                    "(works only if its burned address matches this socket)"
+                    f"{position.ref}: Apple factory chip (VID 0x2804) in a "
+                    "strap-addressed socket — the normal configuration on "
+                    "original boards (the chip answers at the socket's "
+                    "strap address)"
                 )
 
         expected_silicon = getattr(position, "silicon", "") or ""

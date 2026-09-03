@@ -2949,8 +2949,9 @@ class Application(ctk.CTk):
         self.info_labels["time"].configure(text=f"{result.scan_time_ms:.1f} ms")
 
         cls = chip_class(result.address)
-        measured = ("Vanilla TI (VID 0x0451)" if result.is_vanilla
-                    else "Apple OTP-ed (VID 0x2804)"
+        measured = ("stock TI chip (VID 0x0451) — unusual on an original "
+                    "Apple board" if result.is_vanilla
+                    else "Apple factory chip (VID 0x2804) — normal"
                     if result.is_vanilla is False else "")
         if measured:
             chip = measured
@@ -2961,7 +2962,17 @@ class Application(ctk.CTk):
         if self.current_model:
             for p in self.current_model.positions:
                 if p.address == result.address:
-                    want = f"needs {p.chip_class.upper()} chip" if p.chip_class else ""
+                    # chip_class describes the socket's ADDRESS MECHANISM,
+                    # not the silicon: every Apple-factory chip reports
+                    # VID 0x2804, including chips in strap-addressed sockets.
+                    if p.chip_class == "otp":
+                        want = ("OTP-addressed socket — donor must be "
+                                "burned to this address")
+                    elif p.chip_class == "vanilla":
+                        want = ("strap-addressed socket — address comes "
+                                "from the strap resistors")
+                    else:
+                        want = ""
                     chip = f"{p.ref} · {p.addressing.upper()}" + \
                            (f" · {want}" if want else "") + \
                            (f" · installed: {measured}" if measured else "")
