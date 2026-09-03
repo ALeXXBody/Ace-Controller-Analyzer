@@ -246,13 +246,26 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
     case 0x04: { uint8_t r = 0x51; sendResp_(0x04, &r, 1); break; }
     case 0x06: {
       // BUSCHK: measure SDA/SCL idle levels. resp = [status][sda][scl]
+      //                                        [sda_blips][scl_blips]
       // 1 = idle HIGH (pulled up / healthy), 0 = held LOW (a chip or
       // wiring is stuck on the bus, or the line is absent/shorted).
+      // The blip counters sample both lines 100x over ~50 ms — non-zero
+      // counts mean the 3.3 V pull-up rail is oscillating/weak (e.g. an
+      // AMS1117 without minimum load or with a bad output cap). The two
+      // extra bytes are ignored by older hosts.
       uint8_t sda_lvl, scl_lvl;
       busIdleLevels_(sda_lvl, scl_lvl);
-      uint8_t resp[3] = {0x00, sda_lvl, scl_lvl};
+      uint16_t sda_blips = 0, scl_blips = 0;
+      for (int i = 0; i < 100; i++) {
+        delayMicroseconds(500);
+        if (digitalRead(I2C_SDA_GPIO) == LOW) sda_blips++;
+        if (digitalRead(I2C_SCL_GPIO) == LOW) scl_blips++;
+      }
+      uint8_t resp[5] = {0x00, sda_lvl, scl_lvl,
+                         (uint8_t)(sda_blips > 255 ? 255 : sda_blips),
+                         (uint8_t)(scl_blips > 255 ? 255 : scl_blips)};
       reattachWire_();
-      sendResp_(0x06, resp, 3);
+      sendResp_(0x06, resp, 5);
       break;
     }
     case 0x07: {

@@ -16,9 +16,12 @@
  *   0x04 PING   req: -                resp: [0x51]
  *   0x05 INFO   req: -                resp: [boardlen][board][sda][scl]
  *   0x06 BUSCHK req: -                resp: [status][sda][scl]
+ *                                        [sda_blips][scl_blips]
  *                                     SDA/SCL idle levels (1 = HIGH = pulled
  *                                     up/healthy, 0 = held LOW by a stuck
- *                                     chip/wiring). Temporarily detaches Wire.
+ *                                     chip/wiring) + 100-sample low-blip
+ *                                     counts (rail-stability check; 0 = clean
+ *                                     rail). Temporarily detaches Wire.
  *   0x07 I2CFREQ req: [freq LE32 Hz]  resp: [status]
  *                                     Set the I2C clock for the bus-speed
  *                                     stress probe (clamped 10k..400k Hz,

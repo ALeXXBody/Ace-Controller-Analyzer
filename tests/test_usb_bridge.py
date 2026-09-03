@@ -140,7 +140,7 @@ class TestUsbBridgeAdapter(unittest.TestCase):
             [make_response(CMD_BUS_CHECK, bytes([0x00, 0x01, 0x01]))]
         )
         res = adapter.bus_check()
-        self.assertEqual(res, {"sda": 1, "scl": 1})
+        self.assertEqual((res["sda"], res["scl"]), (1, 1))
 
     def test_bus_check_stuck_sda(self):
         """F4: SDA held LOW is reported so the tool can blame the bus."""
@@ -159,6 +159,26 @@ class TestUsbBridgeAdapter(unittest.TestCase):
         adapter, fake = self.make_adapter([])
         with self.assertRaises(IOError):
             adapter.bus_check()
+
+    def test_bus_check_rail_blips(self):
+        """BUSCHK v2: 100-sample low-blip counters for the pull-up rail."""
+        from cd3217_analyzer.usb_bridge import CMD_BUS_CHECK
+        adapter, fake = self.make_adapter(
+            [make_response(CMD_BUS_CHECK, bytes([0x00, 0x01, 0x01, 7, 0]))]
+        )
+        res = adapter.bus_check()
+        self.assertEqual(res["sda_blips"], 7)
+        self.assertEqual(res["scl_blips"], 0)
+
+    def test_bus_check_old_fw_blips_unknown(self):
+        """Old firmware returns 3 bytes — blips reported as None."""
+        from cd3217_analyzer.usb_bridge import CMD_BUS_CHECK
+        adapter, fake = self.make_adapter(
+            [make_response(CMD_BUS_CHECK, bytes([0x00, 0x01, 0x01]))]
+        )
+        res = adapter.bus_check()
+        self.assertIsNone(res["sda_blips"])
+        self.assertIsNone(res["scl_blips"])
 
     def test_set_i2c_clock_ok(self):
         """S1: I2CFREQ payload is the frequency as LE32."""

@@ -105,8 +105,8 @@ def chip_class(addr: int) -> str:
 # The board is only flashed when its FIRMWARE actually changed. Bump this
 # tuple ONLY in a release that modifies firmware_esp32/ sources — every
 # app-only release keeps older board firmware working (protocol-compatible).
-LAST_FIRMWARE_CHANGE = (0, 9, 2)   # v0.9.2: Wire.setTimeout(1000) — the
-# clock-stretch truncation fix. Bump ONLY when firmware_esp32/ changes.
+LAST_FIRMWARE_CHANGE = (0, 10, 0)  # v0.10.0: BUSCHK v2 rail-blip sampling.
+# Bump ONLY when firmware_esp32/ changes (see docs/IC_FINDINGS.md §4.9).
 
 
 def _parse_semver(text):
@@ -2483,6 +2483,21 @@ class Application(ctk.CTk):
                 "SCL held LOW ✗ — line shorted/absent, or a clock-stretching "
                 "slave is wedged (power-cycle the board/chip)",
                 "ok" if res["scl"] else "err")
+            blips = (res.get("sda_blips"), res.get("scl_blips"))
+            if blips[0] is None:
+                self.log("Rail stability: n/a — board firmware predates "
+                         "blip sampling (update the board)", "info")
+            elif blips[0] or blips[1]:
+                self.log(f"RAIL UNSTABLE ✗ — {blips[0]} SDA / {blips[1]} SCL "
+                         "low blips in 100 samples: the 3.3 V pull-up rail "
+                         "is oscillating or weak. Known cause: AMS1117 "
+                         "without minimum load or with a ceramic-only "
+                         "output cap — power the pull-ups from the board's "
+                         "own 3V3 or fit a ≥22 µF tantalum + 1 kΩ bleeder "
+                         "(docs/HARDWARE.md).", "err")
+            else:
+                self.log("Rail stability ✓ — 0 low blips in 100 samples "
+                         "(pull-up rail clean)", "ok")
 
         self._run_bg(work, "Bus check complete")
 

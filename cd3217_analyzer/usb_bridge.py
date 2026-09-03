@@ -373,7 +373,16 @@ class UsbBridgeAdapter(I2CAdapter):
         if not resp or len(resp) < 3 or resp[0] != 0x00:
             raise IOError("Board did not answer BUSCHK — firmware predates "
                           "it; update the board firmware first")
-        return {"sda": resp[1], "scl": resp[2]}
+        res = {"sda": resp[1], "scl": resp[2]}
+        # BUSCHK v2 (fw >= 0.10.0): 100-sample low-blip counters for the
+        # pull-up rail stability check. Old firmware: report as unknown.
+        if len(resp) >= 5:
+            res["sda_blips"] = resp[3]
+            res["scl_blips"] = resp[4]
+        else:
+            res["sda_blips"] = None
+            res["scl_blips"] = None
+        return res
 
     def set_i2c_clock(self, hz: int) -> None:
         """Change the bridge's I2C clock (bus-speed stress probe support).
