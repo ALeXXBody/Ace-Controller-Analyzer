@@ -1139,8 +1139,10 @@ class Application(ctk.CTk):
         self.mac_picker_var = ctk.StringVar(value="")
         picker = ctk.CTkOptionMenu(
             row, variable=self.mac_picker_var,
-            values=[""] + sorted((b.model for b in MAC_BOARDS.values()),
-                                 key=str.lower),
+            values=[""] + sorted(
+                (f"{k.upper()} ({b.board_nos[0]})"
+                 for k, b in MAC_BOARDS.items()),
+                key=str.lower),
             command=self._on_mac_picked, width=380,
             fg_color=C["entry"], button_color=C["btn"],
             button_hover_color=C["btn_hover"], text_color=C["text"],
@@ -1161,8 +1163,11 @@ class Application(ctk.CTk):
 
     def _on_mac_picked(self, name):
         from cd3217_analyzer.boards import MAC_BOARDS
+        # Selections arrive as "A2251 (820-01949)"; older paths may pass
+        # the plain description — accept both.
+        code = name.split(" ")[0].upper() if name else ""
         for key, b in MAC_BOARDS.items():
-            if b.model == name:
+            if key.upper() == code or b.model == name:
                 self._show_mac_info(b)
                 mac_key = key.upper()  # e.g. "a2485" -> "A2485"
                 self.current_model = get_model(mac_key)
@@ -2091,9 +2096,11 @@ class Application(ctk.CTk):
         if model:
             try:
                 from cd3217_analyzer.boards import MAC_BOARDS
-                for b in MAC_BOARDS.values():
-                    if b.model.upper().startswith(model):
-                        self._on_mac_picked(b.model)
+                for k, b in MAC_BOARDS.items():
+                    if k.upper() == model or \
+                            b.model.upper().startswith(model):
+                        self._on_mac_picked(f"{k.upper()} "
+                                            f"({b.board_nos[0]})")
                         break
             except Exception:
                 pass
