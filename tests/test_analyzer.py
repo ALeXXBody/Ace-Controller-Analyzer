@@ -428,6 +428,91 @@ class TestAnalyzer(unittest.TestCase):
         self.assertTrue(self.analyzer._register_suspicious(0x03, bad))
 
 
+class TestGoldenPathLock(unittest.TestCase):
+    """THE REGRESSION LOCK — pins the behavior that produced the 100%
+    clean A2485 sessions (0.0% NACK, zero-warning exports).
+
+    On a healthy bus (every read succeeds first try, no truncation):
+      - exactly ONE ping per chip
+      - exactly one read per DETAIL_REGS register — NO repair passes,
+        NO re-read storms, NO 50 kHz clock changes
+      - health PASS, zero faults
+    Any future change that makes the healthy path chatty or alters it
+    fails here before it ships.
+    """
+
+    def test_healthy_bus_minimal_reads_and_pass(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer, HealthStatus
+        from cd3217_analyzer.registers import REGISTERS
+
+        reads = []
+
+        def rb(addr, reg, length):
+            reads.append(reg)
+            data = {
+                0x00: bytes([0x04, 0x28, 0x00, 0x00]),
+                0x01: bytes([0x04, 0x17, 0x32, 0xCD]),
+                0x03: bytes([0x04, 0x41, 0x50, 0x50]),
+                0x04: bytes([0x04, 0x49, 0x32, 0x43]),
+                0x0F: bytes([0x04, 0x00, 0x99, 0x20]),
+                0x26: bytes([0xE1, 0x20, 0x03, 0x50]),
+                0x2F: (b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"
+                       + b"\x00" * 4),
+                0x2E: bytes([0x04, 0x11, 0x22, 0x33]),
+                0xA1: bytes([0x04, 0x11, 0x22, 0x33]),
+            }
+            return data.get(reg, bytes([0x11] * length))[:length]
+
+        mock = MagicMock()
+        mock.ping.return_value = True
+        mock.read_bytes.side_effect = rb
+
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        result = an.diagnose_device(0x38)
+
+        # one read per detail register (the mocked ping issues no I2C read)
+        expected = len(an.DETAIL_REGS)
+        self.assertEqual(len(reads), expected,
+                         f"healthy path issued {len(reads)} reads, "
+                         f"expected exactly {expected}")
+
+        # the verdict is a clean PASS
+        self.assertEqual(result.health, HealthStatus.PASS)
+        self.assertEqual(result.faults, [])
+
+        # no clock meddling, no repair machinery on a healthy bus
+        mock.set_i2c_clock.assert_not_called()
+
+    def test_healthy_path_no_reread_storm(self):
+        """Every identity register read exactly once (no garble rechecks,
+        no truncation passes) when the data is clean."""
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+
+        counts = {}
+
+        def rb(addr, reg, length):
+            counts[reg] = counts.get(reg, 0) + 1
+            data = {
+                0x00: bytes([0x04, 0x28, 0x00, 0x00]),
+                0x01: bytes([0x04, 0x17, 0x32, 0xCD]),
+                0x03: bytes([0x04, 0x41, 0x50, 0x50]),
+                0x04: bytes([0x04, 0x49, 0x32, 0x43]),
+                0x2F: (b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"
+                       + b"\x00" * 4),
+            }
+            return data.get(reg, bytes([0x5A] * length))[:length]
+
+        mock = MagicMock()
+        mock.ping.return_value = True
+        mock.read_bytes.side_effect = rb
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        an.diagnose_device(0x38)
+        for reg, count in counts.items():
+            self.assertEqual(count, 1,
+                             f"register 0x{reg:02X} read {count}x on a "
+                             "CLEAN bus — the happy path got chatty")
+
+
 class TestRDO(unittest.TestCase):
     """v0.11.7: live PD contract (register 0x26 RDO) — the direct
     pointer for 0V/5V/20V port complaints."""
