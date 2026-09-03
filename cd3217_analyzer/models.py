@@ -319,8 +319,27 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     ),
     "A2681": MacBookModel(
         model_id="A2681", name="MacBook Air M2 13\" 2022",
-        board_id="820-02536", chip_count=2, positions=[],
-        notes="2 USB-C ports. Needs schematic/boardview.",
+        board_id="820-02536", chip_count=3,
+        positions=[
+            # VERIFIED from the 820-02536 schematic: port ACEs are the
+            # newer CD3217B13HACE silicon rev; U5500 = CD3217B12GACER
+            # (system-power ACE — the MBA M2 has no MagSafe). Straps:
+            # GND / NC / 84.5K-pull-down; the schematic's own address
+            # table lists the ACE2 set {0x38, 0x3F, 0x3A}.
+            CD3217Position("UF400", 0x38, "strap", "GND", 1,
+                           silicon="CD3217B13HACE",
+                           notes="Port 0 — strap GND (ATC0)"),
+            CD3217Position("UF500", 0x3F, "strap", "float", 1,
+                           silicon="CD3217B13HACE",
+                           notes="Port 1 — strap NC/float (ATC1)"),
+            CD3217Position("U5500", 0x3A, "strap", "84.5K-PD", 1,
+                           silicon="CD3217B12GACER",
+                           notes="system-power ACE — strap 84.5K "
+                                 "pull-down"),
+        ],
+        notes="VERIFIED against the 820-02536 schematic: three ACE2 "
+              "(port ACEs are the newer CD3217B13HACE silicon rev), "
+              "MBA M2 has no MagSafe — U5500 is the system-power ACE.",
     ),
     "A2941": MacBookModel(
         model_id="A2941", name="MacBook Air M2 15\" 2023",
@@ -330,12 +349,12 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A3113": MacBookModel(
         model_id="A3113", name="MacBook Air M3 13\" 2024",
         board_id="820-03285", chip_count=2, positions=[],
-        notes="2 USB-C ports. Needs schematic/boardview.",
+        notes="2 USB-C ports. M3-era: ACE3-generation port controllers (T585_REF_USBC_LFKA_3PRT_ACE3 reference) — live capture needed for protocol compatibility.",
     ),
     "A3114": MacBookModel(
         model_id="A3114", name="MacBook Air M3 15\" 2024",
         board_id="820-03286", chip_count=2, positions=[],
-        notes="2 USB-C ports. Needs schematic/boardview.",
+        notes="2 USB-C ports. M3-era: ACE3-generation port controllers (T585_REF_USBC_LFKA_3PRT_ACE3 reference) — live capture needed for protocol compatibility.",
     ),
     "A3240": MacBookModel(
         model_id="A3240", name="MacBook Air M4 13\" 2025",
@@ -355,7 +374,10 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2992": MacBookModel(
         model_id="A2992", name="MacBook Pro 14\" M3 Pro/Max (2023)",
         board_id="820-02918", chip_count=4, positions=[],
-        notes="3 Thunderbolt ports + MagSafe. Needs schematic/boardview.",
+        notes="3 Thunderbolt ports + MagSafe. M3-era: ACE3-generation "
+              "port controllers (820-02918: UPC1/UPC2 straps NC, part "
+              "numbers not extractable from the schematic PDF) — live "
+              "capture needed for addresses and protocol compatibility.",
     ),
     "A2991": MacBookModel(
         model_id="A2991", name="MacBook Pro 16\" M3 Pro/Max (2023)",

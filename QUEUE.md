@@ -32,6 +32,15 @@ UF400@0x38 / UF500@0x3F / UG400@0x3B / U5500@0x3A (strap notes per the
 schematic: GND / NC / GND+OTP / Float+OTP), UNVERIFIED warning removed,
 regression test added. Ledger §6.3 updated.
 
+### 6. [DONE] Process the new schematics (A2681/A2992/A3113/A3114)
+> "added some new schematics on mega"
+
+**Result (v0.11.5):** A2681 map VERIFIED (UF400@0x38, UF500@0x3F,
+U5500@0x3A; new silicon CD3217B13HACE) — '*' cleared. A2992/A3113/
+A3114: M3-era ACE3-generation controllers, part numbers don't extract
+from the PDFs and straps are NC — remain '*' pending a live capture
+(protocol compatibility with the TI register map is unknown).
+
 ### 3. [PENDING] Verify A2289/A2338 (820-02098) socket map
 The schematic's ACE2 table body was found (ACE2-0/1/2/5 + BANK 1 ALL
 CALL) but the address column is layout-scrambled. Options: re-extract
