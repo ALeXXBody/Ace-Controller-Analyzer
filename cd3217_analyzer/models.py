@@ -20,13 +20,18 @@ class CD3217Position:
 
 @dataclass(frozen=True)
 class MacBookModel:
-    """I2C address map for a specific MacBook model."""
+    """I2C address map for a specific MacBook model.
+
+    needs_data=True marks models without a verified socket map (no
+    schematic/boardview analysed yet) — the UI prefixes them with '*'.
+    """
     model_id: str
     name: str
     board_id: str
     chip_count: int
     positions: List[CD3217Position]
     notes: str = ""
+    needs_data: bool = False
 
 
 MACBOOK_MODELS: Dict[str, MacBookModel] = {
@@ -58,7 +63,7 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2179": MacBookModel(
         model_id="A2179",
         name="MacBook Air 13\" i5 (2020, Intel)",
-        board_id="820-01958",
+        board_id="820-01055/820-01958",
         chip_count=2,
         positions=[
             # Same strap pattern as A2337; schematic 0x70/0x7E are 8-bit
@@ -190,7 +195,7 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2779": MacBookModel(
         model_id="A2779",
         name="MacBook Pro 14\" M2 Pro/Max (2023)",
-        board_id="820-02841",  # NOTE: A2780 = 820-02890 (different board!)
+        board_id="820-02655/820-02841",  # NOTE: A2780 = 820-02890 (different board!)
         chip_count=4,
         positions=[
             CD3217Position("UB300", 0x20, "otp", notes="Port 1 — Debug/TBT"),
@@ -206,7 +211,7 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
     "A2780": MacBookModel(
         model_id="A2780",
         name="MacBook Pro 16\" M2 Pro/Max (2023)",
-        board_id="820-02890",
+        board_id="820-02652/820-02890",
         chip_count=4,
         positions=[
             # VERIFIED from the 820-02890 schematic: fitted strap resistors
@@ -273,11 +278,110 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
         board_id="820-01598",
         chip_count=2,
         positions=[
-            CD3217Position("UB300", 0x50, "otp", notes="Port 1"),
-            CD3217Position("UB400", 0x28, "otp", notes="Port 1"),
+            # VERIFIED from the 820-01598 (Prometheus) schematic: chip
+            # instances U3100 (port XA, strap GND) and U3200 (port XB,
+            # strap NC/float). Each port has its own I2C bus (XA/XB).
+            CD3217Position("U3100", 0x38, "strap", "GND", 1,
+                           notes="Port XA — strap GND (820-01598)"),
+            CD3217Position("U3200", 0x3F, "strap", "float", 1,
+                           notes="Port XB — strap NC (820-01598)"),
         ],
-        notes="OTP — addresses burned at factory.",
+        notes="VERIFIED from the 820-01598 (Prometheus) schematic: "
+              "per-port I2C buses (XA/XB) — one chip per bus.",
     ),
+    # ── Needs-schematic models (marked '*' in the UI) ─────────────
+    # Socket maps unknown — add them when a schematic/boardview is
+    # analysed. Board numbers from repair.wiki (Feb 2026).
+    "A1932": MacBookModel(
+        model_id="A1932", name="MacBook Air Retina 13\" 2018/19",
+        board_id="820-01521", chip_count=2, positions=[],
+        notes="T2-era MBA; 2 USB-C ports. Needs schematic/boardview.",
+        needs_data=True),
+    "A1989": MacBookModel(
+        model_id="A1989", name="MacBook Pro 13\" 2018/19 (4-port)",
+        board_id="820-00850", chip_count=4, positions=[],
+        notes="T2-era MBP; 4 USB-C ports. Needs schematic/boardview.",
+        needs_data=True),
+    "A1990": MacBookModel(
+        model_id="A1990", name="MacBook Pro 15\" 2018/20",
+        board_id="820-01041/820-01326/820-01814/820-01827",
+        chip_count=4, positions=[],
+        notes="T2-era MBP; 4 USB-C ports; four board revisions. "
+              "Needs schematic/boardview.",
+        needs_data=True),
+    "A2681": MacBookModel(
+        model_id="A2681", name="MacBook Air M2 13\" 2022",
+        board_id="820-02536", chip_count=2, positions=[],
+        notes="2 USB-C ports. Needs schematic/boardview.",
+        needs_data=True),
+    "A2941": MacBookModel(
+        model_id="A2941", name="MacBook Air M2 15\" 2023",
+        board_id="820-03160", chip_count=2, positions=[],
+        notes="2 USB-C ports. Needs schematic/boardview.",
+        needs_data=True),
+    "A3113": MacBookModel(
+        model_id="A3113", name="MacBook Air M3 13\" 2024",
+        board_id="820-03285", chip_count=2, positions=[],
+        notes="2 USB-C ports. Needs schematic/boardview.",
+        needs_data=True),
+    "A3114": MacBookModel(
+        model_id="A3114", name="MacBook Air M3 15\" 2024",
+        board_id="820-03286", chip_count=2, positions=[],
+        notes="2 USB-C ports. Needs schematic/boardview.",
+        needs_data=True),
+    "A3240": MacBookModel(
+        model_id="A3240", name="MacBook Air M4 13\" 2025",
+        board_id="820-03597-A", chip_count=2, positions=[],
+        notes="2 USB-C ports. Needs schematic/boardview.",
+        needs_data=True),
+    "A3241": MacBookModel(
+        model_id="A3241", name="MacBook Air M4 15\" 2025",
+        board_id="820-03681", chip_count=2, positions=[],
+        notes="2 USB-C ports. Needs schematic/boardview.",
+        needs_data=True),
+    "A2918": MacBookModel(
+        model_id="A2918", name="MacBook Pro 14\" M3 (2023, 2-port)",
+        board_id="820-02757", chip_count=3, positions=[],
+        notes="2 Thunderbolt ports + MagSafe. Needs schematic/boardview.",
+        needs_data=True),
+    "A2992": MacBookModel(
+        model_id="A2992", name="MacBook Pro 14\" M3 Pro/Max (2023)",
+        board_id="820-02918", chip_count=4, positions=[],
+        notes="3 Thunderbolt ports + MagSafe. Needs schematic/boardview.",
+        needs_data=True),
+    "A2991": MacBookModel(
+        model_id="A2991", name="MacBook Pro 16\" M3 Pro/Max (2023)",
+        board_id="820-02935", chip_count=4, positions=[],
+        notes="3 Thunderbolt ports + MagSafe. Needs schematic/boardview.",
+        needs_data=True),
+    "A3112": MacBookModel(
+        model_id="A3112", name="MacBook Pro 14\" M4 (2024)",
+        board_id="820-03129", chip_count=4, positions=[],
+        notes="3 Thunderbolt ports + MagSafe. Needs schematic/boardview.",
+        needs_data=True),
+    "A3401": MacBookModel(
+        model_id="A3401", name="MacBook Pro 14\" M4 Pro (2024)",
+        board_id="820-03400", chip_count=4, positions=[],
+        notes="3 Thunderbolt ports + MagSafe. Needs schematic/boardview.",
+        needs_data=True),
+    "A3185": MacBookModel(
+        model_id="A3185", name="MacBook Pro 14\" M4 Max (2024)",
+        board_id="TBD", chip_count=4, positions=[],
+        notes="Board number not yet published by repair.wiki. "
+              "Needs schematic/boardview.",
+        needs_data=True),
+    "A3403": MacBookModel(
+        model_id="A3403", name="MacBook Pro 16\" M4 Pro (2024)",
+        board_id="TBD", chip_count=4, positions=[],
+        notes="Board number not yet published by repair.wiki. "
+              "Needs schematic/boardview.",
+        needs_data=True),
+    "A3186": MacBookModel(
+        model_id="A3186", name="MacBook Pro 16\" M4 Max (2024)",
+        board_id="TBD", chip_count=4, positions=[],
+        notes="Board number not yet published by repair.wiki. "
+              "Needs schematic/boardview.",
+        needs_data=True),
 }
 
 

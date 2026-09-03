@@ -252,7 +252,8 @@ class Application(ctk.CTk):
         )
         self.model_var = ctk.StringVar(value="Auto-detect")
         model_names = ["Auto-detect"] + [
-            f"{m.model_id} ({m.board_id})" for m in list_models()
+            f"{'*' if m.needs_data else ''}{m.model_id} ({m.board_id})"
+            for m in list_models()
         ]
         self.model_menu = ctk.CTkOptionMenu(
             controls,
@@ -1140,7 +1141,8 @@ class Application(ctk.CTk):
         picker = ctk.CTkOptionMenu(
             row, variable=self.mac_picker_var,
             values=[""] + sorted(
-                (f"{k.upper()} ({b.board_nos[0]})"
+                (f"{'*' if getattr(b, 'needs_data', False) else ''}"
+                 f"{k.upper()} ({b.board_nos[0] if b.board_nos else '820-TBD'})"
                  for k, b in MAC_BOARDS.items()),
                 key=str.lower),
             command=self._on_mac_picked, width=380,
@@ -1165,7 +1167,7 @@ class Application(ctk.CTk):
         from cd3217_analyzer.boards import MAC_BOARDS
         # Selections arrive as "A2251 (820-01949)"; older paths may pass
         # the plain description — accept both.
-        code = name.split(" ")[0].upper() if name else ""
+        code = name.lstrip("*").split(" ")[0].upper() if name else ""
         for key, b in MAC_BOARDS.items():
             if key.upper() == code or b.model == name:
                 self._show_mac_info(b)
