@@ -1,4 +1,4 @@
-"""CD3217B12 (Apple ACE2) I2C Diagnostic Analyzer - Modern GUI."""
+"""ACA - ACE Controller Analyzer (Apple ACE1/ACE2) I2C Diagnostic GUI."""
 
 from __future__ import annotations
 
@@ -123,7 +123,7 @@ def _parse_semver(text):
 class Application(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title(f"CD3217B12 Analyzer v{__version__}")
+        self.title(f"ACA v{__version__} - ACE Controller Analyzer")
         self.geometry("1360x900")
         self.minsize(1024, 720)
         self.configure(fg_color=C["bg"])
@@ -1807,7 +1807,7 @@ class Application(ctk.CTk):
         names — the definitive 'what exactly went wrong' record."""
         if self.debug_var.get():
             path = os.path.join(tempfile.gettempdir(),
-                                "cd3217_debug.log")
+                                "aca_debug.log")
             used = debuglog.enable(path)
             self.log("Debug trace ON — full transaction log: "
                      + (used or "in-memory ring only (use Save debug log…)")

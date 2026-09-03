@@ -35,7 +35,7 @@ jobs:
       - name: Build .exe
         run: >
           pyinstaller
-          --name "CD3217B12_Analyzer"
+          --name "ACA"
           --onedir
           --windowed
           --noconfirm
@@ -68,15 +68,15 @@ jobs:
       - name: Create portable package
         shell: pwsh
         run: |
-          $exeDir = "dist\CD3217B12_Analyzer"
+          $exeDir = "dist\ACA"
           if (-not (Test-Path $exeDir)) {
             Write-Error "Build output not found at $exeDir"
             exit 1
           }
           # Portable zip contains the app folder only — no Run.bat launcher,
           # the .exe is windowed (no console flash) and runs directly.
-          Compress-Archive -Path $exeDir -DestinationPath CD3217B12_Portable.zip -Force
-          $zipSize = (Get-Item CD3217B12_Portable.zip).Length / 1MB
+          Compress-Archive -Path $exeDir -DestinationPath ACA_Portable.zip -Force
+          $zipSize = (Get-Item ACA_Portable.zip).Length / 1MB
           Write-Host "Package created: $([math]::Round($zipSize,1)) MB"
 
       - name: Build installer (Inno Setup)
@@ -91,7 +91,7 @@ jobs:
           $ver = "${env:GITHUB_REF_NAME}" -replace '^v',''
           if ($ver -notmatch '^\d+\.\d+') { $ver = "0.0.0" }
           & $iscc "/DAppVersion=$ver" installer.iss
-          if (-not (Test-Path "installer\CD3217B12_Analyzer_Setup.exe")) {
+          if (-not (Test-Path "installer\ACA_Setup.exe")) {
             Write-Error "Installer was not produced"
             exit 1
           }
@@ -101,8 +101,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            CD3217B12_Portable.zip
-            installer/CD3217B12_Analyzer_Setup.exe
+            ACA_Portable.zip
+            installer/ACA_Setup.exe
           generate_release_notes: true
 
   firmware:
@@ -141,7 +141,7 @@ jobs:
             cp ".pio/build/$e/firmware.bin" "dist/cd3217_$e.bin"
           done
           for e in rp2040_zero pico pico_w pico2 pico2w; do
-            cp ".pio/build/$e/firmware.uf2" "dist/cd3217_$e.uf2"
+            cp ".pio/build/$e/firmware.uf2" "dist/aca_$e.uf2"
           done
           ls -la dist
 

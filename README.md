@@ -2,9 +2,11 @@
   <a href="https://buymeacoffee.com/ALeXXBody" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
 </p>
 
-# CD3217B12 (Apple ACE2) I2C Diagnostic Analyzer
+# ACA — ACE Controller Analyzer
 
-A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery controllers used in MacBook repair. The tool communicates over I2C to read device registers, validate chip health, and identify faults.
+**ACE Controller Analyzer (ACA)** — I²C diagnostic tool for the Apple **ACE1/ACE2** USB-C Power Delivery controllers (CD3215, CD3217, CD3218 — TI TPS6598x-family) used in MacBook repair, 2016-present (Intel T2 + Apple Silicon).
+
+ACA communicates over I²C to read device registers, validate chip health, decode identity/OTP data, and identify faults — for ACE1 (CD3215) and ACE2 (CD3217/CD3218) controllers across the whole MacBook lineup.
 
 **Available as:** Windows GUI application, CLI tool, or Python library.
 
@@ -29,7 +31,7 @@ A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery co
   - **FTDI FT232H** (recommended - Adafruit FT232H breakout, etc.)
   - **CH341A** (cheap but needs voltage shifter for 3.3V)
   - **Linux SMBus** (Raspberry Pi, BeagleBone, etc.)
-  - **CD3217-Analyzer board** (RP2040/Pico or ESP32 running the firmware —
+  - **ACA bridge board** (RP2040/Pico or ESP32 running the firmware —
     acts as a USB-I2C bridge over its USB port; no FTDI needed)
 - Test fixture with:
   - 3.3V power supply for VIN_3V3
@@ -41,7 +43,7 @@ A diagnostic tool for testing **CD3217B12** (Apple ACE2) USB-C Power Delivery co
 - `pip install customtkinter` (modern dark-themed GUI)
 - `pip install smbus2` (for CH341/SMBus adapters)
 - `pip install pyftdi` (for FTDI FT232H)
-- `pip install pyserial` (for a CD3217-Analyzer board / USB bridge)
+- `pip install pyserial` (for a ACA bridge board / USB bridge)
 - `pip install pyinstaller` (optional, to build .exe)
 
 ## Installation
@@ -231,7 +233,7 @@ python -m cd3217_analyzer --strap 0x38 0x2F
 ```bash
 python -m cd3217_analyzer --adapter ftdi
 python -m cd3217_analyzer --adapter smbus --bus 1
-python -m cd3217_analyzer --adapter usb --port COM5   # CD3217-Analyzer board (USB bridge)
+python -m cd3217_analyzer --adapter usb --port COM5   # ACA bridge board (USB bridge)
 ```
 
 ### Flash a board (RP2040/Pico or ESP32)
