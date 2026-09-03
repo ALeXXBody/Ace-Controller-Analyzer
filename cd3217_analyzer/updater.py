@@ -2,10 +2,10 @@
 
 Checks the latest GitHub release and updates whichever build is running:
 
-- **Installed** (Inno Setup): downloads the new ``CD3217B12_Analyzer_Setup.exe``
+- **Installed** (Inno Setup): downloads the new ``ACA_Setup.exe``
   and launches it with Inno's silent flags — Setup closes the running app via
   the Restart Manager, replaces files and restarts the app.
-- **Portable**: downloads ``CD3217B12_Portable.zip``, extracts it next to the
+- **Portable**: downloads ``ACA_Portable.zip``, extracts it next to the
   current folder and spawns a small PowerShell swapper that waits for the app
   to exit, swaps the folders, restarts the app and cleans up.
 - **Source** (``python gui.py``): no in-place update — just opens the
@@ -26,20 +26,20 @@ from typing import Callable, Optional
 GITHUB_REPO = "ALeXXBody/cd3217-analyzer"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
-SETUP_ASSET = "CD3217B12_Analyzer_Setup.exe"
-PORTABLE_ASSET = "CD3217B12_Portable.zip"
-APP_EXE = "CD3217B12_Analyzer.exe"
+SETUP_ASSET = "ACA_Setup.exe"
+PORTABLE_ASSET = "ACA_Portable.zip"
+APP_EXE = "ACA.exe"
 
 # Board name (from the bridge INFO frame) -> release firmware asset.
 BOARD_FIRMWARE_ASSETS = {
-    "pico1": "cd3217_pico.uf2",
-    "pico2": "cd3217_pico2.uf2",
-    "pico-w": "cd3217_pico_w.uf2",
-    "pico2-w": "cd3217_pico2w.uf2",
-    "rp2040-zero": "cd3217_rp2040_zero.uf2",
-    "esp32-s3-devkitc-1": "cd3217_esp32s3.bin",
-    "esp32-c3-supermini": "cd3217_esp32c3.bin",
-    "esp32-devkit": "cd3217_esp32.bin",
+    "pico1": "aca_pico.uf2",
+    "pico2": "aca_pico2.uf2",
+    "pico-w": "aca_pico_w.uf2",
+    "pico2-w": "aca_pico2w.uf2",
+    "rp2040-zero": "aca_rp2040_zero.uf2",
+    "esp32-s3-devkitc-1": "aca_esp32s3.bin",
+    "esp32-c3-supermini": "aca_esp32c3.bin",
+    "esp32-devkit": "aca_esp32.bin",
 }
 # Inno Setup writes the uninstall key "<AppId>_is1" (per-user install).
 _UNINSTALL_KEY = (r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -222,7 +222,7 @@ try {
   Rename-Item -Path $appDir -NewName ((Split-Path $appDir -Leaf) + '.old')
   Move-Item -Path $newDir -Destination $appDir
   L "folders swapped; starting app"
-  $exe = Join-Path $appDir 'CD3217B12_Analyzer.exe'
+  $exe = Join-Path $appDir 'ACA.exe'
   for ($i = 0; $i -lt 10; $i++) {
     try { Start-Process -FilePath $exe -ErrorAction Stop; break } catch {
       L "start attempt $($i+1) failed: $_"; Start-Sleep -Milliseconds 1000

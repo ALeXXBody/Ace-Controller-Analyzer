@@ -122,7 +122,7 @@ class TestBoardAssets(unittest.TestCase):
 
     def test_asset_lookup(self):
         self.assertEqual(board_firmware_asset("pico1"),
-                         "cd3217_pico.uf2")
+                         "aca_pico.uf2")
         self.assertEqual(board_firmware_asset("RP2040-Zero"),
                          "cd3217_rp2040_zero.uf2")
         self.assertIsNone(board_firmware_asset("esp32-c6-zero"))

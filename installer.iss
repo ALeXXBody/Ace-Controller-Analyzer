@@ -3,13 +3,13 @@
 ; Compiles the PyInstaller onedir output into a proper Windows installer:
 ; Program Files install, Start Menu + optional desktop shortcuts, uninstaller.
 
-#define AppName "CD3217B12 Analyzer"
+#define AppName "ACA - ACE Controller Analyzer"
 ; CI passes the real release tag via ISCC /DAppVersion=..., this is the fallback.
 #ifndef AppVersion
 #define AppVersion "0.3.0"
 #endif
 #define AppPublisher "CD3217 Analyzer Project"
-#define AppExeName "CD3217B12_Analyzer.exe"
+#define AppExeName "ACA.exe"
 
 [Setup]
 AppId={{8E4C3D2A-9F6B-4E7A-B1C5-CD3217B12ANLZ}
@@ -22,7 +22,7 @@ DisableProgramGroupPage=yes
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExeName}
 OutputDir=installer
-OutputBaseFilename=CD3217B12_Analyzer_Setup
+OutputBaseFilename=ACA_Setup
 SetupIconFile=assets\icon.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -41,7 +41,7 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; \
     GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 6.1
 
 [Files]
-Source: "dist\CD3217B12_Analyzer\*"; DestDir: "{app}"; \
+Source: "dist\ACA\*"; DestDir: "{app}"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]

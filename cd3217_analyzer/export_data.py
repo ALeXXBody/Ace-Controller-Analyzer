@@ -76,8 +76,7 @@ def _utcnow() -> str:
 
 def settings_path() -> str:
     """Location of the app settings file (user-local)."""
-    base = os.path.expanduser("~")
-    d = os.path.join(base, ".cd3217_analyzer")
+    d = _data_home()
     return os.path.join(d, "settings.json")
 
 
@@ -102,10 +101,26 @@ def save_settings(updates: dict) -> None:
         pass
 
 
+def _data_home() -> str:
+    """User-local data dir (~/.aca), migrating the legacy
+    ~/.cd3217_analyzer once (token + settings carry over)."""
+    import os
+    base = os.path.expanduser("~")
+    new = os.path.join(base, ".aca")
+    legacy = os.path.join(base, ".cd3217_analyzer")
+    if os.path.isdir(legacy) and not os.path.isdir(new):
+        try:
+            os.makedirs(os.path.dirname(new), exist_ok=True)
+            os.rename(legacy, new)
+        except OSError:
+            pass
+    os.makedirs(new, exist_ok=True)
+    return new
+
+
 def token_path() -> str:
     """Location of the stored GitHub token (user-local, protected file)."""
-    base = os.path.expanduser("~")
-    d = os.path.join(base, ".cd3217_analyzer")
+    d = _data_home()
     return os.path.join(d, "gh_token")
 
 

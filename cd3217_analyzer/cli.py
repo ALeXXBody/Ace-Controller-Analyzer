@@ -1,4 +1,4 @@
-"""CLI interface for CD3217B12 (Apple ACE2) I2C Diagnostic Analyzer.
+"""CLI interface for ACA - ACE Controller Analyzer (Apple ACE1/ACE2).
 
 Usage:
     python -m cd3217_analyzer                    # Interactive mode
@@ -707,7 +707,7 @@ def cmd_flash_restore(flash: SPIFlash, filepath: str) -> None:
 def cmd_interactive(analyzer: CD3217Analyzer) -> None:
     """Interactive mode with menu."""
     print("=" * 50)
-    print("  CD3217B12 (Apple ACE2) I2C Analyzer")
+    print("  ACA - ACE Controller Analyzer")
     print("  Interactive Mode")
     print("=" * 50)
     print()
@@ -779,7 +779,7 @@ def cmd_interactive(analyzer: CD3217Analyzer) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description=f"CD3217B12 (Apple ACE2) I2C Diagnostic Analyzer v{__version__}",
+        description=f"ACA - ACE Controller Analyzer v{__version__}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name="cd3217-analyzer",
     version="0.2.0",
-    description="I2C Diagnostic Analyzer for CD3217B12 (Apple ACE2) USB-C PD Controllers",
+    description="ACA - ACE Controller Analyzer: I2C diagnostic tool for Apple ACE1/ACE2 (CD3215/CD3217/CD3218) USB-C PD controllers",
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[

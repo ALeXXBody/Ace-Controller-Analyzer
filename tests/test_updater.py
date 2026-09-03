@@ -110,18 +110,18 @@ class TestInstallMode(unittest.TestCase):
 
 class TestFindAppDir(unittest.TestCase):
     def test_finds_nested_app_dir(self):
-        # zip layout: CD3217B12_Analyzer/CD3217B12_Analyzer.exe + files
+        # zip layout: ACA/ACA.exe + files
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("CD3217B12_Analyzer/CD3217B12_Analyzer.exe", "MZ")
-            zf.writestr("CD3217B12_Analyzer/_internal/x.dll", "d")
+            zf.writestr("ACA/ACA.exe", "MZ")
+            zf.writestr("ACA/_internal/x.dll", "d")
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as zf:
                 zf.extractall(td)
             self.assertEqual(
                 os.path.basename(updater._find_app_dir(td)),
-                "CD3217B12_Analyzer")
+                "ACA")
 
     def test_finds_flat_layout(self):
         import tempfile
