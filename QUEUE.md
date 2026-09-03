@@ -58,6 +58,14 @@ with a column-aware PDF parser, or capture live addresses on the board
 (now easy: JG200 test point, user-verified). Models currently hold the
 old placeholder map.
 
+### 8. [DONE] Cold-bus warm-up + bridge self-reset (v0.11.8)
+> Logs showed empty scans / 100% failures after connect that turned
+> clean after minutes of activity, plus "Write timeout" bridge stalls.
+
+**Result:** first scan auto-warms (6 passes / ~20 s); firmware uses
+Wire.setTimeout(1000, true) — the I2C peripheral self-resets after a
+stuck-bus timeout instead of stalling the USB-serial writer.
+
 ### 4. [PENDING] New shield rail-stability validation
 > Waiting on the user's new shield (no AMS1117, pull-ups from the
 > bridge's internal 3V3).

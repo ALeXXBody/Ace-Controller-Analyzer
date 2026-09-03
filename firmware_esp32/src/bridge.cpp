@@ -168,8 +168,10 @@ void UsbBridge::reattachWire_() {
   // ACE2 slaves clock-stretch while fetching internally (especially when
   // partially powered). The 25 ms default aborts the stretched byte and
   // the rest of the response reads as 0xFF — the "truncation" signature.
-  // Give the chip a full second.
-  Wire.setTimeout(1000);
+  // Give the chip a full second, and let the peripheral SELF-RESET after
+  // a timeout instead of stalling all later transactions (a stalled loop
+  // starves the USB-serial writer -> host "Write timeout" errors).
+  Wire.setTimeout(1000, true);
 #else
   Wire.begin(I2C_SDA_GPIO, I2C_SCL_GPIO, 100000);
   Wire.setTimeOut(1000);                  // same fix, ESP32 core (ms)

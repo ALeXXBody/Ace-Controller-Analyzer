@@ -105,7 +105,9 @@ def chip_class(addr: int) -> str:
 # The board is only flashed when its FIRMWARE actually changed. Bump this
 # tuple ONLY in a release that modifies firmware_esp32/ sources — every
 # app-only release keeps older board firmware working (protocol-compatible).
-LAST_FIRMWARE_CHANGE = (0, 11, 1)  # v0.11.1: rebrand — AP SSID/mDNS host
+LAST_FIRMWARE_CHANGE = (0, 11, 8)  # v0.11.8: Wire.setTimeout(1000, true)
+# = self-resetting I2C peripheral after a stuck-bus timeout (kills the
+# bridge-stall "Write timeout" state).
 # "aca-analyzer"/"aca", web UI title. Bump ONLY when firmware_esp32/
 # changes (see docs/IC_FINDINGS.md §4.9).
 
@@ -2406,22 +2408,34 @@ class Application(ctk.CTk):
                     if self._ping_stable(p.address):
                         devices.append(p.address)
                         recovered.append(p.address)
-            if not devices and self.current_model and not self._cancelled():
-                # Right after an OTA/board reboot the first full-bus scan
-                # can come back completely empty (I2C peripheral settle).
-                # One automatic retry after a short settle, before declaring
-                # every socket MISSING.
-                debuglog.log("SCAN empty — retrying once after settle")
-                self._ui(self.log, "Scan came back empty — retrying once "
-                         "after a settle...", "warn")
-                time.sleep(1.5)
-                devices = [a for a in self.adapter.scan(0x08, 0x77)
-                           if a != ACE2_BROADCAST_ADDRESS]
+            if not devices and not self._cancelled():
+                # COLD-BUS WARM-UP: right after connect (or a long idle) a
+                # marginal probe setup fails EVERYTHING until the bus has
+                # seen some traffic — the user's logs show empty scans and
+                # 100% failures that turn into clean scans after ~4
+                # minutes of activity. Automate the warm-up: retry the
+                # scan for up to ~20 s until the bus wakes.
+                for attempt in range(1, 7):
+                    if self._cancelled():
+                        break
+                    debuglog.log("SCAN empty — warm-up retry %d/6",
+                                 attempt)
+                    self._ui(self.log, f"Bus cold — warming up: scan "
+                             f"retry {attempt}/6...", "warn")
+                    time.sleep(2.5)
+                    devices = [a for a in self.adapter.scan(0x08, 0x77)
+                               if a != ACE2_BROADCAST_ADDRESS]
+                    if devices:
+                        self._ui(self.log, f"Bus warmed up after "
+                                 f"{attempt} retry pass(es).", "ok")
+                        break
                 found2 = set(devices)
-                for p2 in self.current_model.positions:
-                    if p2.address not in found2 and self._ping_stable(p2.address):
-                        devices.append(p2.address)
-                        recovered.append(p2.address)
+                if self.current_model:
+                    for p2 in self.current_model.positions:
+                        if (p2.address not in found2
+                                and self._ping_stable(p2.address)):
+                            devices.append(p2.address)
+                            recovered.append(p2.address)
             devices = sorted(set(devices))
             self.scan_results = devices
             debuglog.log("SCAN done: found %s", [hex(a) for a in devices])
