@@ -69,7 +69,7 @@ size_t UartSniff::read(uint8_t *buf, size_t max) {
   return n;
 }
 
-uint32_t UartSniff::autoBaud(uint8_t pin) {
+uint32_t UartSniff::autoBaud(uint8_t pin, uint32_t window_ms) {
   if (pin != 0xFF) {
     if (s_active) stop();                 // free the pin for pulseIn
     s_pin = pin;
@@ -78,10 +78,12 @@ uint32_t UartSniff::autoBaud(uint8_t pin) {
   }
   // UART idles HIGH; every start bit is a LOW pulse one bit-time wide, so
   // the SHORTEST LOW pulse seen approximates the bit time -> baud.
+  // The window is configurable: quiet debug UARTs (bursty output, boot-
+  // time-only prints) need 10-15 s to guarantee catching a pulse train.
   pinMode(s_pin, INPUT_PULLUP);
   uint32_t min_us = 0;
   uint32_t t0 = millis();
-  while (millis() - t0 < 1500) {
+  while (millis() - t0 < window_ms) {
     uint32_t w = pulseIn(s_pin, LOW, 20000);   // wait up to 20ms per pulse
     if (w > 0 && w < 10000) {                  // sane bit-time range
       if (min_us == 0 || w < min_us) min_us = w;

@@ -1692,9 +1692,10 @@ class Application(ctk.CTk):
         def work():
             if baud == "Auto-detect":
                 self._ui(lambda: self.uart_status.configure(
-                    text="Auto-detecting baud (~1.5s)..."))
+                    text="Auto-baud 15 s window — power-cycle the board "
+                         "or trigger output during capture..."))
                 try:
-                    detected = adapter.uart_autobaud()
+                    detected = adapter.uart_autobaud(window_ms=15000)
                 except Exception as e:
                     detected = None
                     self.log(f"UART auto-baud failed: {e}", "err")

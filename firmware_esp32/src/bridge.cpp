@@ -357,12 +357,22 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
     }
     case 0x24: {
       // UART_AUTOBAUD: [pin] -> [status][width_us LE32] (0 = no activity)
+      //                [pin][window LE32 ms] (v2 — configurable window;
+      //                slow/quiet debug UARTs need 10-15 s, the default
+      //                1.5 s misses them)
       if (plen < 1) {
         uint8_t r = 0xFF;
         sendResp_(0x24, &r, 1);
         break;
       }
-      uint32_t w = UartSniff::autoBaud(pl[0]);
+      uint32_t window_ms = 1500;
+      if (plen >= 5) {
+        window_ms = (uint32_t)pl[1] | ((uint32_t)pl[2] << 8) |
+                    ((uint32_t)pl[3] << 16) | ((uint32_t)pl[4] << 24);
+        if (window_ms < 100) window_ms = 100;
+        if (window_ms > 60000) window_ms = 60000;
+      }
+      uint32_t w = UartSniff::autoBaud(pl[0], window_ms);
       uint8_t resp[5];
       resp[0] = 0x00;
       resp[1] = w & 0xFF;

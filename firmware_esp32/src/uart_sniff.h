@@ -48,7 +48,7 @@ class UartSniff {
 
   // Measure the shortest LOW pulse (~start-bit width) on pin for ~1.5s.
   // Returns pulse width in microseconds (0 = no UART activity seen).
-  static uint32_t autoBaud(uint8_t pin);
+  static uint32_t autoBaud(uint8_t pin, uint32_t window_ms = 1500);
 
  private:
   static bool s_active;

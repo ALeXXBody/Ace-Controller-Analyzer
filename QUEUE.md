@@ -41,6 +41,11 @@ A3114: M3-era ACE3-generation controllers, part numbers don't extract
 from the PDFs and straps are NC — remain '*' pending a live capture
 (protocol compatibility with the TI register map is unknown).
 
+### 9. [DONE] Auto-baud window configurable (user: "auto-baud time is too short 1.5 sec")
+**Result (v0.11.10):** CMD 0x24 v2 [pin][window LE32 ms]; GUI auto-baud
+measures 15 s with a power-cycle hint. Recapture the UF400/UF500
+SER_DBG lines with the 15 s window + power-on to catch the boot logs.
+
 ### 7. [PENDING] Live captures for the starred boards (user hardware)
 > "A1932 A1989 A1990 A2992 A3..." — schematic table audit showed none of
 > these publish port-controller addresses (all ACE/CD32 rows absent).

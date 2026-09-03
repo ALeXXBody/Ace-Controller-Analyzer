@@ -420,12 +420,17 @@ class UsbBridgeAdapter(I2CAdapter):
         n = resp[0]
         return bytes(resp[1:1 + n])
 
-    def uart_autobaud(self, pin: Optional[int] = None) -> Optional[int]:
-        """Measure the line's baud (~1.5s). Returns snapped baud or None.
+    def uart_autobaud(self, pin: Optional[int] = None,
+                      window_ms: int = 1500) -> Optional[int]:
+        """Measure the line's baud over ``window_ms`` (default 1.5 s).
 
-        Blocks for the measurement window — call before uart_setup().
+        Quiet debug UARTs (bursty output, boot-time-only prints) need a
+        longer window — pass 15000 for a 15 s measurement. Blocks for
+        the measurement window — call before uart_setup().
         """
+        import struct as _struct
         pl = bytes([0xFF if pin is None else pin])
+        pl += _struct.pack("<I", int(window_ms))
         resp = self._transact(CMD_UART_AUTOBAUD, pl, retries=0)
         if not resp or resp[0] != 0x00:
             return None
