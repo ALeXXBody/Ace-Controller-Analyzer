@@ -2,8 +2,8 @@
   "format": "cd3217-analyzer/board-export",
   "format_version": 1,
   "name": "A2251",
-  "generated_utc": "2026-09-02T18:12:06Z",
-  "app_version": "0.7.9",
+  "generated_utc": "2026-09-03T08:50:53Z",
+  "app_version": "0.10.0",
   "adapter_type": "UsbBridgeAdapter",
   "mac_model": "A2251",
   "sources": [
@@ -23,7 +23,7 @@
       "spi_cs": 13,
       "hw": 1,
       "uart_rx": 1,
-      "version": "0.7.9"
+      "version": "0.10.0"
     },
     "register_dump": {
       "0x38": {
@@ -65,14 +65,14 @@
         },
         "0x14": {
           "name": "IntEvent1",
-          "raw": "0b01000000000000ffffff",
-          "value": "0xFFFFFF000000000000010B",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
           "decoded": ""
         },
         "0x15": {
           "name": "IntEvent2",
-          "raw": "0b00ffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFF000B",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
           "decoded": ""
         },
         "0x29": {
@@ -83,218 +83,218 @@
         },
         "0x2D": {
           "name": "BootFlags",
-          "raw": "12ffffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFFFF12",
+          "raw": "120100021738182a009366c2",
+          "value": "0xC26693002A18381702000112",
           "decoded": ""
         },
         "0x2F": {
           "name": "DeviceInfo",
-          "raw": "404344ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF444340",
+          "raw": "404344333231372020204857303032322046573030322e3039392e3030205a414345322d4a32313458542020202020",
+          "value": "0x202020202054583431324A2D324543415A2030302E3939302E32303057462032323030574820202037313233444340",
           "decoded": ""
         }
       },
       "0x3B": {
         "0x00": {
           "name": "VID",
-          "raw": "0428ffff",
-          "value": "0xFFFF2804",
+          "raw": "04280000",
+          "value": "0x2804",
           "decoded": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))"
         },
         "0x01": {
           "name": "DID",
-          "raw": "041732ff",
-          "value": "0xFF321704",
+          "raw": "041732cd",
+          "value": "0xCD321704",
           "decoded": ""
         },
         "0x03": {
           "name": "Mode",
-          "raw": "04ffffff",
-          "value": "0xFFFFFF04",
-          "decoded": "Empty"
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "APP"
         },
         "0x04": {
           "name": "Type",
-          "raw": "0449ffff",
-          "value": "0xFFFF4904",
-          "decoded": "I"
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "I2C"
         },
         "0x0F": {
           "name": "Version",
-          "raw": "04ffffff",
-          "value": "0xFFFFFF04",
+          "raw": "04009920",
+          "value": "0x20990004",
           "decoded": ""
         },
         "0x06": {
           "name": "CustomerUse",
-          "raw": "00ffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFF00",
+          "raw": "0000000000000000",
+          "value": "0x0",
           "decoded": ""
         },
         "0x14": {
           "name": "IntEvent1",
-          "raw": "0bffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFF0B",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
           "decoded": ""
         },
         "0x15": {
           "name": "IntEvent2",
-          "raw": "0bffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFF0B",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
           "decoded": ""
         },
         "0x29": {
           "name": "PowerStatus",
-          "raw": "3f08ffff",
-          "value": "0xFFFF083F",
+          "raw": "3f080103",
+          "value": "0x301083F",
           "decoded": ""
         },
         "0x2D": {
           "name": "BootFlags",
-          "raw": "12ffffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFFFF12",
+          "raw": "1281010017201bfe6f9f66c2",
+          "value": "0xC2669F6FFE1B201700018112",
           "decoded": ""
         },
         "0x2F": {
           "name": "DeviceInfo",
-          "raw": "4043ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF4340",
+          "raw": "404344333231372020204857303032322046573030322e3039392e3030205a414345322d4a32313457522020202020",
+          "value": "0x202020202052573431324A2D324543415A2030302E3939302E32303057462032323030574820202037313233444340",
           "decoded": ""
         }
       },
       "0x3C": {
         "0x00": {
           "name": "VID",
-          "raw": "04ffffff",
-          "value": "0xFFFFFF04",
-          "decoded": "0xFF04 (Unknown)"
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))"
         },
         "0x01": {
           "name": "DID",
-          "raw": "04ffffff",
-          "value": "0xFFFFFF04",
+          "raw": "041732cd",
+          "value": "0xCD321704",
           "decoded": ""
         },
         "0x03": {
           "name": "Mode",
-          "raw": "0441ffff",
-          "value": "0xFFFF4104",
+          "raw": "04415050",
+          "value": "0x50504104",
           "decoded": "APP"
         },
         "0x04": {
           "name": "Type",
-          "raw": "04ffffff",
-          "value": "0xFFFFFF04",
-          "decoded": "Empty"
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "I2C"
         },
         "0x0F": {
           "name": "Version",
-          "raw": "04ffffff",
-          "value": "0xFFFFFF04",
+          "raw": "04009920",
+          "value": "0x20990004",
           "decoded": ""
         },
         "0x06": {
           "name": "CustomerUse",
-          "raw": "00ffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFF00",
+          "raw": "0000000000000000",
+          "value": "0x0",
           "decoded": ""
         },
         "0x14": {
           "name": "IntEvent1",
-          "raw": "0bffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFF0B",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
           "decoded": ""
         },
         "0x15": {
           "name": "IntEvent2",
-          "raw": "0bffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFF0B",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
           "decoded": ""
         },
         "0x29": {
           "name": "PowerStatus",
-          "raw": "3f08ffff",
-          "value": "0xFFFF083F",
+          "raw": "3f080103",
+          "value": "0x301083F",
           "decoded": ""
         },
         "0x2D": {
           "name": "BootFlags",
-          "raw": "12ffffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFFFF12",
+          "raw": "1201000017271cfe939f66c2",
+          "value": "0xC2669F93FE1C271700000112",
           "decoded": ""
         },
         "0x2F": {
           "name": "DeviceInfo",
-          "raw": "404344ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF444340",
+          "raw": "404344333231372020204857303032322046573030322e3039392e3030205a414345322d4a32313457522020202020",
+          "value": "0x202020202052573431324A2D324543415A2030302E3939302E32303057462032323030574820202037313233444340",
           "decoded": ""
         }
       },
       "0x3F": {
         "0x00": {
           "name": "VID",
-          "raw": "0428ffff",
-          "value": "0xFFFF2804",
+          "raw": "04280000",
+          "value": "0x2804",
           "decoded": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))"
         },
         "0x01": {
           "name": "DID",
-          "raw": "041732ff",
-          "value": "0xFF321704",
+          "raw": "041732cd",
+          "value": "0xCD321704",
           "decoded": ""
         },
         "0x03": {
           "name": "Mode",
-          "raw": "044150ff",
-          "value": "0xFF504104",
+          "raw": "04415050",
+          "value": "0x50504104",
           "decoded": "APP"
         },
         "0x04": {
           "name": "Type",
-          "raw": "044932ff",
-          "value": "0xFF324904",
-          "decoded": "I2"
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "I2C"
         },
         "0x0F": {
           "name": "Version",
-          "raw": "04ffffff",
-          "value": "0xFFFFFF04",
+          "raw": "04009920",
+          "value": "0x20990004",
           "decoded": ""
         },
         "0x06": {
           "name": "CustomerUse",
-          "raw": "00ffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFF00",
+          "raw": "0000000000000000",
+          "value": "0x0",
           "decoded": ""
         },
         "0x14": {
           "name": "IntEvent1",
-          "raw": "0b0100ffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFF00010B",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
           "decoded": ""
         },
         "0x15": {
           "name": "IntEvent2",
-          "raw": "0b00ffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFF000B",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
           "decoded": ""
         },
         "0x29": {
           "name": "PowerStatus",
-          "raw": "3f88ffff",
-          "value": "0xFFFF883F",
+          "raw": "3f880103",
+          "value": "0x301883F",
           "decoded": ""
         },
         "0x2D": {
           "name": "BootFlags",
-          "raw": "12ffffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFFFF12",
+          "raw": "12810100173f1f2a009366c2",
+          "value": "0xC26693002A1F3F1700018112",
           "decoded": ""
         },
         "0x2F": {
           "name": "DeviceInfo",
-          "raw": "404344ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          "value": "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF444340",
+          "raw": "404344333231372020204857303032322046573030322e3039392e3030205a414345322d4a32313458542020202020",
+          "value": "0x202020202054583431324A2D324543415A2030302E3939302E32303057462032323030574820202037313233444340",
           "decoded": ""
         }
       }
@@ -303,158 +303,158 @@
       "0x38": {
         "address": 56,
         "registers": {
-          "0x00": "04ffffff",
-          "0x04": "04ffffff",
-          "0x08": "04ffffff",
-          "0x0C": "00ffffff",
-          "0x10": "0400ffff",
-          "0x14": "0b01ffff",
-          "0x18": "0901ffff",
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b010000",
+          "0x18": "09010000",
           "0x1C": "09ffffff",
-          "0x20": "0106ffff",
-          "0x24": "09ffffff",
-          "0x28": "40ffffff",
-          "0x2C": "02ffffff",
-          "0x30": "1d00ffff",
-          "0x34": "0000ffff",
-          "0x38": "0affffff",
-          "0x3C": "24acffff",
-          "0x40": "0500ffff",
-          "0x44": "10ffffff",
-          "0x48": "1900ffff",
-          "0x4C": "40ffffff",
-          "0x50": "06ffffff",
-          "0x54": "0000ffff",
-          "0x58": "2500ffff",
-          "0x5C": "00ffffff",
-          "0x60": "40ffffff",
-          "0x64": "40ffffff",
-          "0x68": "2c04ffff",
-          "0x6C": "40ffffff",
-          "0x70": "0000ffff",
-          "0x74": "00ffffff",
-          "0x78": "00ffffff",
-          "0x7C": "0500ffff"
+          "0x20": "01060000",
+          "0x24": "09000000",
+          "0x28": "4003453b",
+          "0x2C": "02000900",
+          "0x30": "1d000000",
+          "0x34": "00000000",
+          "0x38": "0a000000",
+          "0x3C": "24ac0500",
+          "0x40": "05000000",
+          "0x44": "10000000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "06000000",
+          "0x54": "00000000",
+          "0x58": "25000000",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "40000000",
+          "0x68": "2c042804",
+          "0x6C": "40000000",
+          "0x70": "00000000",
+          "0x74": "00000000",
+          "0x78": "00000000",
+          "0x7C": "05ff0000"
         },
         "read_errors": []
       },
       "0x3B": {
         "address": 59,
         "registers": {
-          "0x00": "04ffffff",
-          "0x04": "04ffffff",
-          "0x08": "04ffffff",
-          "0x0C": "0000ffff",
-          "0x10": "04ffffff",
-          "0x14": "0bffffff",
-          "0x18": "09ffffff",
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b000000",
+          "0x18": "09000000",
           "0x1C": "09ffffff",
-          "0x20": "0106ffff",
-          "0x24": "09ffffff",
-          "0x28": "40ffffff",
-          "0x2C": "02ffffff",
-          "0x30": "1d00ffff",
-          "0x34": "00ffffff",
-          "0x38": "0affffff",
-          "0x3C": "24ffffff",
-          "0x40": "05ffffff",
-          "0x44": "10ffffff",
-          "0x48": "1900ffff",
-          "0x4C": "40ffffff",
-          "0x50": "06ffffff",
-          "0x54": "00ffffff",
-          "0x58": "2500ffff",
-          "0x5C": "00ffffff",
-          "0x60": "40ffffff",
-          "0x64": "4000ffff",
-          "0x68": "2cffffff",
-          "0x6C": "40ffffff",
-          "0x70": "0000ffff",
-          "0x74": "00ffffff",
-          "0x78": "0000ffff",
-          "0x7C": "05ffffff"
+          "0x20": "01060000",
+          "0x24": "09000000",
+          "0x28": "4003453b",
+          "0x2C": "02000900",
+          "0x30": "1d000000",
+          "0x34": "00000000",
+          "0x38": "0a000000",
+          "0x3C": "24ac0500",
+          "0x40": "05000000",
+          "0x44": "10000000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "06000000",
+          "0x54": "00000000",
+          "0x58": "25000000",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "40000000",
+          "0x68": "2c042804",
+          "0x6C": "40000000",
+          "0x70": "00000000",
+          "0x74": "00000000",
+          "0x78": "00000000",
+          "0x7C": "05000000"
         },
         "read_errors": []
       },
       "0x3C": {
         "address": 60,
         "registers": {
-          "0x00": "0428ffff",
-          "0x04": "04ffffff",
-          "0x08": "04ffffff",
-          "0x0C": "0000ffff",
-          "0x10": "0400ffff",
-          "0x14": "0bffffff",
-          "0x18": "09ffffff",
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b000000",
+          "0x18": "09000000",
           "0x1C": "09ffffff",
-          "0x20": "01ffffff",
-          "0x24": "0900ffff",
-          "0x28": "40ffffff",
-          "0x2C": "0200ffff",
-          "0x30": "1dffffff",
-          "0x34": "00ffffff",
+          "0x20": "01060000",
+          "0x24": "09000000",
+          "0x28": "4003453b",
+          "0x2C": "02000900",
+          "0x30": "1d062c91",
+          "0x34": "00000000",
           "0x38": "0a000000",
-          "0x3C": "24ac05ff",
-          "0x40": "05ffffff",
-          "0x44": "10ffffff",
-          "0x48": "19ffffff",
-          "0x4C": "40ffffff",
-          "0x50": "0600ffff",
-          "0x54": "00ffffff",
-          "0x58": "25ffffff",
-          "0x5C": "00ffffff",
-          "0x60": "4000ffff",
-          "0x64": "40ffffff",
-          "0x68": "2cffffff",
-          "0x6C": "40ffffff",
-          "0x70": "0000ffff",
-          "0x74": "00ffffff",
-          "0x78": "00ffffff",
-          "0x7C": "0500ffff"
+          "0x3C": "24ac0500",
+          "0x40": "05711300",
+          "0x44": "10ff0000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "06000000",
+          "0x54": "00000000",
+          "0x58": "25000000",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "40000000",
+          "0x68": "2c14b917",
+          "0x6C": "40000000",
+          "0x70": "00000000",
+          "0x74": "00000000",
+          "0x78": "00000000",
+          "0x7C": "05000000"
         },
         "read_errors": []
       },
       "0x3F": {
         "address": 63,
         "registers": {
-          "0x00": "04ffffff",
-          "0x04": "04ffffff",
-          "0x08": "0400ffff",
-          "0x0C": "00ffffff",
-          "0x10": "04ffffff",
-          "0x14": "0b0100ff",
-          "0x18": "09ffffff",
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b000000",
+          "0x18": "09000000",
           "0x1C": "09ffffff",
-          "0x20": "0106ffff",
-          "0x24": "0900ffff",
-          "0x28": "40ffffff",
-          "0x2C": "02ffffff",
-          "0x30": "1d06ffff",
-          "0x34": "00ffffff",
-          "0x38": "0affffff",
-          "0x3C": "24acffff",
-          "0x40": "0501ffff",
-          "0x44": "10ffffff",
-          "0x48": "1943872e",
-          "0x4C": "40ffffff",
-          "0x50": "06ffffff",
-          "0x54": "00ffffff",
-          "0x58": "2500ffff",
-          "0x5C": "00ffffff",
-          "0x60": "40ffffff",
-          "0x64": "4000ffff",
-          "0x68": "2cffffff",
-          "0x6C": "4000ffff",
-          "0x70": "00ffffff",
-          "0x74": "00ffffff",
-          "0x78": "00ffffff",
-          "0x7C": "0500ffff"
+          "0x20": "01060000",
+          "0x24": "09000000",
+          "0x28": "4003453b",
+          "0x2C": "02000900",
+          "0x30": "1d000000",
+          "0x34": "00000000",
+          "0x38": "0a000000",
+          "0x3C": "24ac0500",
+          "0x40": "05000000",
+          "0x44": "10000000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "06000000",
+          "0x54": "00000000",
+          "0x58": "25000000",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "40000000",
+          "0x68": "2c042804",
+          "0x6C": "40000000",
+          "0x70": "00000000",
+          "0x74": "00000000",
+          "0x78": "00000000",
+          "0x7C": "05000000"
         },
         "read_errors": []
       }
     },
     "report": {
-      "timestamp": "2026-09-02T19:12:23.062291",
+      "timestamp": "2026-09-03T09:51:06.276859",
       "adapter_type": "UsbBridgeAdapter",
       "bus_scan_results": [
         "0x38",
@@ -479,6 +479,36 @@
           "notes": ""
         },
         {
+          "address": "0x3B",
+          "responds": true,
+          "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
+          "device_id": "0xCD321704",
+          "mode": "APP",
+          "device_type": "I2C",
+          "health": "PASS",
+          "health_score": 100,
+          "faults": [],
+          "fault_details": [
+            "U3100_W: Apple OTP-ed chip (VID 0x2804) as expected"
+          ],
+          "notes": ""
+        },
+        {
+          "address": "0x3C",
+          "responds": true,
+          "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
+          "device_id": "0xCD321704",
+          "mode": "APP",
+          "device_type": "I2C",
+          "health": "PASS",
+          "health_score": 100,
+          "faults": [],
+          "fault_details": [
+            "U3100_R: Apple OTP-ed chip (VID 0x2804) as expected"
+          ],
+          "notes": ""
+        },
+        {
           "address": "0x3F",
           "responds": true,
           "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
@@ -492,43 +522,9 @@
             "U3100_T: Apple OTP-ed chip in vanilla socket (works only if its burned address matches this socket)"
           ],
           "notes": ""
-        },
-        {
-          "address": "0x3B",
-          "responds": true,
-          "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
-          "device_id": "0xFFFFFF04",
-          "mode": "Empty",
-          "device_type": "I",
-          "health": "PASS",
-          "health_score": 70,
-          "faults": [],
-          "fault_details": [
-            "Mode register unreadable (bus noise after NACK) \u2014 re-run diagnosis on this device alone",
-            "Unexpected device type: I",
-            "U3100_W: Apple OTP-ed chip (VID 0x2804) as expected"
-          ],
-          "notes": ""
-        },
-        {
-          "address": "0x3C",
-          "responds": true,
-          "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
-          "device_id": "0xFFFFFF04",
-          "mode": "Empty",
-          "device_type": "Empty",
-          "health": "PASS",
-          "health_score": 70,
-          "faults": [],
-          "fault_details": [
-            "Mode register unreadable (bus noise after NACK) \u2014 re-run diagnosis on this device alone",
-            "Unexpected device type: Empty",
-            "U3100_R: Apple OTP-ed chip (VID 0x2804) as expected"
-          ],
-          "notes": ""
         }
       ],
-      "summary": "Scan Time: 2026-09-02T19:12:23.062291\nAdapter: UsbBridgeAdapter\nI2C Devices Found: 4\nACE2 Devices Found: 4\n\n--- Device at 0x38 ---\n  Health: PASS (score: 70/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xFF321704\n  Mode: Empty\n  Type: I2\n  DETAILS:\n    - Mode register unreadable (bus noise after NACK) \u2014 re-run diagnosis on this device alone\n    - Unexpected device type: I2\n\n--- Device at 0x3B ---\n  Health: FAIL (score: 55/100)\n  Responds: Yes\n  VID: 0xFF04 (Unknown)\n  DID: 0xFFFFFF04\n  Mode: Empty\n  Type: Empty\n  FAULTS (1):\n    - WRONG_VID\n  DETAILS:\n    - Vendor ID is 0xFFFFFF04 (expected one of 0x0451, 0x2804)\n    - Mode register unreadable (bus noise after NACK) \u2014 re-run diagnosis on this device alone\n    - Unexpected device type: Empty\n\n--- Device at 0x3C ---\n  Health: FAIL (score: 45/100)\n  Responds: Yes\n  VID: 0xFF04 (Unknown)\n  DID: N/A\n  Mode: Empty\n  Type: N/A\n  FAULTS (1):\n    - WRONG_VID\n  DETAILS:\n    - Vendor ID is 0xFFFFFF04 (expected one of 0x0451, 0x2804)\n    - Mode register unreadable (bus noise after NACK) \u2014 re-run diagnosis on this device alone\n\n--- Device at 0x3F ---\n  Health: PASS (score: 90/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xFF321704\n  Mode: APP\n  Type: I2\n  DETAILS:\n    - Unexpected device type: I2\n",
+      "summary": "Scan Time: 2026-09-03T09:51:06.276859\nAdapter: UsbBridgeAdapter\nI2C Devices Found: 4\nACE2 Devices Found: 4\n\n--- Device at 0x38 ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3B ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3C ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3F ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n",
       "notes": ""
     }
   },
@@ -548,7 +544,7 @@
       },
       "0x3F": {
         "status": "ok",
-        "rechecks": 1
+        "rechecks": 0
       }
     },
     "otp_dump": {
@@ -570,5 +566,55 @@
       }
     }
   },
-  "errors": []
+  "errors": [],
+  "golden": {
+    "0x38": {
+      "vid": "0x2804",
+      "did": "0xCD321704",
+      "silicon_did": "CD3217",
+      "identity_string": "@CD3217   HW0022 FW002.099.00 ZACE2-J214XT",
+      "hw_version": "22",
+      "fw_version": "002.099.00",
+      "fw_variant": "ZACE2-J214XT",
+      "otp_filled": 32,
+      "otp_read_errors": 0,
+      "otp_sha256": "2bf2791d2a85608d"
+    },
+    "0x3B": {
+      "vid": "0x2804",
+      "did": "0xCD321704",
+      "silicon_did": "CD3217",
+      "identity_string": "@CD3217   HW0022 FW002.099.00 ZACE2-J214WR",
+      "hw_version": "22",
+      "fw_version": "002.099.00",
+      "fw_variant": "ZACE2-J214WR",
+      "otp_filled": 32,
+      "otp_read_errors": 0,
+      "otp_sha256": "843d295c6906101f"
+    },
+    "0x3C": {
+      "vid": "0x2804",
+      "did": "0xCD321704",
+      "silicon_did": "CD3217",
+      "identity_string": "@CD3217   HW0022 FW002.099.00 ZACE2-J214WR",
+      "hw_version": "22",
+      "fw_version": "002.099.00",
+      "fw_variant": "ZACE2-J214WR",
+      "otp_filled": 32,
+      "otp_read_errors": 0,
+      "otp_sha256": "c99a26addd5a1766"
+    },
+    "0x3F": {
+      "vid": "0x2804",
+      "did": "0xCD321704",
+      "silicon_did": "CD3217",
+      "identity_string": "@CD3217   HW0022 FW002.099.00 ZACE2-J214XT",
+      "hw_version": "22",
+      "fw_version": "002.099.00",
+      "fw_variant": "ZACE2-J214XT",
+      "otp_filled": 32,
+      "otp_read_errors": 0,
+      "otp_sha256": "843d295c6906101f"
+    }
+  }
 }
