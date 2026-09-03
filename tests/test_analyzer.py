@@ -464,13 +464,15 @@ class TestBusHealth(unittest.TestCase):
 
     def test_hard_read_failure_not_marginal(self):
         # Reads that never succeed are hard failures — a dead/absent chip
-        # produces them on every scan, so they are NOT a bus-margin signal.
+        # produces them on every scan. With a whole pass failing (95%),
+        # the summary escalates to the SEVERE physical checklist; the
+        # per-chip verdict stays NO_RESPONSE either way.
         self.mock_adapter.read_bytes.side_effect = [OSError("nack")]
         self.analyzer.diagnose_device(0x38)
         s = self.analyzer.bus_stats
         self.assertGreaterEqual(s.read_failures, 1)
         self.assertFalse(s.marginal)
-        self.assertIn("hard", self.analyzer.bus_health_summary())
+        self.assertIn("SEVERE", self.analyzer.bus_health_summary())
 
     def test_contaminated_read_counts_reread(self):
         def flaky(a, reg, length):
@@ -493,6 +495,26 @@ class TestBusHealth(unittest.TestCase):
         self.assertEqual(s.ping_failures, 0)
         self.assertEqual(s.reads, 0)
         self.assertFalse(s.marginal)
+
+    def test_catastrophic_nack_rate_escalates_message(self):
+        """v0.9.9: >30% failures with enough volume escalates to the SEVERE
+        physical checklist (GND reference, wires, power)."""
+        bs = self.analyzer.bus_stats
+        for _ in range(90):
+            bs.add_ping(False)
+        for _ in range(20):
+            bs.add_read(False)
+        summary = self.analyzer.bus_health_summary()
+        self.assertIn("SEVERE", summary)
+        self.assertIn("GROUND", summary)
+
+    def test_normal_failure_rate_stays_marginal(self):
+        bs = self.analyzer.bus_stats
+        for _ in range(90):
+            bs.add_ping(True)
+        bs.add_ping(False)
+        summary = self.analyzer.bus_health_summary()
+        self.assertNotIn("SEVERE", summary)
 
     def test_bus_stats_nack_rate(self):
         self.analyzer.bus_stats.add_ping(True)

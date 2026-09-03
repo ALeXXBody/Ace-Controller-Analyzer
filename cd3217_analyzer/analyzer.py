@@ -403,6 +403,8 @@ class CD3217Analyzer:
     # HALF CLOCK (50 kHz doubles the chip's per-byte fetch time).
     CHUNK_FAIL_DELAY = 0.12
     SLOW_CLOCK_HZ = 50_000
+    CATASTROPHIC_NACK_RATE = 0.30   # >30% failed transactions
+    CONSECUTIVE_FAIL_LIMIT = 6      # drop to half clock after this many
     truncation_seen = False
 
     @staticmethod
@@ -492,7 +494,10 @@ class CD3217Analyzer:
         """Read all important registers from a device."""
         results = {}
         first = True
-        for offset in self.DETAIL_REGS:
+        consecutive_fails = 0
+        slow_clock = False
+        try:
+          for offset in self.DETAIL_REGS:
             if not first:
                 # Back-to-back register bursts on a probed bus are the worst
                 # case for timing margin (TI SLVA689) — and the ACE2's port-1
@@ -504,6 +509,27 @@ class CD3217Analyzer:
             reg_def = REGISTERS.get(offset)
             length = reg_def.length if reg_def else 4
             read = self._read_register_clean(address, offset, length)
+            # Degraded mode: when transactions keep failing outright, drop
+            # to half clock for the REST of the pass — the chip gets double
+            # the inter-byte time. Restored after the pass.
+            if read is None:
+                consecutive_fails += 1
+                if (not slow_clock and consecutive_fails
+                        >= self.CONSECUTIVE_FAIL_LIMIT
+                        and hasattr(self.adapter, "set_i2c_clock")):
+                    try:
+                        self.adapter.set_i2c_clock(self.SLOW_CLOCK_HZ)
+                        slow_clock = True
+                        if debuglog.is_enabled():
+                            debuglog.log("REG pass 0x%02X: %d consecutive "
+                                         "failures — dropping to %d Hz for "
+                                         "the rest of the pass",
+                                         address, consecutive_fails,
+                                         self.SLOW_CLOCK_HZ)
+                    except Exception:
+                        pass
+            else:
+                consecutive_fails = 0
             # Truncation repair: when a read ends in a 0xFF tail (chip
             # floated the bus mid-transaction), re-read byte-by-byte and
             # keep whichever snapshot carries more real data.
@@ -527,6 +553,12 @@ class CD3217Analyzer:
                         read = chunked
             if read:
                 results[offset] = read
+        finally:
+            if slow_clock and hasattr(self.adapter, "set_i2c_clock"):
+                try:
+                    self.adapter.set_i2c_clock(100_000)
+                except Exception:
+                    pass
         return results
 
     def diagnose_device(self, address: int) -> DeviceResult:
@@ -1034,6 +1066,21 @@ class CD3217Analyzer:
         msg = (f"Bus statistics: {s.pings} pings, {s.reads} register reads, "
                f"{nack_n} NACK/error attempts ({rate:.1f}% failed), "
                f"{s.contaminated_rereads} garbled-read rechecks.")
+        total_tx = s.pings + s.reads
+        if total_tx >= 20 and s.nack_rate >= self.CATASTROPHIC_NACK_RATE:
+            # Beyond probe-margin noise: at this failure rate the two
+            # independent datasets won't agree and verdicts are
+            # provisional. Escalate with the concrete physical checklist.
+            msg += (f"\n  SEVERE: {s.nack_rate * 100:.0f}% of transactions "
+                    f"failed ({nack_n}/{total_tx}) — far beyond probe-"
+                    "margin noise. Check, in order: (1) probe GROUND is "
+                    "actually connected to the MacBook's ground (no "
+                    "common reference = exactly this failure pattern), "
+                    "(2) no probe wire has detached or is touching the "
+                    "wrong pad, (3) the board is fully powered (charger "
+                    "connected). Verdicts from this session are "
+                    "provisional until one of these is corrected.")
+            return msg
         if s.marginal:
             if s.ping_recovered and s.contaminated_rereads:
                 what = (f"{s.ping_recovered} address(es) answered only after "
