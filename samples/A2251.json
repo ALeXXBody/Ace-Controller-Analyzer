@@ -2,8 +2,8 @@
   "format": "cd3217-analyzer/board-export",
   "format_version": 1,
   "name": "A2251",
-  "generated_utc": "2026-09-03T08:50:53Z",
-  "app_version": "0.10.0",
+  "generated_utc": "2026-09-03T09:09:06Z",
+  "app_version": "0.10.1",
   "adapter_type": "UsbBridgeAdapter",
   "mac_model": "A2251",
   "sources": [
@@ -133,8 +133,8 @@
         },
         "0x14": {
           "name": "IntEvent1",
-          "raw": "0b00000000000000000000",
-          "value": "0xB",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
           "decoded": ""
         },
         "0x15": {
@@ -151,8 +151,8 @@
         },
         "0x2D": {
           "name": "BootFlags",
-          "raw": "1281010017201bfe6f9f66c2",
-          "value": "0xC2669F6FFE1B201700018112",
+          "raw": "12a1010017201bfe6f9f66c2",
+          "value": "0xC2669F6FFE1B20170001A112",
           "decoded": ""
         },
         "0x2F": {
@@ -201,8 +201,8 @@
         },
         "0x14": {
           "name": "IntEvent1",
-          "raw": "0b00000000000000000000",
-          "value": "0xB",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
           "decoded": ""
         },
         "0x15": {
@@ -219,8 +219,8 @@
         },
         "0x2D": {
           "name": "BootFlags",
-          "raw": "1201000017271cfe939f66c2",
-          "value": "0xC2669F93FE1C271700000112",
+          "raw": "1201000217271cfe939f66c2",
+          "value": "0xC2669F93FE1C271702000112",
           "decoded": ""
         },
         "0x2F": {
@@ -269,8 +269,8 @@
         },
         "0x14": {
           "name": "IntEvent1",
-          "raw": "0b00000000000000000000",
-          "value": "0xB",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
           "decoded": ""
         },
         "0x15": {
@@ -334,7 +334,7 @@
           "0x70": "00000000",
           "0x74": "00000000",
           "0x78": "00000000",
-          "0x7C": "05ff0000"
+          "0x7C": "05000000"
         },
         "read_errors": []
       },
@@ -346,8 +346,46 @@
           "0x08": "04000000",
           "0x0C": "00000000",
           "0x10": "04000000",
-          "0x14": "0b000000",
-          "0x18": "09000000",
+          "0x14": "0b010000",
+          "0x18": "09010000",
+          "0x1C": "09ffffff",
+          "0x20": "01060000",
+          "0x24": "09000000",
+          "0x28": "4003453b",
+          "0x2C": "02000900",
+          "0x30": "1d062c91",
+          "0x34": "00000000",
+          "0x38": "0a000000",
+          "0x3C": "24ac0500",
+          "0x40": "05710100",
+          "0x44": "10000000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "06000000",
+          "0x54": "00000000",
+          "0x58": "25000000",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "40000000",
+          "0x68": "2c14b917",
+          "0x6C": "40000000",
+          "0x70": "00000000",
+          "0x74": "00000000",
+          "0x78": "00000000",
+          "0x7C": "05000000"
+        },
+        "read_errors": []
+      },
+      "0x3C": {
+        "address": 60,
+        "registers": {
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b010000",
+          "0x18": "09010000",
           "0x1C": "09ffffff",
           "0x20": "01060000",
           "0x24": "09000000",
@@ -376,44 +414,6 @@
         },
         "read_errors": []
       },
-      "0x3C": {
-        "address": 60,
-        "registers": {
-          "0x00": "04280000",
-          "0x04": "04493243",
-          "0x08": "04000000",
-          "0x0C": "00000000",
-          "0x10": "04000000",
-          "0x14": "0b000000",
-          "0x18": "09000000",
-          "0x1C": "09ffffff",
-          "0x20": "01060000",
-          "0x24": "09000000",
-          "0x28": "4003453b",
-          "0x2C": "02000900",
-          "0x30": "1d062c91",
-          "0x34": "00000000",
-          "0x38": "0a000000",
-          "0x3C": "24ac0500",
-          "0x40": "05711300",
-          "0x44": "10ff0000",
-          "0x48": "19000000",
-          "0x4C": "40000000",
-          "0x50": "06000000",
-          "0x54": "00000000",
-          "0x58": "25000000",
-          "0x5C": "00000000",
-          "0x60": "40000000",
-          "0x64": "40000000",
-          "0x68": "2c14b917",
-          "0x6C": "40000000",
-          "0x70": "00000000",
-          "0x74": "00000000",
-          "0x78": "00000000",
-          "0x7C": "05000000"
-        },
-        "read_errors": []
-      },
       "0x3F": {
         "address": 63,
         "registers": {
@@ -422,8 +422,8 @@
           "0x08": "04000000",
           "0x0C": "00000000",
           "0x10": "04000000",
-          "0x14": "0b000000",
-          "0x18": "09000000",
+          "0x14": "0b010000",
+          "0x18": "09010000",
           "0x1C": "09ffffff",
           "0x20": "01060000",
           "0x24": "09000000",
@@ -454,7 +454,7 @@
       }
     },
     "report": {
-      "timestamp": "2026-09-03T09:51:06.276859",
+      "timestamp": "2026-09-03T10:09:18.572432",
       "adapter_type": "UsbBridgeAdapter",
       "bus_scan_results": [
         "0x38",
@@ -475,6 +475,21 @@
           "faults": [],
           "fault_details": [
             "U3100_X: Apple OTP-ed chip in vanilla socket (works only if its burned address matches this socket)"
+          ],
+          "notes": ""
+        },
+        {
+          "address": "0x3F",
+          "responds": true,
+          "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
+          "device_id": "0xCD321704",
+          "mode": "APP",
+          "device_type": "I2C",
+          "health": "PASS",
+          "health_score": 100,
+          "faults": [],
+          "fault_details": [
+            "U3100_T: Apple OTP-ed chip in vanilla socket (works only if its burned address matches this socket)"
           ],
           "notes": ""
         },
@@ -507,24 +522,9 @@
             "U3100_R: Apple OTP-ed chip (VID 0x2804) as expected"
           ],
           "notes": ""
-        },
-        {
-          "address": "0x3F",
-          "responds": true,
-          "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
-          "device_id": "0xCD321704",
-          "mode": "APP",
-          "device_type": "I2C",
-          "health": "PASS",
-          "health_score": 100,
-          "faults": [],
-          "fault_details": [
-            "U3100_T: Apple OTP-ed chip in vanilla socket (works only if its burned address matches this socket)"
-          ],
-          "notes": ""
         }
       ],
-      "summary": "Scan Time: 2026-09-03T09:51:06.276859\nAdapter: UsbBridgeAdapter\nI2C Devices Found: 4\nACE2 Devices Found: 4\n\n--- Device at 0x38 ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3B ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3C ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3F ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n",
+      "summary": "Scan Time: 2026-09-03T10:09:18.572432\nAdapter: UsbBridgeAdapter\nI2C Devices Found: 4\nACE2 Devices Found: 4\n\n--- Device at 0x38 ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3B ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3C ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3F ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n",
       "notes": ""
     }
   },
@@ -578,7 +578,7 @@
       "fw_variant": "ZACE2-J214XT",
       "otp_filled": 32,
       "otp_read_errors": 0,
-      "otp_sha256": "2bf2791d2a85608d"
+      "otp_sha256": "10bd83f314dd243f"
     },
     "0x3B": {
       "vid": "0x2804",
@@ -590,7 +590,7 @@
       "fw_variant": "ZACE2-J214WR",
       "otp_filled": 32,
       "otp_read_errors": 0,
-      "otp_sha256": "843d295c6906101f"
+      "otp_sha256": "c5fa089a4ee96884"
     },
     "0x3C": {
       "vid": "0x2804",
@@ -602,7 +602,7 @@
       "fw_variant": "ZACE2-J214WR",
       "otp_filled": 32,
       "otp_read_errors": 0,
-      "otp_sha256": "c99a26addd5a1766"
+      "otp_sha256": "10bd83f314dd243f"
     },
     "0x3F": {
       "vid": "0x2804",
@@ -614,7 +614,7 @@
       "fw_variant": "ZACE2-J214XT",
       "otp_filled": 32,
       "otp_read_errors": 0,
-      "otp_sha256": "843d295c6906101f"
+      "otp_sha256": "10bd83f314dd243f"
     }
   }
 }
