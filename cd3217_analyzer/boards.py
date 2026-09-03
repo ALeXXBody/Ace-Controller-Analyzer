@@ -366,7 +366,7 @@ _mac("a2337", model="MacBook Air M1 2020", board_nos=["820-02016"],
      connect=[
          "USB-C ports: 2 (two CD3217: UF400, UF500)",
          "TEST POINT CONNECTOR JF200 (schematic-verified, 820-02016):",
-         "  pin 4 = I2C_UPC_SDA, pin 6 = I2C_UPC_SCL  <- probe THESE",
+         "  pin 4 = I2C_UPC_SDA, pin 6 = I2C_UPC_SCL  <- probe/tap THESE",
          "  pin 3 = I2C_SMC_UPC_SCL, pin 5 = I2C_SMC_UPC_SDA (SMC-side "
          "bus; the same CD3217s also appear there)",
          "  GND = board shield/screw. JF200 also carries reset/UART "
