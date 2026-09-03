@@ -1299,6 +1299,7 @@ class Application(ctk.CTk):
             ("Mode", "mode"),
             ("Type", "type"),
             ("Identity", "identity"),
+            ("Contract", "contract"),
             ("Response", "time"),
             ("Chip Type", "chip_type"),
         ]
@@ -2946,6 +2947,13 @@ class Application(ctk.CTk):
                 bits.append(result.fw_variant)
             identity = "  ".join(b for b in bits if b)
         self.info_labels["identity"].configure(text=identity)
+        # Live PD contract (register 0x26 RDO): what the port has actually
+        # negotiated — the direct pointer for 0V/5V/20V power complaints.
+        contract = "N/A"
+        rdo_reg = result.registers.get(0x26)
+        if rdo_reg is not None:
+            contract = rdo_reg.decoded or "no contract"
+        self.info_labels["contract"].configure(text=contract)
         self.info_labels["time"].configure(text=f"{result.scan_time_ms:.1f} ms")
 
         cls = chip_class(result.address)

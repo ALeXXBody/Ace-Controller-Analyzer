@@ -177,6 +177,11 @@ REGISTERS = {
         description="Interrupt mask register 2",
     ),
     # --- PD Status Registers ---
+    0x26: RegisterDef(
+        offset=0x26, length=4, name="RDO",
+        description="Live PD contract (Request Data Object): "
+                    "voltage/current the port has negotiated",
+    ),
     0x29: RegisterDef(
         offset=0x29, length=4, name="PowerStatus",
         description="Power status / VBUS state",
@@ -426,6 +431,28 @@ def parse_device_info(raw_bytes) -> DeviceIdentity:
         elif "ACE" in up and len(up) >= 5:
             ident.variant = tok
     return ident
+
+
+def decode_rdo(value: int) -> str:
+    """Decode a Request Data Object (register 0x26) — the live PD
+    contract a port has negotiated.
+
+    RDO bit layout (USB-PD spec): B31:28 = object position (the PDO
+    index the sink requested), B19:10 = voltage in 100 mV units,
+    B9:0 = operating current in 10 mA units. A zero RDO means no
+    contract — the port is not sourcing anything.
+    """
+    if not value:
+        return "no contract"
+    obj_pos = (value >> 28) & 0x7
+    volts = ((value >> 10) & 0x3FF) * 100      # mV
+    milliamps = (value & 0x3FF) * 10           # mA
+    if not volts:
+        return "no contract"
+    v = volts / 1000.0
+    a = milliamps / 1000.0
+    return (f"{v:.1f}V/{a:.2f}A (PDO #{obj_pos})"
+            if obj_pos else f"{v:.1f}V/{a:.2f}A")
 
 
 def decode_vid(value: int) -> str:

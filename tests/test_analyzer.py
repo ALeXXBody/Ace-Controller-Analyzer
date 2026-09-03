@@ -428,6 +428,53 @@ class TestAnalyzer(unittest.TestCase):
         self.assertTrue(self.analyzer._register_suspicious(0x03, bad))
 
 
+class TestRDO(unittest.TestCase):
+    """v0.11.7: live PD contract (register 0x26 RDO) — the direct
+    pointer for 0V/5V/20V port complaints."""
+
+    def setUp(self):
+        from cd3217_analyzer.registers import decode_rdo
+        self.decode = decode_rdo
+
+    def test_20v_contract(self):
+        rdo = (5 << 28) | (200 << 10) | 225   # PDO 5, 20.0V, 2.25A
+        self.assertEqual(self.decode(rdo), "20.0V/2.25A (PDO #5)")
+
+    def test_5v_contract(self):
+        rdo = (1 << 28) | (50 << 10) | 300    # PDO 1, 5.0V, 3.0A
+        self.assertEqual(self.decode(rdo), "5.0V/3.00A (PDO #1)")
+
+    def test_no_contract(self):
+        self.assertEqual(self.decode(0), "no contract")
+
+    def test_zero_voltage_is_no_contract(self):
+        rdo = (3 << 28) | 150                 # current but no voltage
+        self.assertEqual(self.decode(rdo), "no contract")
+
+    def test_diagnose_reads_rdo(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        from unittest.mock import MagicMock
+
+        def rb(addr, reg, length):
+            data = {
+                0x00: bytes([0x04, 0x28, 0x00, 0x00]),
+                0x01: bytes([0x04, 0x17, 0x32, 0xCD]),
+                0x03: bytes([0x04, 0x41, 0x50, 0x50]),
+                0x04: bytes([0x04, 0x49, 0x32, 0x43]),
+                0x26: bytes([0xE1, 0x20, 0x03, 0x50]),   # 20V/2.25A PDO#5 contract
+            }
+            return data.get(reg, bytes([0x5A] * length))[:length]
+
+        mock = MagicMock()
+        mock.ping.return_value = True
+        mock.read_bytes.side_effect = rb
+        an = CD3217Analyzer(mock, addresses=[0x3A])
+        result = an.diagnose_device(0x3A)
+        rdo = result.registers.get(0x26)
+        self.assertIsNotNone(rdo)
+        self.assertIn("20.0V", rdo.decoded)
+
+
 class TestBusHealth(unittest.TestCase):
     """Tests for the bus-integrity counter (NACK/retry/garbled-read)."""
 
