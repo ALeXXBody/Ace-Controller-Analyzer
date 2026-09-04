@@ -192,7 +192,22 @@ class CD3217Analyzer:
     # Key registers for health assessment
     HEALTH_CHECK_REGS = [0x00, 0x01, 0x03, 0x04, 0x0F]
     # Registers to read for detailed analysis
-    DETAIL_REGS = [0x26, 0x35, 0x36, 0x3F, 0x00, 0x01, 0x03, 0x04, 0x0F, 0x06, 0x14, 0x15, 0x29, 0x2D, 0x2F]
+    # Register CLASSES — the architectural split:
+    #   IDENTITY_REGS: static per-chip data (garble-checked, re-read on
+    #   suspicion, health-scored). A corrupted identity register IS a
+    #   chip-fault signal.
+    #   LIVE_REGS: dynamic telemetry (contracts, power path, events) —
+    #   they legitimately read 0x00000000 when idle/no-contract and
+    #   change with the attached device. NEVER scored, NEVER re-checked,
+    #   NEVER faulted: their content is reported as live state only.
+    #   (Feeding live registers through the static heuristics is what
+    #   produced the "healthy 20V chips marked WARN" regression.)
+    IDENTITY_REGS = {0x00, 0x01, 0x03, 0x04, 0x2F}
+    LIVE_REGS = {0x06, 0x0F, 0x14, 0x15, 0x26, 0x29, 0x2D,
+                 0x30, 0x35, 0x36, 0x3F}
+    DETAIL_REGS = [0x00, 0x01, 0x03, 0x04, 0x2F,
+                   0x26, 0x35, 0x36, 0x3F,
+                   0x0F, 0x06, 0x14, 0x15, 0x29, 0x2D]
 
     # Bus settling: right after a NACKed address (dead chip) or bus
     # contention, the next transactions can return garbage or fail. The
@@ -617,9 +632,11 @@ class CD3217Analyzer:
         def _suspicious_count(regs: Dict[int, RegisterRead]) -> int:
             n = 0
             for off, rd in regs.items():
+                if off not in self.IDENTITY_REGS:
+                    continue          # live regs: never corruption-scored
                 if rd.raw_value == 0xFFFFFFFF:
                     n += 1
-                elif rd.raw_value == 0x00000000 and off not in (0x06, 0x14, 0x15, 0x26):
+                elif rd.raw_value == 0x00000000:
                     n += 1
             return n
 
@@ -763,9 +780,11 @@ class CD3217Analyzer:
         # Step 7: Check for register corruption
         corruption_count = 0
         for offset, read in result.registers.items():
+            if offset not in self.IDENTITY_REGS:
+                continue          # live regs: never corruption-scored
             if read.raw_value == 0xFFFFFFFF:
                 corruption_count += 1
-            elif read.raw_value == 0x00000000 and offset not in (0x06, 0x14, 0x15, 0x26):
+            elif read.raw_value == 0x00000000:
                 corruption_count += 1
 
         if corruption_count > 3:
@@ -962,8 +981,8 @@ class CD3217Analyzer:
         # chip, so they must not count as corruption.
         corruption = sum(
             1 for off, r in result.registers.items()
-            if r.raw_value in (0xFFFFFFFF, 0x00000000)
-            and not (r.raw_value == 0x00000000 and off in (0x06, 0x14, 0x15))
+            if off in self.IDENTITY_REGS
+            and r.raw_value in (0xFFFFFFFF, 0x00000000)
         )
         if corruption == 0:
             score += 15
