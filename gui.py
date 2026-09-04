@@ -378,8 +378,8 @@ class Application(ctk.CTk):
                     pass
         except Exception:
             pass
-        # Watchdog: force-clear the busy state when no background worker is
-        # alive anymore (e.g. a worker thread died before its finally ran).
+        # Watchdog 1: force-clear the busy state when no background worker
+        # is alive anymore (e.g. a worker thread died before its finally).
         try:
             if self.busy and time.time() - self._busy_since > 5.0:
                 if not any(t.is_alive() for t in tuple(self._bg_threads)):
@@ -387,7 +387,54 @@ class Application(ctk.CTk):
                     self._bg_threads.clear()
         except Exception:
             pass
+        # Watchdog 2 (CIRCUIT BREAKER): when busy >20 s, probe whether the
+        # bridge still answers. A wedged bridge (stuck I2C at slow clock,
+        # crashed firmware) otherwise freezes the session forever — the
+        # user's only escape was killing the app. Now: the app disconnects
+        # itself and tells the user to replug.
+        try:
+            if (self.busy and self.connected
+                    and time.time() - self._busy_since > 20.0
+                    and not getattr(self, "_liveness_checking", False)):
+                self._liveness_checking = True
+                threading.Thread(target=self._probe_bridge_liveness,
+                                 daemon=True).start()
+        except Exception:
+            pass
         self.after(150, self._drain_ui_queue)
+
+    def _probe_bridge_liveness(self):
+        """Worker: PING the bridge with a bounded timeout; if it does not
+        answer, force-disconnect so the UI recovers (the user replugs)."""
+        adapter = self.adapter
+        if adapter is None:
+            self._liveness_checking = False
+            return
+        try:
+            ok = adapter.is_alive()
+        except Exception:
+            ok = False
+        self._liveness_checking = False
+        if not ok and self.busy:
+            self._ui(self.log, "The bridge board stopped responding — "
+                     "disconnecting. Unplug/replug the bridge and "
+                     "reconnect.", "err")
+            self._ui(self._force_disconnect)
+
+    def _force_disconnect(self):
+        """UI thread: drop the session without waiting for any blocked
+        worker (the deferred close in the adapter handles the port)."""
+        self._stop_board_watcher()
+        adapter = self.adapter
+        self.adapter = None
+        self.connected = False
+        self._update_conn_status(False)
+        self.log("Disconnected (bridge unresponsive).", "warn")
+        if adapter is not None:
+            try:
+                adapter.close()
+            except Exception:
+                pass
 
     def _manual_update_check(self):
         self.log("Checking for updates...")
@@ -2929,6 +2976,16 @@ class Application(ctk.CTk):
             addrs = list(self.scan_results)
         self._set_busy(True, "Diagnosing all...")
         self.log(f"Diagnose All: {len(addrs)} target(s)")
+        if self.current_model:
+            missing = [p for p in self.current_model.positions
+                       if p.address not in self.scan_results]
+            if missing:
+                self.log("Missing from the scan: "
+                         + ", ".join(f"{p.ref} {format_hex_addr(p.address)}"
+                                     for p in missing)
+                         + " — the retry ladder will re-check each; a "
+                           "chip missing from BOTH the scan and all "
+                           "passes is a candidate fault.", "warn")
 
         def work():
             analyzer = CD3217Analyzer(self.adapter)
