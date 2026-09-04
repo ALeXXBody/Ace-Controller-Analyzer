@@ -636,6 +636,38 @@ class TestLiveStateImmunity(unittest.TestCase):
                       result.registers[0x36].decoded)
 
 
+class TestPingFallback(unittest.TestCase):
+    """v0.12.3: a board whose PINGS fail at 100 kHz gets the half-clock
+    at the ping level — the diagnose proceeds instead of dying with
+    0 register reads (the A2141 T2-era session pattern)."""
+
+    def test_ping_fallback_engages_half_clock(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer, HealthStatus
+        state = {"hz": 100_000}
+
+        class SlowChip:
+            def __init__(self):
+                self.clocks = []
+            def set_i2c_clock(self, hz):
+                self.clocks.append(hz)
+                state["hz"] = hz
+            def open(self): pass
+            def ping(self, addr):
+                return state["hz"] <= 50_000   # only answers at 50 kHz
+            def read_bytes(self, addr, reg, length):
+                if state["hz"] > 50_000:
+                    raise OSError("stretches too long at 100 kHz")
+                return TestAdaptiveSettle._rb_all_clean(addr, reg, length)
+
+        chip = SlowChip()
+        an = CD3217Analyzer(chip, addresses=[0x38])
+        result = an.diagnose_device(0x38)
+        self.assertIn(50_000, chip.clocks)             # 50_000 engaged
+        self.assertEqual(chip.clocks[-1], 100_000)     # restored
+        self.assertEqual(result.health, HealthStatus.PASS)
+        self.assertGreater(len(result.registers), 0)   # reads happened
+
+
 class TestRDO(unittest.TestCase):
     """v0.11.7: live PD contract (register 0x26 RDO) — the direct
     pointer for 0V/5V/20V port complaints."""
@@ -1112,7 +1144,8 @@ class TestStressMargin(unittest.TestCase):
         an = CD3217Analyzer(mock, addresses=[0x38])
         res = an.stress_test_margin(0x38)
         self.assertEqual(res["verdict"], "no-response")
-        self.assertEqual(mock.clocks, [])
+        # the ping-level fallback engages 50k then the diagnose restores
+        self.assertEqual(mock.clocks, [400_000 // 8, 100_000])
 
     def test_unavailable_without_bridge(self):
         from cd3217_analyzer.analyzer import CD3217Analyzer

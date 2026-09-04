@@ -339,6 +339,23 @@ class CD3217Analyzer:
         delay distinguishes 'flaky right after a NACK' from 'really dead'.
         """
         for attempt in range(1 + self.PING_RETRIES):
+            if attempt == 1 and not self._slow_clock_engaged \
+                    and hasattr(self.adapter, "set_i2c_clock"):
+                # A chip that NACKs even address-level probes is too slow
+                # for 100 kHz — drop to half clock for the REST of this
+                # diagnose (the diagnose's finally restores 100 kHz). This
+                # is the ping-level gate: without it, a board whose pings
+                # fail never reaches read_all_registers' degraded mode
+                # (observed: 0 register reads, 100% ping failures).
+                try:
+                    self.adapter.set_i2c_clock(self.SLOW_CLOCK_HZ)
+                    self._slow_clock_engaged = True
+                    if debuglog.is_enabled():
+                        debuglog.log("PING 0x%02X failed at 100 kHz — "
+                                     "engaging %d Hz for this diagnose",
+                                     address, self.SLOW_CLOCK_HZ)
+                except Exception:
+                    pass
             ok = self.adapter.ping(address)
             self.bus_stats.add_ping(ok)
             if debuglog.is_enabled():
@@ -353,6 +370,17 @@ class CD3217Analyzer:
                 return True
             if attempt < self.PING_RETRIES:
                 time.sleep(self.PING_RETRY_DELAY)
+        # all attempts failed: if the fallback engaged, restore 100 kHz —
+        # a chip that doesn't answer even at 50 kHz gains nothing from
+        # leaving the bus slow (the diagnose-level finally only covers the
+        # success path).
+        if self._slow_clock_engaged and \
+                hasattr(self.adapter, "set_i2c_clock"):
+            try:
+                self.adapter.set_i2c_clock(100_000)
+            except Exception:
+                pass
+            self._slow_clock_engaged = False
         return False
 
     # Registers that get a garble-recheck on suspicious reads: VID, DID,
@@ -455,6 +483,8 @@ class CD3217Analyzer:
     CATASTROPHIC_NACK_RATE = 0.30   # >30% failed transactions
     CONSECUTIVE_FAIL_LIMIT = 6      # drop to half clock after this many
     truncation_seen = False
+    _slow_clock_engaged = False     # set at the PING level; the diagnose
+                                    # owns the restore-to-100k
 
     @staticmethod
     def _tail_ff_fraction(raw_bytes: bytes) -> float:
@@ -563,7 +593,8 @@ class CD3217Analyzer:
             # the inter-byte time. Restored after the pass.
             if read is None:
                 consecutive_fails += 1
-                if (not slow_clock and consecutive_fails
+                if (not slow_clock and not self._slow_clock_engaged
+                        and consecutive_fails
                         >= self.CONSECUTIVE_FAIL_LIMIT
                         and hasattr(self.adapter, "set_i2c_clock")):
                     try:
@@ -830,6 +861,16 @@ class CD3217Analyzer:
             result.health = HealthStatus.FAIL
         else:
             result.health = HealthStatus.WARN
+
+        if self._slow_clock_engaged and \
+                hasattr(self.adapter, "set_i2c_clock"):
+            try:
+                self.adapter.set_i2c_clock(100_000)
+            except Exception:
+                pass
+            self._slow_clock_engaged = False
+            if debuglog.is_enabled():
+                debuglog.log("clock restored to 100 kHz")
 
         flaky_now = (self.bus_stats.ping_recovered,
                      self.bus_stats.contaminated_rereads)
