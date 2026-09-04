@@ -46,6 +46,13 @@ from the PDFs and straps are NC — remain '*' pending a live capture
 measures 15 s with a power-cycle hint. Recapture the UF400/UF500
 SER_DBG lines with the 15 s window + power-on to catch the boot logs.
 
+### 11. [PENDING] A2141 UB300 (0x3B) — the no-answer chip
+The v0.12.6 session: 3/4 sockets read (50 kHz fallback ✓), UB300
+missing from scan + all passes. Next: check UB300's I2C_ADDR strap
+component (820-01700 boardview) — a secondary chip's address comes
+from that net ("ADDR bits 3,2,1"); a broken strap = never answers.
+Then the chip itself.
+
 ### 7. [PENDING] Live captures for the starred boards (user hardware)
 > "A1932 A1989 A1990 A2992 A3..." — schematic table audit showed none of
 > these publish port-controller addresses (all ACE/CD32 rows absent).
