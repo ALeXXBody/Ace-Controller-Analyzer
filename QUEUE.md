@@ -71,6 +71,15 @@ old placeholder map.
 Wire.setTimeout(1000, true) — the I2C peripheral self-resets after a
 stuck-bus timeout instead of stalling the USB-serial writer.
 
+### 10. [PENDING] T824 pin-test integration (measurements deferred)
+Owner has a Mechanic T824 (Nuvoton ML51TC0AE controller, NuLink header
+R/C/D/G/3V3, Lightning + USB-C heads, LCD pin-connect verdicts). C/D
+measure 0 V at idle. Deferred pending more owner measurements:
+  - boot-time UART sniff on C/D with the ACA bridge (one try)
+  - NuLink programmer for the ML51 flash (definitive data tap)
+  - ACA integration: per-model reference diagrams + pin measurement
+    log in the golden bundle (A2681 reference JPGs already uploaded)
+
 ### 4. [PENDING] New shield rail-stability validation
 > Waiting on the user's new shield (no AMS1117, pull-ups from the
 > bridge's internal 3V3).
