@@ -35,6 +35,12 @@ class MacBookModel:
     chip_count: int
     positions: List[CD3217Position]
     notes: str = ""
+    # EXTRA reference info: known non-ACE devices sharing the probe bus,
+    # {7-bit addr: name} — from the schematic's I2C address tables. The
+    # scan labels them "known bus device" instead of "unexpected"; they
+    # NEVER affect placement verdicts (only the ACE2 positions do). A
+    # known device that stops ACKing is a fault indicator.
+    bus_devices: Dict[int, str] = field(default_factory=dict)
 
     @property
     def needs_data(self) -> bool:
@@ -255,6 +261,28 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
         name="MacBook Pro 16\" i9 (2019, T2)",
         board_id="820-01700",
         chip_count=4,
+        bus_devices={
+            0x62: "Left Spkr Amp (U6400)",
+            0x64: "Left Spkr Amp (U6420)",
+            0x6A: "Left Spkr Amp (U6460)",
+            0x6C: "Camera (FT)",
+            0x70: "TBT Retimer / EEPROM",
+            0xA2: "SEP EEPROM",
+            0x10: "EADC (LTC2309)",
+            0x16: "Battery",
+            0x12: "Charger (ISL)",
+            0xE8: "Calpe",
+            0x90: "ALS / Audio Codec",
+            0x52: "ALS",
+            0x20: "TCON",
+            0x44: "GMUX IOEXP",
+            0x98: "Trackpad / DFR Display / TMP461",
+            0x96: "TMP461 (right)",
+            0x82: "GPU thermal (digital)",
+            0x92: "GPU thermal (analog)",
+            0x40: "Keyboard ctrl",
+            0x42: "Keyboard ctrl",
+        },
         positions=[
             CD3217Position("U3100", 0x38, "strap", "GND", 1,
                            chip_class="vanilla", silicon="CD3217B12",
@@ -456,6 +484,14 @@ def check_model_placement(model: MacBookModel,
                 "address": addr,
                 "verdict": "OK",
                 "message": "chip responds at this socket's expected address",
+            }
+        elif addr in getattr(model, "bus_devices", {}):
+            out[addr] = {
+                "ref": None,
+                "address": addr,
+                "verdict": "KNOWN",
+                "message": f"known bus device: {model.bus_devices[addr]} "
+                           "(not an ACE socket — no power verdict)",
             }
         else:
             out[addr] = {

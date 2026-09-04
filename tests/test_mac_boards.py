@@ -106,6 +106,25 @@ class TestMacBoards(unittest.TestCase):
             "U3100_R": (0x3C, "float", "CD3217B12", "otp"),
         })
 
+    def test_a2141_known_bus_devices(self):
+        """v0.12.2: the A2141's non-ACE bus devices (speaker amps etc.)
+        are labeled KNOWN, never UNEXPECTED — only the 4 ACE2 sockets
+        carry placement verdicts."""
+        from cd3217_analyzer.models import (check_model_placement,
+                                            get_model)
+        m = get_model("A2141")
+        self.assertEqual(len(m.bus_devices), 20)
+        scan = [0x38, 0x3F, 0x3B, 0x3C, 0x62, 0x64, 0x6A]
+        pl = check_model_placement(m, scan)
+        for a in (0x38, 0x3F, 0x3B, 0x3C):
+            self.assertEqual(pl[a]["verdict"], "OK")
+        for a in (0x62, 0x64, 0x6A):
+            self.assertEqual(pl[a]["verdict"], "KNOWN")
+            self.assertIn("Left Spkr Amp", pl[a]["message"])
+        # a truly unknown address still flags UNEXPECTED
+        pl2 = check_model_placement(m, [0x38, 0x77])
+        self.assertEqual(pl2[0x77]["verdict"], "UNEXPECTED")
+
     def test_model_board_ids_match_boards_py(self):
         """v0.10.5 regression guard: every models.py board_id must appear
         in the boards.py board_nos for the same A-code (slash-separated
