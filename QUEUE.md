@@ -46,6 +46,14 @@ from the PDFs and straps are NC — remain '*' pending a live capture
 measures 15 s with a power-cycle hint. Recapture the UF400/UF500
 SER_DBG lines with the 15 s window + power-on to catch the boot logs.
 
+### 11. [UPDATED] A2141 UB pair — the shared W25Q80 ROM is the unified suspect
+Loader-default theory disproven (no extra device on rescan). The pair
+runs the TI slave-flash scheme: UB400 (primary) loads from the shared
+ROM then programs UB300 over I2C. Corrupt/blank ROM = both symptoms.
+NEXT: Flash tab → Detect (W25Q80 JEDEC EF4014) → Dump → blank/corrupt/
+valid decides. Repair: re-program from a same-model (A2141) golden
+dump — the ROM carries the A2141-specific port config.
+
 ### 11. [PENDING] A2141 UB300 (0x3B) — the no-answer chip
 The v0.12.6 session: 3/4 sockets read (50 kHz fallback ✓), UB300
 missing from scan + all passes. Next: check UB300's I2C_ADDR strap
