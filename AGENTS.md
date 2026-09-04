@@ -13,3 +13,11 @@ response merging (see §2.7).
 or hardware info gets APPENDED there first (verbatim, oldest-first),
 then processed one item at a time. Never drop or reorder; mark DONE with
 results or WONTFIX with a reason. Check QUEUE.md at session start.
+
+## Communication rule (standing agreement, from the owner)
+Before implementing anything non-trivial: restate the understanding,
+ask remaining questions, and wait for the owner's confirmation.
+If any prior question was left unanswered, say so explicitly instead of
+assuming. "Better to properly understand each other than doing
+mistakes." QUEUE.md is the FIFO for tasks; this rule governs how
+tasks are clarified before work starts.
