@@ -636,6 +636,103 @@ class TestLiveStateImmunity(unittest.TestCase):
                       result.registers[0x36].decoded)
 
 
+class TestDuplicateProbe(unittest.TestCase):
+    """v0.12.5: the empirical two-chips-at-one-address detector."""
+
+    def _mk(self, did_sequence):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        calls = {"n": 0}
+
+        def rb(addr, reg, length):
+            if reg == 0x01:
+                i = min(calls["n"], len(did_sequence) - 1)
+                calls["n"] += 1
+                return did_sequence[i].to_bytes(4, "little")
+            return {
+                0x00: bytes([0x04, 0x28, 0x00, 0x00]),
+                0x03: bytes([0x04, 0x41, 0x50, 0x50]),
+                0x04: bytes([0x04, 0x49, 0x32, 0x43]),
+            }.get(reg, bytes([0x5A] * length))[:length]
+
+        mock = MagicMock()
+        mock.ping.return_value = True
+        mock.read_bytes.side_effect = rb
+        return CD3217Analyzer(mock, addresses=[0x3F])
+
+    def test_alternating_dids_confirm_duplicate(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        a = 0xCD321704
+        b = 0xCD321804
+        an = self._mk([a, b, a, b, a])
+        conf = an.probe_duplicate_address(0x3F)
+        self.assertIsNotNone(conf)
+        self.assertIn("two chips", conf)
+        self.assertIn("0x%08X" % a, conf)
+        self.assertIn("0x%08X" % b, conf)
+
+    def test_stable_did_no_duplicate(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        an = self._mk([0xCD321704] * 5)
+        self.assertIsNone(an.probe_duplicate_address(0x3F))
+
+    def test_garbage_reads_ignored(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        an = self._mk([0xFFFFFFFF, 0x00000000, 0xCD321704, 0xCD321704])
+        self.assertIsNone(an.probe_duplicate_address(0x3F))
+
+
+class TestDuplicateAddressSignature(unittest.TestCase):
+    """v0.12.5: the generic duplicate-address hint — an OTP socket
+    missing while another chip's identity reads garble."""
+
+    def _results(self, respond_3b=False, garble_3f=True):
+        from cd3217_analyzer.analyzer import DeviceResult
+        from cd3217_analyzer.analyzer import RegisterRead
+        r38 = DeviceResult(address=0x38)
+        r38.responds = True
+        r3f = DeviceResult(address=0x3F)
+        r3f.responds = True
+        r3f.registers[0x00] = RegisterRead(0x00, "VID",
+            bytes([0xFF, 0x04, 0x00, 0x00]), 0x000004FF, "")
+        r3f.registers[0x01] = RegisterRead(0x01, "DID",
+            bytes([0x11, 0x11, 0x11, 0x11]), 0x11111111, "")
+        r3b = DeviceResult(address=0x3B)
+        r3b.responds = respond_3b
+        r3c = DeviceResult(address=0x3C)
+        r3c.responds = True
+        return {0x38: r38, 0x3F: r3f, 0x3B: r3b, 0x3C: r3c}
+
+    def test_fires_on_missing_plus_garbled(self):
+        from cd3217_analyzer.analyzer import duplicate_address_signature
+        from cd3217_analyzer.models import get_model
+        sig = duplicate_address_signature(get_model("A2251"),
+                                          self._results())
+        self.assertIsNotNone(sig)
+        self.assertIn("U3100_W", sig)   # the A2251's full refdes
+        self.assertIn("0x3F", sig)
+
+    def test_silent_when_all_healthy(self):
+        from cd3217_analyzer.analyzer import duplicate_address_signature
+        from cd3217_analyzer.models import get_model
+        res = self._results(respond_3b=True, garble_3f=False)
+        # make 0x3F clean
+        from cd3217_analyzer.analyzer import RegisterRead
+        res[0x3F].registers[0x00] = RegisterRead(0x00, "VID",
+            bytes([0x04, 0x28, 0x00, 0x00]), 0x00002804, "")
+        res[0x3F].registers[0x01] = RegisterRead(0x01, "DID",
+            bytes([0x04, 0x17, 0x32, 0xCD]), 0xCD321704, "")
+        sig = duplicate_address_signature(get_model("A2251"), res)
+        self.assertIsNone(sig)
+
+    def test_silent_without_otp_pair(self):
+        """A model with <2 OTP sockets cannot produce the signature."""
+        from cd3217_analyzer.analyzer import duplicate_address_signature
+        from cd3217_analyzer.models import get_model
+        sig = duplicate_address_signature(get_model("A2337"),
+                                          self._results())
+        self.assertIsNone(sig)
+
+
 class TestPingFallback(unittest.TestCase):
     """v0.12.3: a board whose PINGS fail at 100 kHz gets the half-clock
     at the ping level — the diagnose proceeds instead of dying with

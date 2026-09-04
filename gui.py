@@ -3066,6 +3066,38 @@ class Application(ctk.CTk):
                     self._ui(self.log, note, "ok")
             except Exception:
                 pass
+            # Duplicate-address hint: an OTP socket missing while another
+            # chip's identity reads garble = a chip answering at the wrong
+            # address (donor for another socket / vanilla floating).
+            # Suppressed when the bus is SEVERE (global noise owns that).
+            try:
+                from cd3217_analyzer.analyzer import (
+                    duplicate_address_signature)
+                if analyzer.bus_stats.nack_rate < 0.30:
+                    sig = duplicate_address_signature(self.current_model,
+                                                      self.devices)
+                    if sig:
+                        self._ui(self.log, f"DUPLICATE-ADDRESS: {sig}",
+                                 "warn")
+                        # confirm empirically: probe the garbled chip's
+                        # address for two-chip alternation
+                        for addr, r in self.devices.items():
+                            if not r.responds:
+                                continue
+                            did = r.registers.get(0x01)
+                            if did is not None and did.raw_value not in (
+                                    0, 0xFFFFFFFF) and decode_silicon(
+                                    did.raw_value) == "":
+                                try:
+                                    conf = analyzer.probe_duplicate_address(
+                                        addr)
+                                except Exception:
+                                    conf = None
+                                if conf:
+                                    self._ui(self.log, conf, "err")
+                                break
+            except Exception:
+                pass
             # Guidance: if MOST model sockets stayed silent while extras
             # answered elsewhere, the selected model's address map may not
             # match this board (some maps are flagged UNVERIFIED).

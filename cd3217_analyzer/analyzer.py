@@ -107,6 +107,61 @@ class DeviceResult:
     notes: str = ""
 
 
+def duplicate_address_signature(model, results) -> Optional[str]:
+    """Detect the DUPLICATE-ADDRESS signature (generic, any board).
+
+    Fires when ALL of these hold:
+      1. the model has >= 2 OTP-class sockets (burned addresses)
+      2. at least one OTP socket is MISSING (no chip answers at its
+         burned address)
+      3. at least one OTHER responding chip shows garbled identity
+         reads (DID does not decode to known silicon, or VID is
+         neither TI nor Apple)
+
+    That combination is the signature of a chip answering at the WRONG
+    address: a donor burned for another socket, or a vanilla chip
+    floating to a colliding strap address instead of the OTP socket's
+    burned one. Returns a hint string, or None when the pattern is
+    absent. The CALLER should suppress it when the bus is SEVERE
+    (global noise owns that explanation).
+    """
+    if model is None:
+        return None
+    otp = [p for p in model.positions if getattr(p, "chip_class", "") == "otp"]
+    if len(otp) < 2:
+        return None
+    missing = [p for p in otp
+               if p.address in results
+               and not results[p.address].responds]
+    if not missing:
+        return None
+
+    garbled = []
+    for addr, r in results.items():
+        if not getattr(r, "responds", False):
+            continue
+        did = r.registers.get(0x01)
+        vid = r.registers.get(0x00)
+        bad = False
+        if did is not None and did.raw_value not in (0, 0xFFFFFFFF) \
+                and decode_silicon(did.raw_value) == "":
+            bad = True
+        if vid is not None and (vid.raw_value & 0xFFFF) not in VALID_ACE2_VIDS:
+            bad = True
+        if bad:
+            garbled.append(addr)
+    if not garbled:
+        return None
+
+    miss_txt = ", ".join(f"{p.ref} @0x{p.address:02X}" for p in missing)
+    garb_txt = ", ".join(f"0x{a:02X}" for a in sorted(garbled))
+    return (f"{miss_txt} missing while {garb_txt} show garbled identity "
+            "reads — the DUPLICATE-ADDRESS signature: a chip is answering "
+            "at the wrong address (a donor burned for another socket, or "
+            "a vanilla chip floating to a colliding address). Check which "
+            "chip is physically installed in the missing socket.")
+
+
 @dataclass
 class PowerPortResult:
     """One bench power-port test (the owner's scenario matrix).
@@ -1147,6 +1202,37 @@ class CD3217Analyzer:
                 print(f"  0x{addr:02X}{marker}")
 
         print("=" * 70)
+
+    def probe_duplicate_address(self, address: int,
+                                reads: int = 5) -> Optional[str]:
+        """Empirically detect TWO chips answering at the same address.
+
+        Reads the DID at ``address`` several times. With two chips
+        sharing the address, their drive wires-AND on the bus: the reads
+        either ALTERNATE between two distinct values (each chip's DID)
+        or settle on a stable value matching neither chip. A single
+        clean DID that decodes to known silicon = one chip, no
+        duplicate.
+
+        Returns a human-readable confirmation string, or None when the
+        address holds a single stable chip.
+        """
+        seen = {}
+        for _ in range(max(2, reads)):
+            r = self._read_register_clean(address, 0x01, 4)
+            if r is None:
+                continue
+            v = r.raw_value
+            if v in (0x00000000, 0xFFFFFFFF):
+                continue          # transport garbage, not a chip value
+            seen[v] = seen.get(v, 0) + 1
+        distinct = sorted(seen)
+        if len(distinct) < 2:
+            return None
+        vals = ", ".join(f"0x{v:08X}" for v in distinct)
+        return (f"CONFIRMED duplicate address: reads at 0x{address:02X} "
+                f"alternate between {len(distinct)} different DID values "
+                f"({vals}) — two chips are answering at this address")
 
     def power_port_test(self, address: int) -> PowerPortResult:
         """Bench power-port test per the owner's scenario matrix.
