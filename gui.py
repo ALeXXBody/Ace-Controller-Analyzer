@@ -2916,6 +2916,12 @@ class Application(ctk.CTk):
             from cd3217_analyzer.models import merge_diagnose_targets
             addrs = merge_diagnose_targets(self.current_model,
                                            self.scan_results)
+            known = getattr(self.current_model, "bus_devices", {}) or {}
+            for a in self.scan_results:
+                if a in known and a not in addrs:
+                    self.log(f"{format_hex_addr(a)}: known bus device "
+                             f"({known[a]}) — not an ACE2 socket, skipped",
+                             "info")
         else:
             if not self.scan_results:
                 self.log("Scan first", "warn")

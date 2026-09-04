@@ -275,6 +275,8 @@ MACBOOK_MODELS: Dict[str, MacBookModel] = {
             0x90: "ALS / Audio Codec",
             0x52: "ALS",
             0x20: "TCON",
+            0x68: "Unlabeled device (seen on the bus; schematic doesn't "
+                  "name it)",
             0x44: "GMUX IOEXP",
             0x98: "Trackpad / DFR Display / TMP461",
             0x96: "TMP461 (right)",
@@ -592,4 +594,9 @@ def merge_diagnose_targets(model: Optional[MacBookModel],
     if model is None:
         return found_set
     base = [p.address for p in model.positions]
-    return base + [a for a in found_set if a not in base]
+    # Known non-ACE2 bus devices (speakers, TCON, battery, charger...)
+    # are labeled by the catalog but are NOT CD3217 sockets — diagnosing
+    # them with the ACE2 register protocol only produces FAIL noise.
+    known_devices = set(getattr(model, "bus_devices", {}) or {})
+    return base + [a for a in found_set
+                   if a not in base and a not in known_devices]

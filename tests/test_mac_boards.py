@@ -113,7 +113,7 @@ class TestMacBoards(unittest.TestCase):
         from cd3217_analyzer.models import (check_model_placement,
                                             get_model)
         m = get_model("A2141")
-        self.assertEqual(len(m.bus_devices), 20)
+        self.assertEqual(len(m.bus_devices), 21)   # incl. the unlabeled 0x68
         scan = [0x38, 0x3F, 0x3B, 0x3C, 0x62, 0x64, 0x6A]
         pl = check_model_placement(m, scan)
         for a in (0x38, 0x3F, 0x3B, 0x3C):
@@ -124,6 +124,17 @@ class TestMacBoards(unittest.TestCase):
         # a truly unknown address still flags UNEXPECTED
         pl2 = check_model_placement(m, [0x38, 0x77])
         self.assertEqual(pl2[0x77]["verdict"], "UNEXPECTED")
+
+    def test_merge_skips_known_bus_devices(self):
+        """v0.12.4: known non-ACE2 bus devices (TCON etc.) are labeled by
+        the catalog and must NOT be diagnosed as ACE2 sockets."""
+        from cd3217_analyzer.models import (get_model,
+                                            merge_diagnose_targets)
+        m = get_model("A2141")
+        # 0x20 = TCON (in the A2141 bus_devices catalog)
+        targets = merge_diagnose_targets(m, [0x38, 0x20])
+        self.assertNotIn(0x20, targets)
+        self.assertIn(0x38, targets)
 
     def test_model_board_ids_match_boards_py(self):
         """v0.10.5 regression guard: every models.py board_id must appear
