@@ -37,6 +37,7 @@ from cd3217_analyzer.analyzer import (
     DiagnosticReport,
     FaultType,
     HealthStatus,
+    PowerPortResult,
 )
 from cd3217_analyzer.flash import FlashInfo, SPIFlash
 from cd3217_analyzer.models import get_model, list_models
@@ -855,6 +856,7 @@ class Application(ctk.CTk):
         self.tab_straps = self.tabs.add("Straps")
         self.tab_otp = self.tabs.add("OTP")
         self.tab_flash = self.tabs.add("Flash")
+        self.tab_power = self.tabs.add("Power Test")
         self.tab_uart = self.tabs.add("UART")
         self.tab_log = self.tabs.add("Log")
 
@@ -867,6 +869,7 @@ class Application(ctk.CTk):
         self._build_otp_tab()
         self._build_flash_tab()
         self._build_uart_tab()
+        self._build_power_tab()
         self._build_log_tab()
 
     # ─── Adapter tab (your Pico/ESP32 analyzer board) ────────────────────
@@ -1788,6 +1791,202 @@ class Application(ctk.CTk):
         with open(path, "w", encoding="utf-8", errors="replace") as f:
             f.write(content)
         self.log(f"UART log saved: {path}", "ok")
+
+    def _build_power_tab(self):
+        """Power Port Test — the owner's bench scenario matrix.
+
+        Meter on one port at a time (source) -> that port's ACE2 (sink)
+        negotiates. 20V = healthy; 5V = stuck (check the offers); no
+        contract with I2C alive = internal fault (replace the chip).
+        The connected port is auto-detected as MASTER (manual override
+        available).
+        """
+        tab = self.tab_power
+        head = ctk.CTkFrame(tab, fg_color="transparent")
+        head.pack(fill="x", padx=12, pady=(12, 4))
+        ctk.CTkLabel(head, text="Power Port Test", font=F["heading"],
+                     text_color=C["accent"]).pack(side="left")
+        ctk.CTkButton(head, text="Test All Ports", width=110,
+                      fg_color=C["btn"], hover_color=C["btn_hover"],
+                      command=self._power_test_all).pack(side="right", padx=4)
+        ctk.CTkButton(head, text="Clear", width=70,
+                      fg_color=C["btn"], hover_color=C["btn_hover"],
+                      command=self._power_test_clear).pack(side="right")
+        ctk.CTkLabel(tab, font=F["small"], text_color=C["dim"],
+                     text="Bench procedure: power source → meter → the "
+                          "port under test. The connected port is the "
+                          "MASTER (auto-detected; click ★ to override). "
+                          "20V = healthy · 5V = stuck (check the offers) "
+                          "· 0V with I²C alive = internal fault."
+                     ).pack(fill="x", padx=12, pady=(0, 6))
+        self.power_table = ctk.CTkScrollableFrame(tab, fg_color=C["entry"])
+        self.power_table.pack(fill="both", expand=True, padx=12, pady=(0, 10))
+        self.power_summary = ctk.CTkLabel(tab, font=F["body"],
+                                          text_color=C["text"],
+                                          text="Select a model and test "
+                                               "the ports one by one.")
+        self.power_summary.pack(fill="x", padx=12, pady=(0, 10))
+        self.power_test_results: Dict[int, "PowerPortResult"] = {}
+        self.power_master_manual: Optional[int] = None
+        self._power_refresh_table()
+
+    def _power_master(self) -> Optional[int]:
+        """The MASTER port: manual override, else auto-detected (the
+        chip with an active contract)."""
+        if self.power_master_manual is not None:
+            return self.power_master_manual
+        for addr, r in self.power_test_results.items():
+            if r.contract_mv > 0:
+                return addr
+        return None
+
+    def _power_test_clear(self):
+        self.power_test_results = {}
+        self.power_master_manual = None
+        self._power_refresh_table()
+        self.power_summary.configure(text="Cleared.")
+
+    def _power_test_all(self):
+        if not self._check_conn():
+            return
+        if not self.current_model:
+            self.log("Select a MacBook model first (Board tab).", "warn")
+            return
+        self._set_busy(True, "Power port test...")
+        addrs = [p.address for p in self.current_model.positions]
+
+        def work():
+            analyzer = CD3217Analyzer(self.adapter)
+            for addr in addrs:
+                if self._cancelled():
+                    break
+                try:
+                    r = analyzer.power_port_test(addr)
+                except Exception as e:
+                    self._ui(self.log,
+                             f"Power test {format_hex_addr(addr)}: {e}",
+                             "err")
+                    continue
+                self.power_test_results[addr] = r
+                self._ui(self._power_refresh_table)
+            self._ui(self._power_refresh_summary)
+
+        self._run_bg(work, "Power test complete")
+
+    def _power_test_one(self, addr: int):
+        if not self._check_conn() or self.busy:
+            return
+        self._set_busy(True, f"Power test {format_hex_addr(addr)}...")
+
+        def work():
+            analyzer = CD3217Analyzer(self.adapter)
+            try:
+                r = analyzer.power_port_test(addr)
+            except Exception as e:
+                self._ui(self.log,
+                         f"Power test {format_hex_addr(addr)}: {e}", "err")
+                return
+            self.power_test_results[addr] = r
+            self._ui(self._power_refresh_table)
+            self._ui(self._power_refresh_summary)
+
+        self._run_bg(work, "Power test complete")
+
+    def _power_refresh_table(self):
+        for w in self.power_table.winfo_children():
+            w.destroy()
+        if not self.current_model:
+            ctk.CTkLabel(self.power_table, text="Select a model first.",
+                         font=F["body"], text_color=C["dim"]).pack(
+                anchor="w", padx=8, pady=8)
+            return
+        master = self._power_master()
+        header = ctk.CTkFrame(self.power_table, fg_color="transparent")
+        header.pack(fill="x", padx=6, pady=(4, 0))
+        for col, wdt in (("Port", 90), ("Addr", 60), ("Role", 60),
+                         ("Contract", 150), ("Verdict", 120),
+                         ("Master", 60), ("Direction", 300), ("", 70)):
+            ctk.CTkLabel(header, text=col, font=F["small"],
+                         text_color=C["dim"], width=wdt,
+                         anchor="w").pack(side="left")
+        for p in self.current_model.positions:
+            r = self.power_test_results.get(p.address)
+            row = ctk.CTkFrame(self.power_table, fg_color=C["card"],
+                               corner_radius=4)
+            row.pack(fill="x", pady=2, padx=6)
+            is_master = master == p.address
+            ctk.CTkLabel(row, text=p.ref, font=F["mono_small"],
+                         width=90, anchor="w").pack(side="left", padx=4)
+            ctk.CTkLabel(row, text=format_hex_addr(p.address),
+                         font=F["mono_small"], text_color=C["accent"],
+                         width=60, anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=(r.role if r else "—"),
+                         font=F["mono_small"], width=60,
+                         anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=(r.contract if r else "—"),
+                         font=F["mono_small"], width=150,
+                         anchor="w").pack(side="left")
+            vtxt = (f"{r.verdict}" if r else "not tested")
+            vcol = (C["green"] if r and r.verdict == "healthy"
+                    else C["red"] if r and r.verdict == "no-negotiation"
+                    else C["yellow"])
+            ctk.CTkLabel(row, text=vtxt, font=F["mono_small"],
+                         text_color=vcol, width=120,
+                         anchor="w").pack(side="left")
+            badge = "★ MASTER" if is_master else ""
+            ctk.CTkLabel(row, text=badge, font=F["small"],
+                         text_color=C["yellow"], width=60,
+                         anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=(r.direction[:44] + "…" if r and
+                                    len(r.direction) > 44
+                                    else (r.direction if r else "")),
+                         font=F["small"], text_color=C["dim"],
+                         width=300, anchor="w").pack(side="left")
+            ctk.CTkButton(row, text="Test", width=60, height=24,
+                          fg_color=C["btn"], hover_color=C["btn_hover"],
+                          command=lambda a=p.address: self._power_test_one(a)
+                          ).pack(side="left", padx=4)
+            ctk.CTkButton(row, text="★", width=30, height=24,
+                          fg_color=C["yellow"] if is_master else C["btn"],
+                          hover_color=C["btn_hover"],
+                          command=lambda a=p.address:
+                          self._power_set_master(a)).pack(side="left")
+
+    def _power_set_master(self, addr: int):
+        """Manual MASTER override (auto-detection can miss)."""
+        self.power_master_manual = addr
+        self._power_refresh_table()
+        self.log(f"Master set manually: {format_hex_addr(addr)}", "info")
+
+    def _power_refresh_summary(self):
+        if not self.power_test_results:
+            return
+        tested = list(self.power_test_results.values())
+        healthy = sum(1 for r in tested if r.verdict == "healthy")
+        stuck = sum(1 for r in tested if r.verdict == "stuck-5V")
+        dead = [r for r in tested if r.verdict == "no-negotiation"]
+        total = len(self.current_model.positions) if self.current_model else len(tested)
+        if healthy == total and total:
+            self.power_summary.configure(
+                text=f"✓ ALL {total} PORTS 20V — the power/charging side "
+                     "is fully functional.", text_color=C["green"])
+        elif tested and stuck == len(tested):
+            self.power_summary.configure(
+                text=f"⚠ ALL {len(tested)} TESTED PORT(S) STUCK AT 5V — "
+                     "common cause on the power/charging side (check the "
+                     "offers per port).", text_color=C["yellow"])
+        elif dead:
+            names = ", ".join(format_hex_addr(r.address) for r in dead)
+            self.power_summary.configure(
+                text=f"✗ INTERNAL FAULT: {names} — I²C alive but no "
+                     "negotiation → replace the chip (swap test).",
+                text_color=C["red"])
+        else:
+            self.power_summary.configure(
+                text=f"Tested {len(tested)}/{total}: "
+                     f"{healthy} × 20V ✓, {stuck} × 5V ⚠, "
+                     f"{len(dead)} × no-negotiation ✗.",
+                text_color=C["text"])
 
     def _build_log_tab(self):
         tab = self.tab_log

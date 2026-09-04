@@ -428,6 +428,92 @@ class TestAnalyzer(unittest.TestCase):
         self.assertTrue(self.analyzer._register_suspicious(0x03, bad))
 
 
+class TestPowerPortRules(unittest.TestCase):
+    """v0.12.0: the owner's bench scenario matrix as codified rules."""
+
+    def _mk(self, data):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        mock = MagicMock()
+        mock.ping.return_value = True
+        mock.read_bytes.side_effect = lambda a, r, l: \
+            data.get(r, bytes([0x00] * l))[:l]   # unmapped live regs = 0
+        return CD3217Analyzer(mock, addresses=[0x38])
+
+    @staticmethod
+    def _rb(contract_rdo=None, offers=None,
+            mode=b"\x04AP ", role=0x1):
+        data = {
+            0x00: bytes([0x04, 0x28, 0x00, 0x00]),
+            0x01: bytes([0x04, 0x17, 0x32, 0xCD]),
+            0x03: mode,
+            0x04: bytes([0x04, 0x49, 0x32, 0x43]),
+            0x2F: (b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P"
+                   + b"\x00" * 4),
+            0x3F: bytes([role, 0x00]),
+        }
+        if contract_rdo is not None:
+            data[0x36] = contract_rdo.to_bytes(4, "little")
+        if offers is not None:
+            data[0x30] = offers
+        return data
+
+    def test_scenario1_healthy_20v(self):
+        rdo = (5 << 28) | (200 << 10) | 225            # 20V/2.25A PDO #5
+        offers = ((3 << 12).to_bytes(2, "little")
+                  + b"".join(p.to_bytes(4, "little") for p in
+                             ((50 << 10) | 300, (200 << 10) | 225)))
+        r = self._mk(self._rb(rdo, offers)).power_port_test(0x38)
+        self.assertEqual(r.verdict, "healthy")
+        self.assertTrue(r.offers_20v)
+        self.assertIn("20V-class", r.direction)
+
+    def test_scenario2_stuck_5v_supply_offers_20v(self):
+        rdo = (1 << 28) | (50 << 10) | 300             # 5V/3A PDO #1
+        offers = ((3 << 12).to_bytes(2, "little")
+                  + b"".join(p.to_bytes(4, "little") for p in
+                             ((50 << 10) | 300, (200 << 10) | 225)))
+        r = self._mk(self._rb(rdo, offers)).power_port_test(0x38)
+        self.assertEqual(r.verdict, "stuck-5V")
+        self.assertIn("request path", r.direction)
+
+    def test_scenario2b_stuck_5v_supply_offers_only_5v(self):
+        rdo = (1 << 28) | (50 << 10) | 300
+        offers = ((1 << 12).to_bytes(2, "little")
+                  + (50 << 10 | 300).to_bytes(4, "little"))
+        r = self._mk(self._rb(rdo, offers)).power_port_test(0x38)
+        self.assertEqual(r.verdict, "stuck-5V")
+        self.assertIn("source/cable", r.direction)
+
+    def test_scenario3_no_negotiation_i2c_alive(self):
+        r = self._mk(self._rb(None)).power_port_test(0x38)
+        self.assertEqual(r.verdict, "no-negotiation")
+        self.assertTrue(r.responds)
+        self.assertIn("internal", r.direction)
+
+    def test_chip_dead(self):
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        mock = MagicMock()
+        mock.ping.return_value = False
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        r = an.power_port_test(0x38)
+        self.assertEqual(r.verdict, "chip-not-responding")
+        self.assertFalse(r.responds)
+
+    def test_boot_mode(self):
+        r = self._mk(self._rb(None, mode=b"\x04BOO")).power_port_test(0x38)
+        self.assertEqual(r.verdict, "boot-mode")
+
+    def test_role_source_when_bit0_clear(self):
+        r = self._mk(self._rb((5 << 28) | (200 << 10) | 225,
+                              role=0x0)).power_port_test(0x38)
+        self.assertEqual(r.role, "SOURCE")
+
+    def test_role_sink_when_bit0_set(self):
+        r = self._mk(self._rb((1 << 28) | (50 << 10) | 300,
+                              role=0x1)).power_port_test(0x38)
+        self.assertEqual(r.role, "SINK")
+
+
 class TestGoldenPathLock(unittest.TestCase):
     """THE REGRESSION LOCK — pins the behavior that produced the 100%
     clean A2485 sessions (0.0% NACK, zero-warning exports).

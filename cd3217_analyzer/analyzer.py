@@ -108,6 +108,27 @@ class DeviceResult:
 
 
 @dataclass
+class PowerPortResult:
+    """One bench power-port test (the owner's scenario matrix).
+
+    The meter is the SOURCE, the board port is the SINK: the ACE2
+    negotiates with the meter and the verdict follows the owner's
+    scenarios — 20V healthy, stuck at 5V (check the offers), or no
+    negotiation (internal fault when I2C-alive).
+    """
+    address: int
+    responds: bool = False
+    mode: str = ""
+    role: str = ""                 # SINK / SOURCE (register 0x3F)
+    contract: str = ""             # decoded active RDO (register 0x36)
+    contract_mv: int = 0
+    offers: List[str] = field(default_factory=list)
+    offers_20v: bool = False
+    verdict: str = ""
+    direction: str = ""
+
+
+@dataclass
 class DiagnosticReport:
     """Full diagnostic report for a scan session."""
     timestamp: str = ""
@@ -293,7 +314,7 @@ class CD3217Analyzer:
             elif offset == 0x35:
                 decoded = decode_pdo(raw_int)
             elif offset == 0x30:
-                decoded = " | ".join(decode_source_caps(raw_bytes)) \
+                decoded = " | ".join(decode_source_caps(raw)) \
                     or "no source capabilities"
             elif offset == 0x3F:
                 decoded = decode_power_status(raw_int)
@@ -1085,6 +1106,72 @@ class CD3217Analyzer:
                 print(f"  0x{addr:02X}{marker}")
 
         print("=" * 70)
+
+    def power_port_test(self, address: int) -> PowerPortResult:
+        """Bench power-port test per the owner's scenario matrix.
+
+        The power meter (source) is attached to THIS port; the ACE2
+        (sink) negotiates with it. Healthy = 20V contract; stuck at 5V
+        = check the supply offers (0x30); no contract with I2C alive =
+        internal fault (replace the chip — the swap test, findings
+        §3.12).
+        """
+        res = PowerPortResult(address=address)
+
+        if not self._ping_with_retry(address):
+            res.verdict = "chip-not-responding"
+            res.direction = ("no I2C answer — check probe contact and "
+                             "power. If the board is powered from another "
+                             "port and this chip still does not answer, "
+                             "the chip is dead.")
+            return res
+        res.responds = True
+
+        mode = self._read_register_clean(address, 0x03, 4)
+        res.mode = (mode.decoded or "").strip() if mode else ""
+
+        ps = self._read_register_clean(address, 0x3F, 2)
+        if ps is not None:
+            res.role = "SINK" if (ps.raw_value & 0x1) else "SOURCE"
+
+        rdo = self._read_register_clean(address, 0x36, 4)
+        if rdo is not None:
+            res.contract = decode_rdo(rdo.raw_value)
+            res.contract_mv = ((rdo.raw_value >> 10) & 0x3FF) * 100
+
+        caps = self._read_register_clean(address, 0x30, 28)
+        if caps is not None and caps.raw_bytes:
+            res.offers = decode_source_caps(caps.raw_bytes)
+        res.offers_20v = any("20.0V" in o for o in res.offers)
+
+        if "BOOT" in res.mode.upper():
+            res.verdict = "boot-mode"
+            res.direction = ("the chip did not load its firmware — check "
+                             "the SPI ROM and the patch path")
+        elif res.contract_mv == 0:
+            res.verdict = "no-negotiation"
+            res.direction = ("0V with the meter attached. If the board is "
+                             "powered from another port and this chip "
+                             "answers I2C, the chip has an internal "
+                             "fault — replace it (swap test, findings "
+                             "§3.12).")
+        elif res.contract_mv >= 15000:
+            res.verdict = "healthy"
+            res.direction = f"{res.contract} — 20V-class contract OK"
+        elif 4500 <= res.contract_mv <= 5500:
+            res.verdict = "stuck-5V"
+            if res.offers_20v:
+                res.direction = ("the supply OFFERS 20V but the chip "
+                                 "stays at 5V — the chip's request path "
+                                 "(sink policy / config) is the suspect")
+            else:
+                res.direction = ("the source only offers 5V — check the "
+                                 "source/cable before blaming the board")
+        else:
+            res.verdict = "partial-contract"
+            res.direction = (f"negotiation stopped at {res.contract} — "
+                             "check the source caps and the request path")
+        return res
 
     def bus_health_summary(self) -> str:
         """Human-readable bus-integrity line for the current session.
