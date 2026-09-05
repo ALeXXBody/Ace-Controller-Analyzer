@@ -1,0 +1,716 @@
+{
+  "format": "cd3217-analyzer/board-export",
+  "format_version": 1,
+  "name": "A2141",
+  "generated_utc": "2026-09-05T00:14:00Z",
+  "app_version": "0.12.7",
+  "adapter_type": "UsbBridgeAdapter",
+  "mac_model": "A2141",
+  "sources": [
+    "info",
+    "otp",
+    "registers",
+    "report"
+  ],
+  "data": {
+    "info": {
+      "board": "rp2040-zero",
+      "sda": 4,
+      "scl": 5,
+      "spi_sck": 14,
+      "spi_miso": 12,
+      "spi_mosi": 15,
+      "spi_cs": 13,
+      "hw": 1,
+      "uart_rx": 1,
+      "version": "0.11.11"
+    },
+    "register_dump": {
+      "0x38": {
+        "0x00": {
+          "name": "VID",
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "041732cd",
+          "value": "0xCD321704",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "APP"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "I2C"
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "404344333231372020204857303032322046573030322e3130302e3030205a414345322d4a31353246582020202020",
+          "value": "0x202020202058463235314A2D324543415A2030302E3030312E32303057462032323030574820202037313233444340",
+          "decoded": ""
+        },
+        "0x26": {
+          "name": "PowerPath",
+          "raw": "00000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x35": {
+          "name": "ActiveRDO",
+          "raw": "0a000000",
+          "value": "0xA",
+          "decoded": "Fixed 0.0V/0.10A"
+        },
+        "0x36": {
+          "name": "SinkRequestRDO",
+          "raw": "04000000",
+          "value": "0x4",
+          "decoded": "no contract"
+        },
+        "0x3F": {
+          "name": "PowerStatus",
+          "raw": "0a00",
+          "value": "0xA",
+          "decoded": "SOURCE \u2014 this port is providing power (externally powered)"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "04000021",
+          "value": "0x21000004",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "0000000000000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PortControl",
+          "raw": "3fa80500",
+          "value": "0x5A83F",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "120100021738182a009366c2",
+          "value": "0xC26693002A18381702000112",
+          "decoded": ""
+        }
+      },
+      "0x3B": {
+        "0x00": {
+          "name": "VID",
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "041732cd",
+          "value": "0xCD321704",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "APP"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "I2C"
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "4043443332313720ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF2037313233444340",
+          "decoded": ""
+        },
+        "0x26": {
+          "name": "PowerPath",
+          "raw": "00000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x35": {
+          "name": "ActiveRDO",
+          "raw": "0a0000ff",
+          "value": "0xFF00000A",
+          "decoded": "APDO (PPS)"
+        },
+        "0x36": {
+          "name": "SinkRequestRDO",
+          "raw": "04ffffff",
+          "value": "0xFFFFFF04",
+          "decoded": "102.3V/7.72A (PDO #7)"
+        },
+        "0x3F": {
+          "name": "PowerStatus",
+          "raw": "0a00",
+          "value": "0xA",
+          "decoded": "SOURCE \u2014 this port is providing power (externally powered)"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "04ffffff",
+          "value": "0xFFFFFF04",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "00000000ffffffff",
+          "value": "0xFFFFFFFF00000000",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "0b0100000000ffffffffff",
+          "value": "0xFFFFFFFFFF00000000010B",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "0b00000000ffffffffffff",
+          "value": "0xFFFFFFFFFFFF000000000B",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PortControl",
+          "raw": "3f280100",
+          "value": "0x1283F",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "128107001720ffffffffffff",
+          "value": "0xFFFFFFFFFFFF201700078112",
+          "decoded": ""
+        }
+      },
+      "0x3C": {
+        "0x00": {
+          "name": "VID",
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "041732cd",
+          "value": "0xCD321704",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "APP"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "I2C"
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "4043443332313720ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "value": "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF2037313233444340",
+          "decoded": ""
+        },
+        "0x26": {
+          "name": "PowerPath",
+          "raw": "00000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x35": {
+          "name": "ActiveRDO",
+          "raw": "0ad65987",
+          "value": "0x8759D60A",
+          "decoded": "Variable"
+        },
+        "0x36": {
+          "name": "SinkRequestRDO",
+          "raw": "04ffffff",
+          "value": "0xFFFFFF04",
+          "decoded": "102.3V/7.72A (PDO #7)"
+        },
+        "0x3F": {
+          "name": "PowerStatus",
+          "raw": "0aff",
+          "value": "0xFF0A",
+          "decoded": "SOURCE \u2014 this port is providing power (externally powered)"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "0400ffff",
+          "value": "0xFFFF0004",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "00000000ffffffff",
+          "value": "0xFFFFFFFF00000000",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "0b0104000000ffffffffff",
+          "value": "0xFFFFFFFFFF00000004010B",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "0b0000000000ffffffffff",
+          "value": "0xFFFFFFFFFF00000000000B",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PortControl",
+          "raw": "3f280100",
+          "value": "0x1283F",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "1221000217271cffffffffff",
+          "value": "0xFFFFFFFFFF1C271702002112",
+          "decoded": ""
+        }
+      },
+      "0x3F": {
+        "0x00": {
+          "name": "VID",
+          "raw": "04280000",
+          "value": "0x2804",
+          "decoded": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))"
+        },
+        "0x01": {
+          "name": "DID",
+          "raw": "041732cd",
+          "value": "0xCD321704",
+          "decoded": ""
+        },
+        "0x03": {
+          "name": "Mode",
+          "raw": "04415050",
+          "value": "0x50504104",
+          "decoded": "APP"
+        },
+        "0x04": {
+          "name": "Type",
+          "raw": "04493243",
+          "value": "0x43324904",
+          "decoded": "I2C"
+        },
+        "0x2F": {
+          "name": "DeviceInfo",
+          "raw": "404344333231372020204857303032322046573030322e3130302e3030205a414345322d4a31353246582020202020",
+          "value": "0x202020202058463235314A2D324543415A2030302E3030312E32303057462032323030574820202037313233444340",
+          "decoded": ""
+        },
+        "0x26": {
+          "name": "PowerPath",
+          "raw": "00000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x35": {
+          "name": "ActiveRDO",
+          "raw": "0a000000",
+          "value": "0xA",
+          "decoded": "Fixed 0.0V/0.10A"
+        },
+        "0x36": {
+          "name": "SinkRequestRDO",
+          "raw": "04000000",
+          "value": "0x4",
+          "decoded": "no contract"
+        },
+        "0x3F": {
+          "name": "PowerStatus",
+          "raw": "0a00",
+          "value": "0xA",
+          "decoded": "SOURCE \u2014 this port is providing power (externally powered)"
+        },
+        "0x0F": {
+          "name": "Version",
+          "raw": "04000021",
+          "value": "0x21000004",
+          "decoded": ""
+        },
+        "0x06": {
+          "name": "CustomerUse",
+          "raw": "0000000000000000",
+          "value": "0x0",
+          "decoded": ""
+        },
+        "0x14": {
+          "name": "IntEvent1",
+          "raw": "0b01000000000000000000",
+          "value": "0x10B",
+          "decoded": ""
+        },
+        "0x15": {
+          "name": "IntEvent2",
+          "raw": "0b00000000000000000000",
+          "value": "0xB",
+          "decoded": ""
+        },
+        "0x29": {
+          "name": "PortControl",
+          "raw": "3fa80100",
+          "value": "0x1A83F",
+          "decoded": ""
+        },
+        "0x2D": {
+          "name": "BootFlags",
+          "raw": "12810700173f1f2a009366c2",
+          "value": "0xC26693002A1F3F1700078112",
+          "decoded": ""
+        }
+      }
+    },
+    "otp_dump": {
+      "0x38": {
+        "address": 56,
+        "registers": {
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b010000",
+          "0x18": "09010000",
+          "0x1C": "09ffffff",
+          "0x20": "01060000",
+          "0x24": "09000000",
+          "0x28": "4003453b",
+          "0x2C": "02000e00",
+          "0x30": "1d000000",
+          "0x34": "00000000",
+          "0x38": "0a000000",
+          "0x3C": "24ac0500",
+          "0x40": "05000000",
+          "0x44": "10000000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "06000000",
+          "0x54": "00000000",
+          "0x58": "25000000",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "40000000",
+          "0x68": "2c042804",
+          "0x6C": "40000000",
+          "0x70": "00000000",
+          "0x74": "00000000",
+          "0x78": "00000000",
+          "0x7C": "05000000"
+        },
+        "read_errors": []
+      },
+      "0x3B": {
+        "address": 59,
+        "registers": {
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b010000",
+          "0x18": "09010000",
+          "0x1C": "09ffffff",
+          "0x20": "010600ff",
+          "0x24": "00ffffff",
+          "0x28": "400345ff",
+          "0x2C": "0200ffff",
+          "0x30": "1d00ffff",
+          "0x34": "00000000",
+          "0x38": "0a000000",
+          "0x3C": "24acffff",
+          "0x40": "05000000",
+          "0x44": "10000000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "0800ffff",
+          "0x54": "00ffffff",
+          "0x58": "2500ffff",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "4000ffff",
+          "0x68": "2c04ffff",
+          "0x6C": "4000ffff",
+          "0x70": "00ffffff",
+          "0x74": "0000ffff",
+          "0x78": "00ffffff",
+          "0x7C": "0500ffff"
+        },
+        "read_errors": []
+      },
+      "0x3C": {
+        "address": 60,
+        "registers": {
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "040000ff",
+          "0x0C": "0000ffff",
+          "0x10": "0400ffff",
+          "0x14": "0b0104ff",
+          "0x18": "0901ffff",
+          "0x1C": "09ffffff",
+          "0x20": "0106ffff",
+          "0x24": "0000ffff",
+          "0x28": "40ffffff",
+          "0x2C": "0200ffff",
+          "0x30": "1d06ffff",
+          "0x34": "00ffffff",
+          "0x38": "0a00ffff",
+          "0x3C": "24acffff",
+          "0x40": "050100ff",
+          "0x44": "10ffffff",
+          "0x48": "1943872e",
+          "0x4C": "4000ffff",
+          "0x50": "0800ffff",
+          "0x54": "00ffffff",
+          "0x58": "2500ffff",
+          "0x5C": "0000ffff",
+          "0x60": "4000ffff",
+          "0x64": "4000ffff",
+          "0x68": "2c14ffff",
+          "0x6C": "4000ffff",
+          "0x70": "00ffffff",
+          "0x74": "0000ffff",
+          "0x78": "00ffffff",
+          "0x7C": "05000000"
+        },
+        "read_errors": []
+      },
+      "0x3F": {
+        "address": 63,
+        "registers": {
+          "0x00": "04280000",
+          "0x04": "04493243",
+          "0x08": "04000000",
+          "0x0C": "00000000",
+          "0x10": "04000000",
+          "0x14": "0b010000",
+          "0x18": "09010000",
+          "0x1C": "09ffffff",
+          "0x20": "01060000",
+          "0x24": "09000000",
+          "0x28": "4003453b",
+          "0x2C": "02000e00",
+          "0x30": "1d000000",
+          "0x34": "00000000",
+          "0x38": "0a000000",
+          "0x3C": "24ac0500",
+          "0x40": "05000000",
+          "0x44": "10000000",
+          "0x48": "19000000",
+          "0x4C": "40000000",
+          "0x50": "06000000",
+          "0x54": "00000000",
+          "0x58": "25000000",
+          "0x5C": "00000000",
+          "0x60": "40000000",
+          "0x64": "40000000",
+          "0x68": "2c042804",
+          "0x6C": "40000000",
+          "0x70": "00000000",
+          "0x74": "00000000",
+          "0x78": "00000000",
+          "0x7C": "05000000"
+        },
+        "read_errors": []
+      }
+    },
+    "report": {
+      "timestamp": "2026-09-05T01:14:58.756773",
+      "adapter_type": "UsbBridgeAdapter",
+      "bus_scan_results": [
+        "0x38",
+        "0x3B",
+        "0x3C",
+        "0x3F"
+      ],
+      "devices": [
+        {
+          "address": "0x38",
+          "responds": true,
+          "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
+          "device_id": "0xCD321704",
+          "mode": "APP",
+          "device_type": "I2C",
+          "health": "PASS",
+          "health_score": 100,
+          "faults": [],
+          "fault_details": [
+            "U3100: Apple factory chip (VID 0x2804) in a strap-addressed socket \u2014 the normal configuration on original boards (the chip answers at the socket's strap address)"
+          ],
+          "notes": ""
+        },
+        {
+          "address": "0x3F",
+          "responds": true,
+          "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
+          "device_id": "0xCD321704",
+          "mode": "APP",
+          "device_type": "I2C",
+          "health": "PASS",
+          "health_score": 100,
+          "faults": [],
+          "fault_details": [
+            "U3200: Apple factory chip (VID 0x2804) in a strap-addressed socket \u2014 the normal configuration on original boards (the chip answers at the socket's strap address)"
+          ],
+          "notes": ""
+        },
+        {
+          "address": "0x3B",
+          "responds": true,
+          "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
+          "device_id": "0xCD321704",
+          "mode": "APP",
+          "device_type": "I2C",
+          "health": "PASS",
+          "health_score": 100,
+          "faults": [],
+          "fault_details": [
+            "UB300: Apple factory chip (VID 0x2804) as expected for this OTP-addressed socket"
+          ],
+          "notes": ""
+        },
+        {
+          "address": "0x3C",
+          "responds": true,
+          "vendor_id": "0x2804 (Apple (ACE2 CD3217/CD3218 custom))",
+          "device_id": "0xCD321704",
+          "mode": "APP",
+          "device_type": "I2C",
+          "health": "PASS",
+          "health_score": 100,
+          "faults": [],
+          "fault_details": [
+            "UB400: Apple factory chip (VID 0x2804) as expected for this OTP-addressed socket"
+          ],
+          "notes": ""
+        }
+      ],
+      "summary": "Scan Time: 2026-09-05T01:14:58.756773\nAdapter: UsbBridgeAdapter\nI2C Devices Found: 4\nACE2 Devices Found: 4\n\n--- Device at 0x38 ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3B ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n\n--- Device at 0x3C ---\n  Health: PASS (score: 90/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2\n  DETAILS:\n    - Unexpected device type: I2\n\n--- Device at 0x3F ---\n  Health: PASS (score: 100/100)\n  Responds: Yes\n  VID: 0x2804 (Apple (ACE2 CD3217/CD3218 custom))\n  DID: 0xCD321704\n  Mode: APP\n  Type: I2C\n",
+      "notes": ""
+    }
+  },
+  "verification": {
+    "register_dump": {
+      "0x38": {
+        "status": "ok",
+        "rechecks": 0
+      },
+      "0x3B": {
+        "status": "degraded",
+        "rechecks": 2
+      },
+      "0x3C": {
+        "status": "degraded",
+        "rechecks": 2
+      },
+      "0x3F": {
+        "status": "ok",
+        "rechecks": 0
+      }
+    },
+    "otp_dump": {
+      "0x38": {
+        "status": "ok",
+        "rechecks": 0
+      },
+      "0x3B": {
+        "status": "ok",
+        "rechecks": 0
+      },
+      "0x3C": {
+        "status": "ok",
+        "rechecks": 0
+      },
+      "0x3F": {
+        "status": "ok",
+        "rechecks": 0
+      }
+    }
+  },
+  "errors": [],
+  "golden": {
+    "0x38": {
+      "vid": "0x2804",
+      "did": "0xCD321704",
+      "silicon_did": "CD3217",
+      "identity_string": "@CD3217   HW0022 FW002.100.00 ZACE2-J152FX",
+      "hw_version": "22",
+      "fw_version": "002.100.00",
+      "fw_variant": "ZACE2-J152FX",
+      "otp_filled": 32,
+      "otp_read_errors": 0,
+      "otp_sha256": "1e2f672d73589b8f"
+    },
+    "0x3B": {
+      "vid": "0x2804",
+      "did": "0xCD321704",
+      "silicon_did": "CD3217",
+      "identity_string": "@CD3217",
+      "hw_version": "",
+      "fw_version": "",
+      "fw_variant": "",
+      "otp_filled": 32,
+      "otp_read_errors": 0,
+      "otp_sha256": "cb35c80acf6bd782"
+    },
+    "0x3C": {
+      "vid": "0x2804",
+      "did": "0xCD321704",
+      "silicon_did": "CD3217",
+      "identity_string": "@CD3217",
+      "hw_version": "",
+      "fw_version": "",
+      "fw_variant": "",
+      "otp_filled": 32,
+      "otp_read_errors": 0,
+      "otp_sha256": "1ac8f304885060ae"
+    },
+    "0x3F": {
+      "vid": "0x2804",
+      "did": "0xCD321704",
+      "silicon_did": "CD3217",
+      "identity_string": "@CD3217   HW0022 FW002.100.00 ZACE2-J152FX",
+      "hw_version": "22",
+      "fw_version": "002.100.00",
+      "fw_variant": "ZACE2-J152FX",
+      "otp_filled": 32,
+      "otp_read_errors": 0,
+      "otp_sha256": "1e2f672d73589b8f"
+    }
+  }
+}
