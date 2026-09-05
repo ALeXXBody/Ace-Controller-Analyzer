@@ -154,6 +154,50 @@ class TestValidateBundle(unittest.TestCase):
             bundle["data"]["register_dump"]["0x3C"]["0x00"]["raw"],
             "04280000")
 
+    def test_cross_check_ignores_live_register_mismatch(self):
+        """A2141 field case (v0.12.6): 0x14 is a LIVE_REGS telemetry
+        register; the register dump and the OTP scan read it at different
+        moments, so a changed value (0b010000 vs 00000000) is EXPECTED,
+        not wire corruption. It must not produce a cross-check warning.
+        Static registers (VID 0x00, Type 0x04) must still be compared."""
+        regs = _mk_regs()
+        regs["0x14"] = {"name": "0x14", "raw": "10000000",
+                        "value": "0x0", "decoded": ""}
+        otp = {"0x00": "04280000", "0x04": "20493243",
+               "0x14": "00000000"}
+        b = self._bundle(
+            sources=["registers", "otp"],
+            data={
+                "register_dump": {"0x38": regs},
+                "otp_dump": {"0x38": {"address": 0x38,
+                                      "registers": otp,
+                                      "read_errors": []}},
+            })
+        path = self._write(b)
+        res = validate_bundle(path)
+        self.assertTrue(res["valid"], res)
+        warns = [c["name"] for c in res["checks"] if c["level"] == "warn"]
+        self.assertNotIn("cross-check 0x38 @ 0x14", warns)
+        self.assertIn("cross-check 0x38", [c["name"] for c in res["checks"]])
+
+    def test_cross_check_flags_static_register_mismatch(self):
+        """VID / Type are IDENTITY_REGS; a disagreement between the two
+        datasets there is still real corruption and must warn."""
+        otp = {"0x00": "04280000", "0x04": "deadbeef"}
+        b = self._bundle(
+            sources=["registers", "otp"],
+            data={
+                "register_dump": {"0x38": _mk_regs()},
+                "otp_dump": {"0x38": {"address": 0x38,
+                                      "registers": otp,
+                                      "read_errors": []}},
+            })
+        path = self._write(b)
+        res = validate_bundle(path)
+        self.assertTrue(any(c["name"] == "cross-check 0x38 @ 0x04"
+                            and c["level"] == "warn"
+                            for c in res["checks"]))
+
     def test_low_otp_fill_flagged(self):
         otp = {f"0x{o:02X}": "aa" for o in range(0, 20)}
         b = self._bundle(sources=["registers", "otp"],

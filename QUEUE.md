@@ -103,6 +103,34 @@ Run Bus Check on the OLD shield (capture blip counts) and on the NEW
 shield — the contrast proves the AMS1117 fix (findings §3.8). Ledger
 §3.8 field-confirmation pending.
 
+### 12. [IN-PROGRESS] A2141 UB090 W25Q80 ROM dumps — repair vs donor vs archive
+> "Here you have 3 rom's: https://mega.nz/folder/LPYTDYBI#AE5DAmf9g_fKeuFYfGUk8A
+> the one ending with "repair" is the one from the board that i need to
+> repair, the one ending with "donor" is the one from donor board
+> (UB300 -20v) and the 3rd one is just a dump I had in the computer"
+
+Dumps stored at samples/roms_a2141/. Initial analysis:
+  - All three populated (15–19% FF), none blank/garbage.
+  - repair ≈ archive (pc): byte-identical 0x0000–0x082000; pc is the
+    same-variant golden candidate for the repair board.
+  - donor (-20v) diverges from pc from 0x007000 on — different sub-variant
+    firmware, NOT a same-model golden for the repair board.
+  - repair's own divergent regions (0x085000–0x0a2000 ~92% differ and
+    0x0e9000–0x0fb000 ~97% differ against BOTH donor and pc) = per-device
+    data, not a copy of either → repair chip content is NOT provably corrupt.
+  - UPDATED (owner field session): after the donor ROM swap, UB300 (0x3B)
+    is "missing" on I2C but is the ONLY port negotiating 20 V. The three
+    ROM images are NOT byte-identical — the donor carries a different
+    sub-variant config, which is the likely cause (its address-table/config
+    only lines up with that one slot). OTP-fixed addresses mean the donor
+    ROM cannot re-address a chip.
+  - UPDATED (clean export): all four chips answered after rework (bus was
+    marginal: 17% failed attempts), golden identities valid (ZACE2-J152FX
+    @0x38/0x3F, ZACE2-J152FT @0x3B/0x3C), OTP 32/32 everywhere. One false
+    cross-check WARN @0x14 (live register) — fixed in export_data.py.
+  - NEXT: decide reflash target (pc image) + confirm tool, per owner.
+  - NEXT: owner to test 20 V on all four ports (acceptance test).
+
 ### 5. [PENDING] Truncation follow-up (ledger §4.10)
 The v0.10.0/0.10.1 exports were clean (0 warnings), but §4.10 notes the
 truncation-repair path was exercised on the old shield. With the new

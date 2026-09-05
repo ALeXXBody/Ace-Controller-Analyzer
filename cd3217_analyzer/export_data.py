@@ -766,17 +766,21 @@ def validate_bundle(path: str) -> Dict:
                 pass
 
     # 5d. cross-dataset consistency: the OTP scan and the register dump
-    # both read the SAME 4-byte registers at pointers 0x00 (VID),
-    # 0x04 (Type), 0x14/0x15 (events), 0x29, 0x2D. Same-pointer reads
-    # must agree byte-for-byte; a disagreement is real wire corruption.
+    # both read the SAME 4-byte registers. Only STATIC registers are
+    # valid canaries — 0x00 (VID) and 0x04 (Type) are IDENTITY_REGS
+    # whose content never changes while the bus is stable. LIVE_REGS
+    # (0x14/0x15 events, 0x29, 0x2D) legitimately change between the
+    # register-read pass and the OTP scan pass (they report the current
+    # contract/power path), so a disagreement there is EXPECTED, not
+    # wire corruption — never flag it. Discovering that produced the
+    # false "cross-check 0x3C @ 0x14 WARN" on the A2141 export.
     # NOTE (IC_FINDINGS §5.4): reconstructing a byte-addressable space
     # from the stride-4 OTP chunks and comparing it to the DID read at
     # pointer 0x01 is INVALID — the pointer selects a 4-byte register,
     # and the stride-4 scan never reads pointer 0x01 (the DID).
     regs_data = data.get("register_dump") or {}
     otp_data = data.get("otp_dump") or {}
-    _cmp_pairs = {"0x00": "0x00", "0x04": "0x04", "0x14": "0x14",
-                  "0x15": "0x15", "0x29": "0x29", "0x2D": "0x2D"}
+    _cmp_pairs = {"0x00": "0x00", "0x04": "0x04"}
     for addr in sorted(set(regs_data) & set(otp_data),
                        key=lambda k: int(k, 16)):
         try:
