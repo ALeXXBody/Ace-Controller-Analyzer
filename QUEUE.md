@@ -158,6 +158,15 @@ Dumps stored at samples/roms_a2141/. Initial analysis:
     → "CORRUPT RDO … not a contract" decode, `contract_ok=False`,
     `contract_mv=0`, new `corrupt-contract-read` verdict, master detection
     skips corrupt ports. 4 new regression tests (267 total pass). Ledger §4.9.
+  - UPDATED (live UB400, v0.12.8): UB400 now reads 0x8759D604 (62.9V/5.16A,
+    obj_pos 0 = the FIRST "Contact 62.9V/5.16A" line from the log — same
+    noise, different shape). UB400 IS the negotiated master (cable attached),
+    so v0.12.8 retries impossible RDOs up to RDO_RETRIES before judging:
+    a noisy-but-negotiating master is recovered, not mislabeled. 5
+    regressions, 269 total. Ledger §4.9 updated.
+  - NEXT (owner): run v0.12.8 Power Port Test on UB300 WITH the meter on the
+    UB300 port — verdict now honest (real contract / stuck-5V / corrupt-read).
+  - NEXT: decide reflash target (pc image) + confirm tool, per owner.
   - OWNER REPORT (2026-09-05, after the v0.12.7 export): report shows all
     four chips PASS (health 100/100; 0x3C at 90/100). Power cable is
     physically connected to the UB400 usb-c port and negotiates fine.

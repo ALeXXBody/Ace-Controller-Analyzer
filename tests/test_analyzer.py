@@ -507,6 +507,64 @@ class TestPowerPortRules(unittest.TestCase):
         self.assertNotEqual(r.verdict, "healthy")
         self.assertNotEqual(r.verdict, "no-negotiation")
 
+    def test_corrupt_rdo_recovers_on_retry(self):
+        """A marginal-read RDO (0x8759D604 -> 62.9V, impossible) that
+        returns a clean value on re-read must be treated as the healthy
+        contract it is — not left 'corrupt'. This is the UB400 field
+        case: the port negotiates, the read is noisy."""
+        calls = {"n": 0}
+        good = (1 << 28) | (200 << 10) | 225    # PDO #1, 20.0V/2.25A
+
+        def side(a, r, l):
+            if r == 0x36:
+                calls["n"] += 1
+                v = 0x8759D604 if calls["n"] == 1 else good
+                return v.to_bytes(4, "little")[:l]
+            return {0x00: bytes.fromhex("04280000"),
+                    0x01: bytes.fromhex("041732cd"),
+                    0x03: b"\x04AP ",
+                    0x04: bytes.fromhex("04493243"),
+                    0x2F: (b"@CD3217   HW0022 FW002.170.00 "
+                           b"ZACE2-J316P01P\x00\x00\x00\x00"),
+                    0x3F: bytes([0x1, 0x00])}.get(r, bytes([0x00] * l))[:l]
+
+        mock = MagicMock()
+        mock.ping.return_value = True
+        mock.read_bytes.side_effect = side
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        r = an.power_port_test(0x38)
+        self.assertEqual(r.verdict, "healthy")
+        self.assertTrue(r.contract_ok)
+        self.assertGreater(r.contract_mv, 0)
+        self.assertIn("20V-class", r.direction)
+
+    def test_bus_stats_counts_rdo_reread(self):
+        """Retrying an impossible RDO increments the garbled-read counter
+        (marginal-bus visibility), even when a re-read recovers."""
+        mock = MagicMock()
+        mock.ping.return_value = True
+        reads = {"count": 0}
+
+        def side(a, r, l):
+            if r == 0x36:
+                reads["count"] += 1
+                if reads["count"] <= 2:
+                    return bytes.fromhex("04d65987")[:l]   # garbage twice
+                return bytes([0, 0, 0, 0])[:l]             # clean no-contract
+            return {0x00: bytes.fromhex("04280000"),
+                    0x01: bytes.fromhex("041732cd"),
+                    0x03: b"\x04AP ",
+                    0x04: bytes.fromhex("04493243"),
+                    0x2F: b"@CD3217   HW0022 FW002.170.00 ZACE2-J316P01P\x00\x00\x00\x00",
+                    0x3F: bytes([0x1, 0x00])}.get(r, bytes([0x00] * l))[:l]
+
+        mock.read_bytes.side_effect = side
+        from cd3217_analyzer.analyzer import CD3217Analyzer
+        an = CD3217Analyzer(mock, addresses=[0x38])
+        an.power_port_test(0x38)
+        self.assertGreaterEqual(an.bus_stats.contaminated_rereads, 2)
+
     def test_chip_dead(self):
         from cd3217_analyzer.analyzer import CD3217Analyzer
         mock = MagicMock()

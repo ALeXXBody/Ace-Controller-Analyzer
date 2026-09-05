@@ -296,6 +296,7 @@ class CD3217Analyzer:
     BUS_SETTLE_AFTER_NACK = 0.1  # s to let the bus settle after NO_RESPONSE
     REG_RETRY_DELAY = 0.05      # s before re-reading a suspicious register
     REG_RETRIES = 2             # re-read attempts for identity registers
+    RDO_RETRIES = 2             # re-read attempts for an impossible RDO
     REG_SPACING = 0.02          # s between consecutive register reads
     REG_FAIL_RETRY_DELAY = 0.15  # s before re-reading a register that
                                  # hard-failed (NACK) — longer than the
@@ -1265,6 +1266,18 @@ class CD3217Analyzer:
             res.role = "SINK" if (ps.raw_value & 0x1) else "SOURCE"
 
         rdo = self._read_register_clean(address, 0x36, 4)
+        if rdo is not None and not rdo_is_possible(rdo.raw_value):
+            # Impossible RDO = the read floated to noise (truncation 0xFF
+            # fill or byte-shifted garbage on a marginal bus). Don't trust
+            # a single bad sample — retry like identity registers do; the
+            # negotiated contract is stable, the read is not (§4.9).
+            for _ in range(self.RDO_RETRIES):
+                self.bus_stats.contaminated_rereads += 1
+                time.sleep(self.REG_RETRY_DELAY)
+                retry = self._read_register_clean(address, 0x36, 4)
+                if retry is not None and rdo_is_possible(retry.raw_value):
+                    rdo = retry
+                    break
         if rdo is not None:
             res.contract = decode_rdo(rdo.raw_value)
             if rdo_is_possible(rdo.raw_value):
