@@ -1543,6 +1543,14 @@ class Application(ctk.CTk):
             hover_color=C["btn_hover"], command=self._otp_write_stub
         ).pack(side="left", padx=4, pady=10)
         ctk.CTkButton(
+            ctrl, text="Probe Page", width=95, fg_color=C["btn"],
+            hover_color=C["btn_hover"], command=self._otp_probe_extended
+        ).pack(side="left", padx=4, pady=10)
+        ctk.CTkButton(
+            ctrl, text="Probe Writes", width=105, fg_color=C["orange"],
+            hover_color="#c2410c", command=self._otp_probe_writes
+        ).pack(side="left", padx=4, pady=10)
+        ctk.CTkButton(
             ctrl, text="Import", width=70, fg_color=C["btn"], hover_color=C["btn_hover"],
             command=self._otp_import_file
         ).pack(side="left", padx=4, pady=10)
@@ -3706,6 +3714,92 @@ class Application(ctk.CTk):
         from cd3217_analyzer.otp_profile import OTP_WRITE_STATUS
         messagebox.showinfo("Write OTP — not yet available", OTP_WRITE_STATUS)
         self.log(OTP_WRITE_STATUS, "warn")
+
+    def _otp_show_report(self, text: str):
+        self.otp_diff_text.configure(state="normal")
+        self.otp_diff_text.delete("1.0", "end")
+        self.otp_diff_text.insert("end", text)
+        self.otp_diff_text.configure(state="disabled")
+        try:
+            self.tabs.set("OTP")
+        except Exception:
+            pass
+
+    def _otp_probe_extended(self):
+        from cd3217_analyzer.otp_probe import probe_extended_page
+        if not self._check_conn():
+            return
+        addr = self._parse_addr_field(self.otp_addr_var.get())
+        if addr is None:
+            return
+        self._set_busy(True, f"Extended page probe {format_hex_addr(addr)}...")
+        self.otp_scan_btn.configure(state="disabled")
+
+        def work():
+            res = probe_extended_page(self.adapter, addr)
+
+            def show():
+                self._otp_show_report(res.summary())
+                self.otp_status_var.set(
+                    f"Extended page: {len(res.with_data)} data, "
+                    f"{len(res.all_ff)} all-FF, {len(res.nacked)} NACK")
+                self.log(f"Extended page 0x80-0xFC: {len(res.with_data)} "
+                         f"with data, {len(res.all_ff)} all-FF, "
+                         f"{len(res.nacked)} NACK", "ok")
+                self.otp_scan_btn.configure(state="normal")
+
+            self._ui(show)
+
+        self._run_bg(work, "Extended page probe done")
+
+    def _otp_probe_writes(self):
+        from cd3217_analyzer.otp_probe import (
+            STANDARD_END, format_write_report, probe_writability)
+        if not self._check_conn():
+            return
+        addr = self._parse_addr_field(self.otp_addr_var.get())
+        if addr is None:
+            return
+        if not messagebox.askyesno(
+            "Write probe — confirm",
+            "This flips one bit in each register 0x08-0x7C, reads back and\n"
+            "RESTORES the original afterwards.\n\n"
+            "Nothing persists and no OTP burn is attempted, but live chip\n"
+            "state is disturbed during the probe.\n\nProceed?"
+        ):
+            self.log("Write probe cancelled", "warn")
+            return
+        self._set_busy(True, f"Write probe {format_hex_addr(addr)}...")
+        self.otp_scan_btn.configure(state="disabled")
+        self.otp_progress.set(0)
+
+        def work():
+            def progress(cur, total):
+                self._ui(self.otp_progress.set, cur / total if total else 0)
+
+            results = probe_writability(self.adapter, addr,
+                                        progress_cb=progress)
+            report = format_write_report(results)
+            counts = {}
+            for r in results:
+                counts[r.verdict] = counts.get(r.verdict, 0) + 1
+
+            def show():
+                self._otp_show_report(report)
+                self.otp_status_var.set(
+                    f"Write probe: {counts.get('WRITABLE', 0)} RAM / "
+                    f"{counts.get('REJECTED', 0)} read-only / "
+                    f"{counts.get('UNEXPECTED', 0)} unexpected")
+                self.log(
+                    f"Write probe {format_hex_addr(addr)}: "
+                    f"{counts.get('WRITABLE', 0)} writable, "
+                    f"{counts.get('REJECTED', 0)} rejected, "
+                    f"{counts.get('UNEXPECTED', 0)} unexpected", "ok")
+                self.otp_scan_btn.configure(state="normal")
+
+            self._ui(show)
+
+        self._run_bg(work, "Write probe done")
 
     def _otp_diff_dialog(self):
         file_a = filedialog.askopenfilename(
