@@ -1883,7 +1883,7 @@ class Application(ctk.CTk):
         if self.power_master_manual is not None:
             return self.power_master_manual
         for addr, r in self.power_test_results.items():
-            if r.contract_mv > 0:
+            if r.contract_mv > 0 and r.contract_ok:
                 return addr
         return None
 

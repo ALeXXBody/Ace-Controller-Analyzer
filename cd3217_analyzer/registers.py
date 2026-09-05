@@ -493,17 +493,59 @@ def decode_source_caps(raw_bytes: bytes) -> List[str]:
     return out
 
 
+# USB-PD hard limits: EPR allows up to 48 V; current never exceeds 6 A on
+# any Apple/PD charger. RDO voltage/current fields are 10 bits so they can
+# decode far beyond these — a value beyond spec means the register read
+# returned the all-ones 0xFF-fill of a truncated/marginal-bus read, NOT a
+# real contract (A2141 export 2026-09-05: raw 0x04ffffff -> "102.3V/7.72A"
+# on the two ports that merely shared the physically-connected UB400 bus).
+MAX_RDO_MV = 48000
+MAX_RDO_MA = 6000
+
+
+def rdo_is_possible(value: int) -> bool:
+    """Whether an RDO raw value could be a real negotiated contract.
+
+    A zero RDO is a valid "no contract" state and returns True so the
+    caller can still treat the port as idle. Non-zero values whose
+    decoded voltage/current exceed USB-PD spec are impossible and prove
+    the read was corrupted (truncation 0xFF fill) — consuming them as a
+    contract produced phantom "102.3V" contracts and fake master
+    selection in the Power Port Test.
+    """
+    if not value:
+        return True
+    volts_mv = ((value >> 10) & 0x3FF) * 100
+    milliamps = (value & 0x3FF) * 10
+    if not volts_mv:
+        # Zero voltage with stray current-field bits = idle port, not a
+        # corrupt read (decode_rdo reports it as "no contract").
+        return True
+    return volts_mv <= MAX_RDO_MV and milliamps <= MAX_RDO_MA
+
+
 def decode_rdo(value: int) -> str:
-    """Decode a Request Data Object (register 0x26) — the live PD
+    """Decode a Request Data Object (register 0x36) — the live PD
     contract a port has negotiated.
 
     RDO bit layout (USB-PD spec): B31:28 = object position (the PDO
     index the sink requested), B19:10 = voltage in 100 mV units,
     B9:0 = operating current in 10 mA units. A zero RDO means no
-    contract — the port is not sourcing anything.
+    contract — the port is not sourcing anything. A non-zero value that
+    decodes beyond USB-PD spec (>48 V / >6 A) is a corrupted read
+    (all-ones 0xFF fill from a truncated transfer), reported as such
+    instead of producing an impossible "contract".
     """
     if not value:
         return "no contract"
+    if not rdo_is_possible(value):
+        obj_pos = (value >> 28) & 0x7
+        volts_mv = ((value >> 10) & 0x3FF) * 100
+        milliamps = (value & 0x3FF) * 10
+        return (f"CORRUPT RDO 0x{value:08X} — impossible "
+                f"{volts_mv / 1000.0:.1f}V/{milliamps / 1000.0:.2f}A "
+                f"(PDO #{obj_pos}, spec max 48V/6A) — truncated "
+                "read, not a contract")
     obj_pos = (value >> 28) & 0x7
     volts = ((value >> 10) & 0x3FF) * 100      # mV
     milliamps = (value & 0x3FF) * 10           # mA

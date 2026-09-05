@@ -11,6 +11,7 @@ from cd3217_analyzer.registers import (
     decode_vid,
     is_ace2_address,
     PortMode,
+    rdo_is_possible,
 )
 from cd3217_analyzer.analyzer import CD3217Analyzer, HealthStatus, FaultType
 from cd3217_analyzer.report import format_compact_result
@@ -490,6 +491,22 @@ class TestPowerPortRules(unittest.TestCase):
         self.assertTrue(r.responds)
         self.assertIn("internal", r.direction)
 
+    def test_corrupt_rdo_is_not_healthy_and_not_master(self):
+        """A2141 field case: a truncated read returned 0xFFFFFF04 for 0x36
+        (all-ones fill). It decodes beyond spec (102.3V/7.72A) and must
+        produce a corrupt-read verdict, be ignored for master
+        auto-detection, and never report 'healthy'."""
+        rdo = 0xFFFFFF04
+        r = self._mk(self._rb(rdo)).power_port_test(0x38)
+        self.assertEqual(r.verdict, "corrupt-contract-read")
+        self.assertFalse(r.contract_ok)
+        self.assertEqual(r.contract_mv, 0)
+        self.assertTrue(r.responds)
+        self.assertIn("NOT a negotiation", r.direction)
+        self.assertIn("probe", r.direction)
+        self.assertNotEqual(r.verdict, "healthy")
+        self.assertNotEqual(r.verdict, "no-negotiation")
+
     def test_chip_dead(self):
         from cd3217_analyzer.analyzer import CD3217Analyzer
         mock = MagicMock()
@@ -787,6 +804,27 @@ class TestRDO(unittest.TestCase):
     def test_zero_voltage_is_no_contract(self):
         rdo = (3 << 28) | 150                 # current but no voltage
         self.assertEqual(self.decode(rdo), "no contract")
+
+    def test_corrupt_garbage_rdo_is_not_a_contract(self):
+        """A2141 field case (v0.12.7): truncated read returned 0xFFFFFF04
+        (all-ones fill) which decodes to 102.3V/7.72A (PDO #7) — beyond
+        any USB-PD spec (>48V, >6A). Must be reported as a corrupt read,
+        never consumed as a real contract."""
+        bad = 0xFFFFFF04
+        out = self.decode(bad)
+        self.assertIn("CORRUPT RDO", out)
+        self.assertIn("not a contract", out)
+        self.assertFalse(rdo_is_possible(bad))
+
+    def test_epr_48v_contract_still_allowed(self):
+        """USB-PD EPR allows 48V; a valid EPR RDO must not be rejected."""
+        rdo = (3 << 28) | (480 << 10) | 500    # PDO 3, 48.0V, 5.0A
+        self.assertTrue(rdo_is_possible(rdo))
+        self.assertEqual(self.decode(rdo), "48.0V/5.00A (PDO #3)")
+
+    def test_20v_contract_possible(self):
+        rdo = (5 << 28) | (200 << 10) | 225
+        self.assertTrue(rdo_is_possible(rdo))
 
     def test_diagnose_reads_rdo(self):
         from cd3217_analyzer.analyzer import CD3217Analyzer

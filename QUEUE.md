@@ -128,8 +128,48 @@ Dumps stored at samples/roms_a2141/. Initial analysis:
     marginal: 17% failed attempts), golden identities valid (ZACE2-J152FX
     @0x38/0x3F, ZACE2-J152FT @0x3B/0x3C), OTP 32/32 everywhere. One false
     cross-check WARN @0x14 (live register) — fixed in export_data.py.
+  - UPDATED (v0.12.7 export 2026-09-05T00:14Z): 4/4 chips again, but now
+    with ACTIVE contracts on 0x3B/0x3C only (the FT pair) — exactly the
+    two whose identity string truncated (0x2F). The two FX chips read
+    clean. Conclusion: a port mid-contract stretches the bus harder
+    during collection → 0x2F truncation, NOT a chip fault. OTP still
+    32/32 on all four; cross-checks 2/2 clean (fix verified on v0.12.7).
+  - Contract values on those two ports reported by app as 62.9V/5.16A
+    (0x3C) and 102.3V/7.72A (0x3B) — NOT valid PD voltages; likely
+    garbage RDO reads on the marginal bus (all-ones voltage field pattern
+    in the 102.3V = 0x3FF case). Needs raw 0x26/0x30 to confirm.
+    Sample: samples/A2141.json (v0.12.7, 21,050 B,
+    sha256 06895ccd50ed2319…, generated 2026-09-05T00:14:00Z) —
+    awaiting owner upload for raw-byte inspection.
+  - CONFIRMED (v0.12.7 export, samples/A2141-2.json): both "contracts"
+    (0x3B & 0x3C) are DECODE ARTIFACTS of truncated reads. Raw RDO = 0x04ffffff
+    on BOTH chips (byte-identical), identity 0x2F truncates right after
+    "@CD3217 " then all 0xFF. Owner reports ONLY ONE port has a supply
+    physically connected — but read failure hits the second chip too, so
+    the app prints an impossible 102.3V/7.72A (PDO #7) contract for both.
+    No real voltages >48V exist in USB-PD; 0x3FF voltage field = all-ones
+    garbage.
+  - TOOL BUG (analyzer.py:1267 + gui master detection): failed/truncated RDO
+    reads decode as contract_mv=102300 → "healthy" verdict + fake master
+    selection in Power Port Test. Tools must reject impossible RDO values
+    (e.g. voltage field 0x3FF, >48V) before trusting contract/verdict.
+    (Findings §4.9, same commit as the fix.)
+  - DONE (v0.12.8): `rdo_is_possible()` bounds V≤48V & A≤6A; impossible RDOs
+    → "CORRUPT RDO … not a contract" decode, `contract_ok=False`,
+    `contract_mv=0`, new `corrupt-contract-read` verdict, master detection
+    skips corrupt ports. 4 new regression tests (267 total pass). Ledger §4.9.
+  - OWNER REPORT (2026-09-05, after the v0.12.7 export): report shows all
+    four chips PASS (health 100/100; 0x3C at 90/100). Power cable is
+    physically connected to the UB400 usb-c port and negotiates fine.
+    Connecting to the UB300 port, it will NOT negotiate 20 V. True master =
+    UB400 (0x3C); the phantom "contract" on 0x3B was read garbage, not a
+    real negotiation.
+    → Actionable target: UB300 (0x3B) not requesting 20 V. Run Power Port
+      Test with the meter on the UB300 port and record the verdict
+      (stuck-5V / no-negotiation / partial) + whether 0x30 offers 20 V.
   - NEXT: decide reflash target (pc image) + confirm tool, per owner.
   - NEXT: owner to test 20 V on all four ports (acceptance test).
+  - NEXT: owner to upload the v0.12.7 A2141.json for raw read inspection.
 
 ### 5. [PENDING] Truncation follow-up (ledger §4.10)
 The v0.10.0/0.10.1 exports were clean (0 warnings), but §4.10 notes the

@@ -31,6 +31,7 @@ from .registers import (
     decode_type_reg,
     decode_vid,
     decode_rdo,
+    rdo_is_possible,
     decode_pdo,
     decode_source_caps,
     decode_power_status,
@@ -177,6 +178,8 @@ class PowerPortResult:
     role: str = ""                 # SINK / SOURCE (register 0x3F)
     contract: str = ""             # decoded active RDO (register 0x36)
     contract_mv: int = 0
+    contract_ok: bool = True       # False = RDO was an impossible read,
+                                   # never a real contract (truncation fill)
     offers: List[str] = field(default_factory=list)
     offers_20v: bool = False
     verdict: str = ""
@@ -1264,7 +1267,10 @@ class CD3217Analyzer:
         rdo = self._read_register_clean(address, 0x36, 4)
         if rdo is not None:
             res.contract = decode_rdo(rdo.raw_value)
-            res.contract_mv = ((rdo.raw_value >> 10) & 0x3FF) * 100
+            if rdo_is_possible(rdo.raw_value):
+                res.contract_mv = ((rdo.raw_value >> 10) & 0x3FF) * 100
+            else:
+                res.contract_ok = False
 
         caps = self._read_register_clean(address, 0x30, 28)
         if caps is not None and caps.raw_bytes:
@@ -1275,6 +1281,13 @@ class CD3217Analyzer:
             res.verdict = "boot-mode"
             res.direction = ("the chip did not load its firmware — check "
                              "the SPI ROM and the patch path")
+        elif not res.contract_ok:
+            res.verdict = "corrupt-contract-read"
+            res.direction = (f"register 0x36 returned an impossible RDO "
+                             f"({res.contract}) — a truncated/marginal-bus "
+                             "read, NOT a negotiation. This is a probe/"
+                             "read issue, not a chip fault: fix probe "
+                             "contact and pull-ups, then re-test this port.")
         elif res.contract_mv == 0:
             res.verdict = "no-negotiation"
             res.direction = ("0V with the meter attached. If the board is "
