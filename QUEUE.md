@@ -164,9 +164,41 @@ Dumps stored at samples/roms_a2141/. Initial analysis:
     so v0.12.8 retries impossible RDOs up to RDO_RETRIES before judging:
     a noisy-but-negotiating master is recovered, not mislabeled. 5
     regressions, 269 total. Ledger §4.9 updated.
-  - NEXT (owner): run v0.12.8 Power Port Test on UB300 WITH the meter on the
-    UB300 port — verdict now honest (real contract / stuck-5V / corrupt-read).
-  - NEXT: decide reflash target (pc image) + confirm tool, per owner.
+  - OWNER OBSERVATION (v0.12.9, identity-vs-master pattern):
+    • UB400 = master (20 V): only U3100 & U3200 show FW002.100.00 —
+      UB300/UB400 identity N/A (the negotiating pair's 0x2F reads truncate).
+    • UB300 = master (first Bus Scan): U3100 MISSING on scan #1 (2nd scan
+      OK), U3100 & UB400 identity N/A; U3200 shows FW002.100.00, UB300
+      shows FW002.046.00 (second scan).
+    → The chips that display a FW are the ones reading identity cleanly;
+      when a port NEGOTIATES, its pair's identity reads hit truncation.
+      Consistent with §4.9 (read noise, not chip fault): the master pair's
+      identity is read mid-negotiation and floats. The per-chip health
+      scores stay 100; nothing here contradicts the ROM-config theory for
+      UB300's 5V. Re-test with the meter OFF that port for clean identities.
+  - CRITICAL STATE CHANGE (owner, 2026-09-05): the PREVIOUS field tests
+    (incl. the "UB300 won't negotiate 20V" sessions + §4.9 export) ran with
+    the DONOR image flashed. The board is now back on its ORIGINAL firmware
+    and the reported FW versions CHANGED. All pre-v0.12.9 "stuck at 5V /
+    corrupt / identity" observations must be re-read under original FW.
+    Validation status: the old export's golden identities (J152FX/J152FT)
+    may not represent the ORIGINAL image content — rebuild the goldens from
+    a clean fresh export of the board AS-IS NOW.
+  - NEW TEST (owner, v0.12.9): Power Port Test on the UB300 port (meter on
+    UB300, original FW) → **corrupt-contract-read, retries exhausted**. So
+    even with RDO_RETRIES=2 the 0x36 read for 0x3B lands on impossible
+    values on every sample. Open questions: (a) is UB300 actually sourcing /
+    mid-negotiation-churn while the test reads, (b) does a power-meter OFF /
+    meter ON the OTHER ports change the result, (c) is 0x30 (source caps)
+    reading clean — what PDOs does 0x3B advertise now, (d) full fresh export
+    for identity rebuild.
+  - NEXT (owner): upload a FRESH v0.12.9 export (A2141.json, meter OFF all
+    ports) so we can rebuild goldens from ORIGINAL firmware — required before
+    any reflash decision.
+  - NEXT (owner): with charger on UB300 port, capture plain 0x30 + 0x36
+    reads (raw) for 0x3B — offers vs request under original FW.
+  - NEXT: decide reflash target (pc image / donor / none) + confirm tool,
+    per owner after original-FW baseline exists.
   - OWNER REPORT (2026-09-05, after the v0.12.7 export): report shows all
     four chips PASS (health 100/100; 0x3C at 90/100). Power cable is
     physically connected to the UB400 usb-c port and negotiates fine.
