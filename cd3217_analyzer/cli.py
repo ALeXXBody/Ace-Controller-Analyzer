@@ -41,6 +41,16 @@ from .otp import (
     save_dump_json,
     scan_otp,
 )
+from .otp_probe import (
+    STANDARD_END,
+    EXTENDED_END,
+    EXTENDED_START,
+    compare_to_golden,
+    format_write_report,
+    load_golden_dump,
+    probe_extended_page,
+    probe_writability,
+)
 from .spi_adapter import SPIAdapter
 from .flash import SPIFlash, FlashError
 from .usb_bridge import (UsbBridgeAdapter, list_bridge_ports,
@@ -273,6 +283,98 @@ def cmd_otp_export(analyzer: CD3217Analyzer, address: int,
 
     print(f"Saved: {filepath}")
     print(f"Registers: {dump.filled_count} | Errors: {dump.error_count}")
+
+
+def _indent(text: str, prefix: str) -> str:
+    return "\n".join(prefix + line if line else line
+                     for line in text.splitlines())
+
+
+def cmd_otp_probe(analyzer: CD3217Analyzer, address: int,
+                  golden_path: Optional[str] = None,
+                  golden_chip: Optional[str] = None,
+                  output: Optional[str] = None) -> None:
+    """Read-only sacrificial-chip probe: extended page + golden diff."""
+    adapter = analyzer.adapter
+
+    if not adapter.ping(address):
+        print(f"Chip at 0x{address:02X} does not answer — nothing to probe.")
+        return
+    print(f"Probing chip at 0x{address:02X} (read-only).\n")
+
+    print(f"1) Standard window 0x00-0x{STANDARD_END:02X} re-scan...")
+    std = scan_otp(adapter, address, label=f"probe 0x{address:02X}")
+    print(f"   {std.filled_count} registers read, "
+          f"{std.error_count} errors\n")
+
+    print(f"2) Extended page 0x{EXTENDED_START:02X}-0x{EXTENDED_END:02X}...")
+    page = probe_extended_page(adapter, address)
+    print(_indent(page.summary(), "   "))
+    print()
+
+    if golden_path:
+        golden = load_golden_dump(golden_path, golden_chip)
+        if golden is None:
+            print(f"ERROR: could not load a golden dump from {golden_path}"
+                  + (f" (chip {golden_chip})" if golden_chip else ""))
+            return
+        print(f"3) Golden diff vs {golden.label} "
+              f"({golden.filled_count} registers)...")
+        result = compare_to_golden(std, golden)
+        print(_indent(result.summary(), "   "))
+        print()
+    else:
+        print("3) Golden diff skipped (pass --golden FILE; bundles "
+              "accepted, --golden-chip 0xNN selects the chip).\n")
+
+    if output:
+        save_dump_json(std, output)
+        print(f"Standard-window dump saved to: {output}")
+
+
+def cmd_otp_probe_writes(analyzer: CD3217Analyzer, address: int,
+                         probe_all: bool = False, assume_yes: bool = False,
+                         output: Optional[str] = None) -> None:
+    """Interactive write-probe: map RAM vs read-only registers."""
+    adapter = analyzer.adapter
+    if not adapter.ping(address):
+        print(f"Chip at 0x{address:02X} does not answer — nothing to probe.")
+        return
+
+    start = 0x00 if probe_all else 0x08
+    print(f"Write-probe chip at 0x{address:02X}, registers "
+          f"0x{start:02X}-0x{STANDARD_END:02X}.")
+    print("Each register: read -> write one changed bit -> read back -> "
+          "RESTORE original.")
+    print("Nothing persists; no undocumented burn sequence is attempted.")
+    if not probe_all:
+        print("(0x00-0x04 VID/type are skipped by default; "
+              "--all includes them.)")
+    if not assume_yes:
+        try:
+            answer = input("\nProceed? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return
+        if answer != "y":
+            print("Aborted.")
+            return
+    print()
+
+    def progress(current, total):
+        pct = int(current / total * 100)
+        bar = "#" * (pct // 5) + "." * (20 - pct // 5)
+        print(f"\r  [{bar}] {current}/{total}", end="", flush=True)
+
+    results = probe_writability(adapter, address, start=start,
+                                progress_cb=progress)
+    print("\n")
+    report = format_write_report(results)
+    print(report)
+    if output:
+        with open(output, "w", encoding="utf-8") as f:
+            f.write(report + "\n")
+        print(f"\nReport saved to: {output}")
 
 
 def cmd_otp_import(filepath: str) -> None:
@@ -797,6 +899,9 @@ Examples:
   %(prog)s --otp-export 0x38 a.bin  Export OTP to binary file
   %(prog)s --otp-diff a.json b.json Compare two OTP dumps
   %(prog)s --otp-import dump.json   View a saved OTP dump
+  %(prog)s --otp-probe 0x3B         Sacrificial-chip probe (extended page)
+  %(prog)s --otp-probe 0x3B --golden A2141.json --golden-chip 0x3B
+  %(prog)s --otp-probe-writes 0x3B  Map RAM vs read-only regs (restores)
   %(prog)s --model A2442 --scan     Use model-specific addresses
         """,
     )
@@ -838,6 +943,15 @@ Examples:
                        help="Export OTP dump from device at ADDR to FILE (.json or .otp.bin)")
     group.add_argument("--otp-import", metavar="FILE",
                        help="Import and display an OTP dump from FILE")
+    group.add_argument("--otp-probe", metavar="ADDR",
+                       help="READ-ONLY sacrificial-chip probe at ADDR: "
+                            "re-scan the standard window, probe the "
+                            "extended page 0x80-0xFC for a hidden OTP "
+                            "page, optionally diff vs --golden")
+    group.add_argument("--otp-probe-writes", metavar="ADDR",
+                        help="Write-probe ADDR: map RAM vs read-only "
+                             "registers (one bit flipped then RESTORED; "
+                             "confirmation prompt unless --yes)")
     group.add_argument("--flash-detect", action="store_true",
                        help="Detect SPI flash chip (FTDI FT232H or CD3217 board via --adapter usb)")
     group.add_argument("--flash-read", metavar="FILE",
@@ -898,6 +1012,20 @@ Examples:
     group.add_argument("--interactive", "-i", action="store_true",
                        help="Interactive mode (default if no command given)")
 
+    parser.add_argument("--golden", metavar="FILE",
+                        help="With --otp-probe: golden reference to diff "
+                             "against — an OTP dump .json or an export "
+                             "bundle (.json; pick the chip with "
+                             "--golden-chip)")
+    parser.add_argument("--golden-chip", metavar="HEXADDR",
+                        help="With --golden: which bundle chip to use as "
+                             "the golden reference (e.g. 0x3B)")
+    parser.add_argument("--all", action="store_true",
+                        help="With --otp-probe-writes: include 0x00-0x04 "
+                             "(VID/type) in the write probe")
+    parser.add_argument("--yes", "-y", action="store_true",
+                        help="Skip the --otp-probe-writes confirmation "
+                             "prompt (scripting)")
     parser.add_argument("-n", "--count", type=int, default=3,
                         help="Number of iterations for batch mode (default: 3)")
     parser.add_argument("-o", "--output", default=None,
@@ -1030,6 +1158,14 @@ Examples:
         cmd_otp_import(args.otp_import)
         return
 
+    if (args.otp_probe or args.otp_probe_writes) and args.golden_chip:
+        try:
+            args.golden_chip = parse_hex_address(args.golden_chip)
+            args.golden_chip = f"0x{args.golden_chip:02X}"
+        except ValueError:
+            print(f"ERROR: bad --golden-chip value: {args.golden_chip}")
+            sys.exit(1)
+
     # Create I2C adapter for remaining commands
     adapter = create_adapter(args)
 
@@ -1060,6 +1196,22 @@ Examples:
                     analyzer,
                     parse_hex_address(args.otp_export[0]),
                     args.otp_export[1],
+                )
+            elif args.otp_probe:
+                cmd_otp_probe(
+                    analyzer,
+                    parse_hex_address(args.otp_probe),
+                    golden_path=args.golden,
+                    golden_chip=args.golden_chip,
+                    output=args.output,
+                )
+            elif args.otp_probe_writes:
+                cmd_otp_probe_writes(
+                    analyzer,
+                    parse_hex_address(args.otp_probe_writes),
+                    probe_all=args.all,
+                    assume_yes=args.yes,
+                    output=args.output,
                 )
             else:
                 cmd_interactive(analyzer)
