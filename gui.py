@@ -3568,6 +3568,11 @@ class Application(ctk.CTk):
             self.log("Model: Auto-detect")
         else:
             model_id = selection.split(" ")[0].strip()
+            # needs-data models are shown with a leading '*' in the menu;
+            # strip it before the lookup or the selection silently fails
+            # and current_model stays stale (audit finding).
+            if model_id.startswith("*"):
+                model_id = model_id[1:]
             self.current_model = get_model(model_id)
             if self.current_model:
                 self.log(f"Model: {self.current_model.name}")

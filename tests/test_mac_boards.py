@@ -320,3 +320,19 @@ class TestMacBoards(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestModelSelectionStar(unittest.TestCase):
+    """GUI menu shows needs-data models with a leading '*'; the selection
+    handler must strip it before get_model (audit finding)."""
+
+    def test_starred_label_format(self):
+        from cd3217_analyzer.models import get_model, list_models
+        starred = [m.model_id for m in list_models() if m.needs_data]
+        self.assertTrue(starred, "expected at least one needs-data model")
+        # the handler's logic: split, strip, then de-star
+        selection = f"*{starred[0]} MacBook (2025)"
+        model_id = selection.split(" ")[0].strip()
+        if model_id.startswith("*"):
+            model_id = model_id[1:]
+        self.assertIsNotNone(get_model(model_id))
