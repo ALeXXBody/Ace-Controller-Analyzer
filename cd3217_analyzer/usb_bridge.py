@@ -159,7 +159,8 @@ class UsbBridgeAdapter(I2CAdapter):
             ck ^= b
         return bytes([MAGIC, cmd, len(payload) & 0xFF]) + payload + bytes([ck])
 
-    def _transact(self, cmd: int, payload: bytes = b"", retries: int = 2) -> bytes:
+    def _transact(self, cmd: int, payload: bytes = b"", retries: int = 2,
+                  min_deadline_s: Optional[float] = None) -> bytes:
         """Send a frame and read the matching response payload (without status).
 
         Reads bytes one at a time and rescans forward past any stray bytes
@@ -167,6 +168,11 @@ class UsbBridgeAdapter(I2CAdapter):
         cmd matches. The resync loop always makes progress. We intentionally do
         NOT flush the input buffer before each send, so a response that landed
         between retries is not discarded.
+
+        ``min_deadline_s`` raises the total deadline floor for commands the
+        BLOCKS on-device for a known duration (uart_autobaud's pulseIn
+        window) — without it the default deadline (timeout*(retries+1)+0.5)
+        expires before the board replies and the op can never succeed.
         """
         self._require_open()
         if self._closing:
@@ -175,7 +181,8 @@ class UsbBridgeAdapter(I2CAdapter):
             if self._closing or self._ser is None:
                 raise IOError("board connection is closing")
             try:
-                return self._transact_locked(cmd, payload, retries)
+                return self._transact_locked(cmd, payload, retries,
+                                             min_deadline_s)
             except (AttributeError, ValueError) as e:
                 # pyserial internals tearing down mid-read during close()
                 if self._closing:
@@ -184,7 +191,8 @@ class UsbBridgeAdapter(I2CAdapter):
                 raise
 
     def _transact_locked(self, cmd: int, payload: bytes = b"",
-                         retries: int = 2) -> bytes:
+                         retries: int = 2,
+                         min_deadline_s: Optional[float] = None) -> bytes:
         if debuglog.is_enabled():
             debuglog.log("TX %s addr=0x%02X plen=%d payload=%s",
                          CMD_NAMES.get(cmd, f"0x{cmd:02X}"),
@@ -194,6 +202,9 @@ class UsbBridgeAdapter(I2CAdapter):
         _dbg = debuglog.is_enabled()
         _t_send = time.monotonic()
         deadline_total = time.time() + self.timeout * (retries + 1) + 0.5
+        if min_deadline_s is not None:
+            deadline_total = max(
+                deadline_total, time.time() + float(min_deadline_s))
         attempt = 0
         while True:
             # Flush stale bytes (e.g. a partial banner) before sending, then
@@ -204,8 +215,13 @@ class UsbBridgeAdapter(I2CAdapter):
                 pass
             self._ser.write(frame)
             buf = bytearray()
-            timeout_end = min(time.time() + self.timeout, deadline_total)
-            while time.time() < timeout_end:
+            # A deadline override (blocking firmware op, e.g. autobaud's
+            # pulseIn window) must LIFT the per-attempt wait too — the
+            # board replies only after its on-device wait. Without the
+            # override each attempt waits at most self.timeout.
+            wait_end = (deadline_total if min_deadline_s is not None
+                        else min(time.time() + self.timeout, deadline_total))
+            while time.time() < wait_end:
                 b = self._ser.read(1)
                 if not b:
                     continue
@@ -431,7 +447,13 @@ class UsbBridgeAdapter(I2CAdapter):
         import struct as _struct
         pl = bytes([0xFF if pin is None else pin])
         pl += _struct.pack("<I", int(window_ms))
-        resp = self._transact(CMD_UART_AUTOBAUD, pl, retries=0)
+        # The firmware BLOCKS window_ms while measuring, then replies.
+        # The default _transact deadline (~1.5 s) expires mid-measurement,
+        # so any window longer than that returned None forever. Give the
+        # transaction the measurement window + response time + margin.
+        resp = self._transact(
+            CMD_UART_AUTOBAUD, pl, retries=0,
+            min_deadline_s=int(window_ms) / 1000.0 + self.timeout + 1.0)
         if not resp or resp[0] != 0x00:
             return None
         if len(resp) < 5:
