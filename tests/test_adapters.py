@@ -38,3 +38,43 @@ class TestSMBusReadFailure(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDetectAdapter(unittest.TestCase):
+    def test_ftdi_scan_failure_closes_adapter(self):
+        """A half-opened FTDI (open ok, scan fails) must be closed, not
+        leaked holding the USB port."""
+        from cd3217_analyzer import adapters as A
+        closed = []
+        with unittest.mock.patch.dict(
+                "sys.modules", {"pyftdi": unittest.mock.MagicMock(),
+                                "pyftdi.i2c": unittest.mock.MagicMock()}):
+            with unittest.mock.patch.object(A.FTDIAdapter, "open",
+                                            autospec=True), \
+                unittest.mock.patch.object(
+                    A.FTDIAdapter, "close",
+                    autospec=True,
+                    side_effect=lambda self: closed.append(True)), \
+                unittest.mock.patch.object(A.FTDIAdapter, "scan",
+                                           side_effect=OSError("no bus")), \
+                unittest.mock.patch("glob.glob", return_value=[]):
+                self.assertIsNone(A.detect_adapter())
+        self.assertEqual(closed, [True])
+
+    def test_smbus_path_used_when_no_ftdi(self):
+        from cd3217_analyzer import adapters as A
+
+        class FakeSMBus(SMBusAdapter):
+            def __init__(self, bus_number=1):
+                self.bus_number = bus_number
+                self.opened = False
+
+            def open(self):
+                self.opened = True
+
+        with unittest.mock.patch.object(A, "SMBusAdapter", FakeSMBus), \
+            unittest.mock.patch("glob.glob",
+                                return_value=["/dev/i2c-1"]):
+            ad = A.detect_adapter()
+            self.assertIsInstance(ad, FakeSMBus)
+            self.assertTrue(ad.opened)

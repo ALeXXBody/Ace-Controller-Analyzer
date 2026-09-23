@@ -261,10 +261,12 @@ def detect_adapter() -> Optional[I2CAdapter]:
 
     Priority:
     1. FTDI FT232H (pyftdi)
-    2. Linux SMBus / i2c-dev (smbus2)
+    2. Linux SMBus / i2c-dev (smbus2) — covers CH341 modules which expose
+       themselves as an i2c-dev bus
     3. None found
     """
     # Try FTDI first
+    adapter = None
     try:
         from pyftdi.i2c import I2cController
         adapter = FTDIAdapter()
@@ -273,13 +275,18 @@ def detect_adapter() -> Optional[I2CAdapter]:
         adapter.scan(0x08, 0x77)
         return adapter
     except Exception:
-        pass
+        # Don't leak a half-opened FT232H controller on a failed probe
+        # (open() succeeds, scan() fails -> port held).
+        if adapter is not None:
+            try:
+                adapter.close()
+            except OSError:
+                pass
 
-    # Try Linux SMBus
+    # Try Linux SMBus (also covers CH341 kernel-module buses)
     try:
-        import os
-        import glob
-        i2c_devices = glob.glob("/dev/i2c-*")
+        from glob import glob
+        i2c_devices = glob("/dev/i2c-*")
         if i2c_devices:
             bus_num = int(i2c_devices[0].split("-")[-1])
             adapter = SMBusAdapter(bus_num)
