@@ -496,47 +496,70 @@ def _sha256_file(path: str) -> str:
     return h.hexdigest()
 
 
-def _identity_problem_count(regs_map: Dict[str, dict]) -> int:
-    """How many identity fields in a collected chip register map are
-    missing, garbled, or not SEMANTICALLY valid (golden-data grade).
+_IDENTITY_FIELDS = (
+    ("0x00", "VID"), ("0x01", "DID"), ("0x03", "Mode"),
+    ("0x04", "Type"), ("0x2F", "DeviceInfo"),
+)
 
-    Semantic checks — the user's exported data must be usable as a golden
-    reference, so "present but wrong" counts as bad:
-      * VID must be TI (0x0451) or Apple (0x2804) — catches partial
+
+def _identity_field_problems(regs_map: Dict[str, dict]) -> List[Tuple[str, str]]:
+    """Per-identity-field problems in a collected chip register map.
+
+    THE single identity validator (§4.21): the collector's golden-grade
+    gate AND the bundle validator's per-chip rows both use it — they used
+    to be two drifting copies (missing semantic VID, 'I2C ' 4CC checks
+    etc.).
+
+    Checks — the exported data must be usable as a golden reference, so
+    "present but wrong" counts as bad:
+      VID must be TI (0x0451) or Apple (0x2804) — catches partial
         garbling like 0xFF04
-      * DID must decode to a known silicon family (CD3215/17/18) —
-        catches garbled top bytes like 0xFF321704
-      * DeviceInfo (0x2F) must parse into silicon + FW version — catches
-        truncated identity strings ("@CD")
+      DID must decode to a known silicon family (CD3215/17/18)
+      DeviceInfo (0x2F) must parse into silicon + FW version
+    Returns (label, human_message) pairs; empty list = golden-grade.
     """
     from .registers import decode_silicon, parse_device_info
 
-    n = 0
-    for identity in ("0x00", "0x01", "0x03", "0x04", "0x2F"):
+    problems: List[Tuple[str, str]] = []
+    for identity, label in _IDENTITY_FIELDS:
         entry = regs_map.get(identity)
         if not entry:
-            n += 1
+            problems.append((label, f"{label} missing"))
             continue
         raw = (entry.get("raw") or "").lower()
         if not raw or set(raw) == {"0"} or set(raw) == {"f"}:
-            n += 1
+            problems.append((label, f"{label} garbled (all-0x00/0xFF)"))
             continue
         try:
-            if identity == "0x00":
-                vid = int.from_bytes(bytes.fromhex(raw), "little") & 0xFFFF
-                if vid not in (0x0451, 0x2804):
-                    n += 1
-            elif identity == "0x01":
-                did = int.from_bytes(bytes.fromhex(raw), "little")
-                if not decode_silicon(did):
-                    n += 1
-            elif identity == "0x2F":
+            value = int.from_bytes(bytes.fromhex(raw), "little")
+        except Exception:
+            problems.append((label, f"{label} unreadable"))
+            continue
+        if identity == "0x00":
+            vid = value & 0xFFFF
+            if vid not in (0x0451, 0x2804):
+                problems.append((label, f"VID 0x{vid:04X} is neither TI "
+                                        "(0x0451) nor Apple (0x2804)"))
+        elif identity == "0x01":
+            if not decode_silicon(value):
+                problems.append((label, "DID does not decode to a known "
+                                        "silicon (garbled)"))
+        elif identity == "0x2F":
+            try:
                 ident = parse_device_info(bytes.fromhex(raw))
                 if not (ident.silicon and ident.fw):
-                    n += 1
-        except Exception:
-            n += 1
-    return n
+                    problems.append((label, "identity string "
+                                            "incomplete/truncated"))
+            except Exception:
+                problems.append((label, "DeviceInfo unreadable"))
+    return problems
+
+
+def _identity_problem_count(regs_map: Dict[str, dict]) -> int:
+    """How many identity fields in a collected chip register map are
+    missing, garbled, or not SEMANTICALLY valid (golden-data grade).
+    Counts the single shared check (§4.21)."""
+    return len(_identity_field_problems(regs_map))
 
 
 # backwards-compatible alias
@@ -707,37 +730,11 @@ def validate_bundle(path: str) -> Dict:
             add("register_dump", "critical", "no chips captured")
         else:
             for addr, regs_map in sorted(regs.items()):
-                problems = []
-                for identity, what in (("0x00", "VID"), ("0x01", "DID"),
-                                       ("0x03", "Mode")):
-                    entry = regs_map.get(identity)
-                    if not entry:
-                        problems.append(f"{what} missing")
-                        continue
-                    raw = (entry.get("raw") or "").lower()
-                    if not raw or set(raw) == {"0"} or set(raw) == {"f"}:
-                        problems.append(f"{what} garbled (all-0x00/0xFF)")
-                # semantic (golden-grade) validation of identity fields
-                from .registers import decode_silicon, parse_device_info
-                try:
-                    did = int.from_bytes(bytes.fromhex(
-                        (regs_map.get("0x01") or {}).get("raw", "")),
-                        "little")
-                    if not decode_silicon(did):
-                        problems.append("DID does not decode to a known "
-                                        "silicon (garbled)")
-                except Exception:
-                    problems.append("DID unreadable")
-                try:
-                    ident = parse_device_info(bytes.fromhex(
-                        (regs_map.get("0x2F") or {}).get("raw", "") or "00"))
-                    if not (ident.silicon and ident.fw):
-                        problems.append(
-                            "identity string incomplete/truncated")
-                except Exception:
-                    problems.append("DeviceInfo unreadable")
-                if problems:
-                    add(f"chip {addr}", "warn", "; ".join(problems))
+                # THE shared identity check (§4.21) — one implementation
+                # for the collector gate and the bundle validator.
+                docs = [msg for _, msg in _identity_field_problems(regs_map)]
+                if docs:
+                    add(f"chip {addr}", "warn", "; ".join(docs))
                 else:
                     add(f"chip {addr}", "ok",
                         f"{len(regs_map)} registers, golden identity valid")
@@ -799,20 +796,9 @@ def validate_bundle(path: str) -> Dict:
                 f"{len(bad)}/{len(all_v)} dataset(s) imperfect after "
                 f"recheck — consider re-exporting")
 
-    # 5c. data accuracy: unexpected VID / generation mismatch per chip
-    if "registers" in sources:
-        for addr, regs_map in sorted((data.get("register_dump") or {}).items()):
-            vid_entry = (regs_map.get("0x00") or {})
-            try:
-                vid_raw = vid_entry.get("raw") or ""
-                if vid_raw and set(vid_raw) not in ({"0"}, {"f"}):
-                    vid = int.from_bytes(bytes.fromhex(vid_raw), "little") & 0xFFFF
-                    if vid not in (0x0451, 0x2804):
-                        add(f"chip {addr} VID", "warn",
-                            f"0x{vid:04X} is neither TI (0x0451) nor Apple "
-                            "(0x2804) — wrong chip or garbled read")
-            except Exception:
-                pass
+    # 5c. data accuracy: unexpected VID per chip is covered by the shared
+    # identity check in the chip row above (§4.21) — it used to be a
+    # duplicate of that row's logic.
 
     # 5d. cross-dataset consistency: the OTP scan and the register dump
     # both read the SAME 4-byte registers. Only STATIC registers are
