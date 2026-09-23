@@ -153,6 +153,15 @@ class Application(ctk.CTk):
         self._bg_threads: set = set()
         self._busy_since = 0.0
         self._cancel_event = threading.Event()
+        # Connect generation: bumped on every disconnect; a slow connect
+        # finishing AFTER the user disconnected must not resurrect a
+        # closed session (audit finding — _finalize_connect race).
+        self._connect_gen = 0
+        # Per-run cancel events, keyed by worker thread: Cancel reaches
+        # every running op, and one op's completion can no longer clear
+        # (or replace) another op's cancel state (audit finding).
+        self._thread_cancel: Dict[threading.Thread, threading.Event] = {}
+        self._cancel_lock = threading.Lock()
 
         self._build_ui()
         self.after(150, self._drain_ui_queue)
@@ -424,6 +433,7 @@ class Application(ctk.CTk):
     def _force_disconnect(self):
         """UI thread: drop the session without waiting for any blocked
         worker (the deferred close in the adapter handles the port)."""
+        self._connect_gen += 1
         self._stop_board_watcher()
         adapter = self.adapter
         self.adapter = None
@@ -500,7 +510,7 @@ class Application(ctk.CTk):
         # close us and the update silently doesn't complete (the old app
         # keeps running and still reports its old version).
         if install_mode() == "installed":
-            self._disconnect()
+            self._disconnect(force=True)   # exit path: ignore busy gate
         self._updating = True
 
         dlg = ctk.CTkToplevel(self)
@@ -557,7 +567,7 @@ class Application(ctk.CTk):
         dlg.destroy()
 
     def _exit_for_installer(self):
-        self._disconnect()
+        self._disconnect(force=True)   # exit path: ignore busy gate
         self.destroy()
 
     def _on_update_failed(self, dlg, err):
@@ -731,7 +741,7 @@ class Application(ctk.CTk):
         dlg.destroy()
         self.log("Firmware written — waiting for the board to restart...",
                  "ok")
-        self._disconnect()          # clean state; port may re-enumerate
+        self._disconnect(force=True)   # programmatic recovery path
 
         def work():
             import time as _t
@@ -2121,8 +2131,6 @@ class Application(ctk.CTk):
         self.busy = busy
         if busy:
             self._busy_since = time.time()
-        else:
-            self._cancel_event.clear()
         state = "disabled" if busy else "normal"
         for btn in self._busy_buttons:
             try:
@@ -2140,29 +2148,40 @@ class Application(ctk.CTk):
             self.status_left.configure(text=message)
 
     def _cancel_op(self):
-        if self.busy:
-            self._cancel_event.set()
-            self.log("Cancel requested — stopping after the current step...",
-                     "warn")
+        with self._cancel_lock:
+            for ev in self._thread_cancel.values():
+                ev.set()
+        self.log("Cancel requested — stopping after the current step...",
+                 "warn")
 
     def _cancelled(self) -> bool:
-        return self._cancel_event.is_set()
+        ev = self._thread_cancel.get(threading.current_thread())
+        return bool(ev and ev.is_set())
 
     def _run_bg(self, work: Callable, done_msg: str = "Ready"):
-        # Register the thread BEFORE starting it so the _drain_ui_queue
-        # watchdog can always tell whether a worker is still alive.
-        self._cancel_event = threading.Event()
-        t = threading.Thread(target=self._bg_runner, args=(work, done_msg),
-                             daemon=True)
+        # Each run gets its OWN cancel event, bound to the worker thread:
+        # an old still-running worker keeps ITS event alive even when a
+        # new op starts (the old design made Cancel silent-loose for it).
+        ev = threading.Event()
+        t = threading.Thread(target=self._bg_runner,
+                             args=(work, done_msg, ev), daemon=True)
         self._bg_threads.add(t)
         t.start()
 
-    def _bg_runner(self, work: Callable, done_msg: str = "Ready"):
+    def _bg_runner(self, work: Callable, done_msg: str = "Ready",
+                   cancel_event: Optional[threading.Event] = None):
+        cancel_event = cancel_event or threading.Event()
+        self._thread_cancel[threading.current_thread()] = cancel_event
         try:
-            work()
-        except Exception as e:
-            self._ui(self.log, f"Error: {e}", "err")
+            try:
+                work()
+            except Exception as e:
+                self._ui(self.log, f"Error: {e}", "err")
         finally:
+            try:
+                self._thread_cancel.pop(threading.current_thread(), None)
+            except Exception:
+                pass
             self._ui(self._set_busy, False, "")
             self._ui(self.status_left.configure, text=done_msg)
             try:
@@ -2396,12 +2415,14 @@ class Application(ctk.CTk):
         # thread isn't servicing Tcl).
         bus_number = (self.bus_var.get() or "1").strip() or "1"
         self._set_busy(True, f"Connecting to {selection}...")
-        self._run_bg(lambda: self._connect_worker(selection, port,
-                                                  bus_number),
-                     "Connected")
+        gen = self._connect_gen
+        self._run_bg(
+            lambda: self._connect_worker(selection, port, bus_number, gen),
+            "Connected")
 
     def _connect_worker(self, selection: str, port: Optional[str],
-                        bus_number: str = "1"):
+                        bus_number: str = "1",
+                        gen: Optional[int] = None):
         try:
             if selection.startswith("Auto-detect"):
                 adapter = detect_adapter()
@@ -2445,7 +2466,7 @@ class Application(ctk.CTk):
                 adapter.open()
 
             # success: finish on the UI thread (state, watcher, settings)
-            self._ui(self._finalize_connect, adapter, selection)
+            self._ui(self._finalize_connect, adapter, selection, gen)
         except Exception as e:
             debuglog.log("CONNECT FAILED: %r", e)
             hint = ""
@@ -2453,9 +2474,27 @@ class Application(ctk.CTk):
                 hint = ("  (the port may be held by another program or the "
                         "board is still re-enumerating — wait 3 s and retry)")
             self.log(f"Connection failed: {e}{hint}", "err")
+            # a half-opened adapter on a failed connect otherwise holds the
+            # COM port until process exit (audit finding — leak)
+            if adapter is not None:
+                try:
+                    adapter.close()
+                except Exception:
+                    pass
 
-    def _finalize_connect(self, adapter, selection: str):
+    def _finalize_connect(self, adapter, selection: str,
+                          gen: Optional[int] = None):
         """UI-thread bookkeeping after a successful connect."""
+        if gen is not None and gen != self._connect_gen:
+            # The user disconnected (or reconnected) while this connect
+            # was still in flight — the adapter was already closed.
+            self.log("Connection result ignored: the session changed "
+                     "while connecting.", "warn")
+            try:
+                adapter.close()
+            except Exception:
+                pass
+            return
         self.adapter = adapter
         self.connected = True
         self._update_conn_status(True)
@@ -2603,7 +2642,14 @@ class Application(ctk.CTk):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _disconnect(self):
+    def _disconnect(self, force: bool = False):
+        # Disconnect is reachable mid-operation; closing the adapter under
+        # a running worker wedges the op. Refuse unless forced (app exit).
+        if self.busy and not force:
+            self.log("Busy — wait for the current operation or press "
+                     "Cancel first.", "warn")
+            return
+        self._connect_gen += 1
         self._stop_board_watcher()
         if self.adapter:
             try:
