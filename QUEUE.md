@@ -18,9 +18,13 @@ regression tests:
   merged repairs now decode 0x36/0x3F/0x30. Commit 2a3393e.
 - DONE 5. Export report pass reuses collected data, no double-read (§4.18);
   step-4 VID mask fixed in BOTH paths. Commit 6a8dabe.
-- OPEN (owner to schedule): duplicate validate_bundle identity checks;
-  tests for otp (incl scan_otp) + models modules; firmware 1-byte-per-5ms
-  ingest ceiling + no watchdog (bigger C++ work); plaintext AP password.
+- OPEN (owner to schedule): plaintext AP password (documented for now —
+  changing auth affects the owner's web-flash workflow); ESP32 hardware
+  WDT (IDF core API differs across arduino-core versions).
+- DONE tier 4 (§4.21/§4.22): validate_bundle triplication → ONE shared
+  identity validator (d8e282a, fix K); tests for models + otp.scan_otp
+  (ca212e0, fix L, 15 tests); readFrame_ drains CDC per loop + RP2040
+  watchdog with feeds at scan/autobaud (c68c5d9, fix M).
 - DONE tier 3 (owner: "please do", §4.20): (G) board-tab worker widget
   calls marshaled (822d80e); (H) connect-gen guard + disconnect busy-gate
   + per-run cancel events + connect-failure leak close (b80a991);
