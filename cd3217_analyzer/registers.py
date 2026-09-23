@@ -187,10 +187,16 @@ REGISTERS = {
         offset=0x29, length=4, name="PortControl",
         description="Port control / role-swap configuration",
     ),
+    # NOTE: 0x30/0x35/0x36 previously existed TWICE in this dict (silent
+    # later-wins override, §4.15). The surviving definitions are the ones
+    # every export ever shipped with, verified against field data:
+    # 0x36 IS the live contract RDO (§4.9 A2141 phantom-contract evidence),
+    # and analyzer decodes 0x35 with decode_pdo (contract PDO), 0x30 with
+    # decode_source_caps. Single defs below - do not re-add duplicates.
     0x30: RegisterDef(
-        offset=0x30, length=28, name="RXSourceCaps",
-        description="Source Capabilities received from the supply "
-                    "(header + up to 6 PDOs): what voltages the supply "
+        offset=0x30, length=29, name="RxCapabilities",
+        description="Latest Source Capabilities received over BMC "
+                    "(2-byte header + PDOs): the voltages the supply "
                     "OFFERS",
     ),
     0x35: RegisterDef(
@@ -199,7 +205,8 @@ REGISTERS = {
     ),
     0x36: RegisterDef(
         offset=0x36, length=4, name="ActiveRDO",
-        description="The RDO of the current contract (0 = none)",
+        description="The RDO of the current contract (0 = none) — also "
+                    "the most recent request RDO sent by the sink",
     ),
     0x3F: RegisterDef(
         offset=0x3F, length=2, name="PowerStatus",
@@ -218,10 +225,6 @@ REGISTERS = {
         description="Hardware/firmware version string",
     ),
     # --- PD Capability Registers ---
-    0x30: RegisterDef(
-        offset=0x30, length=29, name="RxCapabilities",
-        description="Latest Source Capabilities received over BMC",
-    ),
     0x31: RegisterDef(
         offset=0x31, length=29, name="SinkCapabilities",
         description="Latest Sink Capabilities received over BMC",
@@ -237,14 +240,6 @@ REGISTERS = {
     0x34: RegisterDef(
         offset=0x34, length=6, name="ActivePDO",
         description="Current contract PDO",
-    ),
-    0x35: RegisterDef(
-        offset=0x35, length=4, name="ActiveRDO",
-        description="Current contract RDO",
-    ),
-    0x36: RegisterDef(
-        offset=0x36, length=4, name="SinkRequestRDO",
-        description="Most recent RDO sent by Sink",
     ),
     0x37: RegisterDef(
         offset=0x37, length=20, name="AutoSink",
