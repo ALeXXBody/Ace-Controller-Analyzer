@@ -579,6 +579,10 @@ void setup() {
   // replies even if the host doesn't pulse DTR on connect.
 #ifdef ARDUINO_ARCH_RP2040
   Serial.ignoreFlowControl(true);
+  // §4.22: RP2040 hardware watchdog — 8 s window, fed at every loop() pass
+  // and inside the known blocking waits. A stuck pulseIn or hung Wire call
+  // used to hang the bridge forever (replug-only); now it recovers.
+  watchdog_enable(8000, true);
 #endif
   delay(300);
   Serial.printf("\n[boot] CD3217-Analyzer M1 spike, board=%s\n", CD3217_BOARD);
@@ -649,10 +653,16 @@ void setup() {
 }
 
 void loop() {
+#if defined(ARDUINO_ARCH_RP2040)
+  watchdog_update();   // §4.22: WDT init'd in setup(); recover a hung
+                       // pulseIn/Wire call by rebooting instead of a
+                       // dead bridge. Fed every loop AND inside the
+                       // known blocking waits (autobaud, sfWaitIdle).
+#endif
   bridge.poll();                       // USB-CDC bridge (all boards)
   UartSniff::poll();                   // RX-only UART sniffer
 #ifdef CD3217_HAS_WIFI
   server.handleClient();
 #endif
-  delay(5);
+  delay(1);   // 1 ms: enough pacing now that readFrame_ drains per call
 }

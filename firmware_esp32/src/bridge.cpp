@@ -37,49 +37,54 @@ bool UsbBridge::readByte_(uint8_t &b) {
 
 // Try to read a complete frame into buf_. Returns true when a full, valid
 // frame has been parsed and should be dispatched.
+// DRAINS: consumes every pending CDC byte per call (the frame state
+// machine is per-byte-complete), instead of one byte per loop() — the old
+// 1-byte-per-5ms cadence capped USB ingest at ~200 B/s and starved the
+// sniff FIFO on fast UART lines (§4.22).
 bool UsbBridge::readFrame_() {
-  uint8_t b;
-  if (!readByte_(b)) return false;
+  for (;;) {
+    uint8_t b;
+    if (!readByte_(b)) return false;
 
-  if (!got_magic_) {
-    if (b == BRIDGE_MAGIC) {
-      // All 0xA5 bytes could be noise; hold the magic and wait for a cmd.
-      got_magic_ = true;
-      buf_[0] = b;
-      len_ = 1;
+    if (!got_magic_) {
+      if (b == BRIDGE_MAGIC) {
+        // All 0xA5 bytes could be noise; hold the magic and wait for a cmd.
+        got_magic_ = true;
+        buf_[0] = b;
+        len_ = 1;
+      }
+      continue;
     }
-    return false;
-  }
 
-  buf_[len_++] = b;
+    buf_[len_++] = b;
 
-  // Frame structure: magic, cmd, len, payload..., cksum
-  // We know structure once we have at least 3 bytes.
-  if (len_ >= 3) {
-    uint8_t plen = buf_[2];
-    size_t total = 3 + plen + 1;  // magic + cmd + plen + payload + cksum
-    if (len_ == total) {
-      // Validate cksum
-      uint8_t ck = buf_[1] ^ buf_[2];
-      for (size_t i = 0; i < plen; i++) ck ^= buf_[3 + i];
-      if (ck == buf_[total - 1]) {
-        frame_len_ = total;      // saved before len_ is cleared
+    // Frame structure: magic, cmd, len, payload..., cksum
+    // We know structure once we have at least 3 bytes.
+    if (len_ >= 3) {
+      uint8_t plen = buf_[2];
+      size_t total = 3 + plen + 1;  // magic + cmd + plen + payload + cksum
+      if (len_ == total) {
+        // Validate cksum
+        uint8_t ck = buf_[1] ^ buf_[2];
+        for (size_t i = 0; i < plen; i++) ck ^= buf_[3 + i];
+        if (ck == buf_[total - 1]) {
+          frame_len_ = total;      // saved before len_ is cleared
+          got_magic_ = false;
+          len_ = 0;
+          return true;
+        }
+        // bad checksum — discard and resync
         got_magic_ = false;
         len_ = 0;
-        return true;
+        continue;
       }
-      // bad checksum — discard and resync
-      got_magic_ = false;
-      len_ = 0;
-      return false;
-    }
-    if (len_ > total || len_ > BRIDGE_MAX_FRAME) {
-      // Oversized / malformed — resync
-      got_magic_ = false;
-      len_ = 0;
+      if (len_ > total || len_ > BRIDGE_MAX_FRAME) {
+        // Oversized / malformed — resync
+        got_magic_ = false;
+        len_ = 0;
+      }
     }
   }
-  return false;
 }
 
 // Send a response frame: [0xA5][cmd][plen][payload...][cksum]
@@ -102,6 +107,11 @@ void UsbBridge::runScan_() {
     if (a == 0x6B) continue;   // ACE2 all-call: every chip ACKs it at once —
                                // never a device, and the transaction
                                // garbles the bus for the next target
+#ifdef ARDUINO_ARCH_RP2040
+    watchdog_update();   // a stretched/dead chip can burn up to 1 s here
+                         // (Wire.setTimeout); feed per address so an 8 s
+                         // WDT window can't kill a slow scan (§4.22)
+#endif
     Wire.beginTransmission(a);
     if (Wire.endTransmission() == 0) found[n++] = (uint8_t)a;
   }

@@ -84,6 +84,12 @@ uint32_t UartSniff::autoBaud(uint8_t pin, uint32_t window_ms) {
   uint32_t min_us = 0;
   uint32_t t0 = millis();
   while (millis() - t0 < window_ms) {
+#ifdef ARDUINO_ARCH_RP2040
+    watchdog_update();   // §4.22: the WDT window is 8 s and this loop can
+                         // run for 15-60 s — feed each iteration or the
+                         // WDT kills the measurement (and fix F's long
+                         // windows) mid-wait
+#endif
     uint32_t w = pulseIn(s_pin, LOW, 20000);   // wait up to 20ms per pulse
     if (w > 0 && w < 10000) {                  // sane bit-time range
       if (min_us == 0 || w < min_us) min_us = w;
