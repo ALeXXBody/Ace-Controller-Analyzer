@@ -18,13 +18,16 @@ regression tests:
   merged repairs now decode 0x36/0x3F/0x30. Commit 2a3393e.
 - DONE 5. Export report pass reuses collected data, no double-read (§4.18);
   step-4 VID mask fixed in BOTH paths. Commit 6a8dabe.
-- OPEN (owner to schedule): SMBus 0xFF-failure masking (adapters.py:236);
-  WRONG_VID retry contradiction (analyzer.py:1534); uart_autobaud timeout
-  (usb_bridge.py:434); export token fchmod; connect/disconnect races +
-  adapter leaks (gui.py:2450/3849); model '*' selection bug (gui.py:3575);
-  cancel-event replacement (gui.py:2159); firmware no-reply + rlen-clamp +
-  writePage:true (bridge.cpp); detect_adapter CH341/leak; duplicate
-  validate_bundle identity checks; untested modules (adapters/registers/
-  otp/models) — test_registers.py now exists.
+- OPEN (owner to schedule): connect/disconnect races + adapter leaks
+  (gui.py:2450/3849); cancel-event replacement (gui.py:2159);
+  _refresh_board_tab_live from worker thread (gui.py:2344);
+  firmware no-reply + rlen-clamp + writePage:true (bridge.cpp);
+  duplicate validate_bundle identity checks; untested modules
+  (otp incl scan_otp, models) — test_registers.py/test_adapters.py now exist.
+- DONE in tier 2 (commits 97ca39b, e1e052b, 071f061, f76303f, 33e1928,
+  b1786d8): SMBus 0xFF-masking → raise; WRONG_VID docstring corrected
+  (code was VERIFIED-right, §3.4/§5.2); token chmod unconditional;
+  model '*' selection; detect_adapter FTDI-leak + CH341 path;
+  uart_autobaud deadline. Ledger §4.19.
 - OBSERVATION: registers bug lived in an untested module — tests for
   adapters/otp/models worth adding when touching them.
