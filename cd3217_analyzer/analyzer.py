@@ -38,6 +38,7 @@ from .registers import (
     is_ace2_address,
     parse_device_info,
 )
+from .utils import merge_ff_reads
 
 
 class HealthStatus(Enum):
@@ -256,6 +257,32 @@ class BusStats:
         return self.ping_recovered > 0 or self.contaminated_rereads > 0
 
 
+def decode_register_value(offset: int, raw_bytes: bytes,
+                          raw_value: int) -> str:
+    """Canonical per-register decode dispatch (single source of truth).
+
+    Every read path — live reads (read_register) AND merged truncation
+    repairs — must decode through this, so merged repairs no longer drop
+    decoding for 0x36/0x3F/0x30.
+    """
+    if offset == 0x00:
+        return decode_vid(raw_value)
+    if offset == 0x03:
+        return decode_mode_reg(raw_value)
+    if offset == 0x04:
+        return decode_type_reg(raw_value)
+    if offset == 0x36:
+        return decode_rdo(raw_value)
+    if offset == 0x35:
+        return decode_pdo(raw_value)
+    if offset == 0x30:
+        return " | ".join(decode_source_caps(raw_bytes)) \
+            or "no source capabilities"
+    if offset == 0x3F:
+        return decode_power_status(raw_value)
+    return ""
+
+
 class CD3217Analyzer:
     """
     Main diagnostic analyzer for CD3217B12 (Apple ACE2) controllers.
@@ -367,22 +394,7 @@ class CD3217Analyzer:
             self.bus_stats.add_read(True)
             raw_int = int.from_bytes(raw, 'little')
 
-            decoded = ""
-            if offset == 0x00:
-                decoded = decode_vid(raw_int)
-            elif offset == 0x03:
-                decoded = decode_mode_reg(raw_int)
-            elif offset == 0x04:
-                decoded = decode_type_reg(raw_int)
-            elif offset == 0x36:
-                decoded = decode_rdo(raw_int)
-            elif offset == 0x35:
-                decoded = decode_pdo(raw_int)
-            elif offset == 0x30:
-                decoded = " | ".join(decode_source_caps(raw)) \
-                    or "no source capabilities"
-            elif offset == 0x3F:
-                decoded = decode_power_status(raw_int)
+            decoded = decode_register_value(offset, raw, raw_int)
 
             return RegisterRead(
                 offset=offset,
@@ -578,7 +590,6 @@ class CD3217Analyzer:
         the first non-0xFF byte at each position — assembles the complete
         response.
         """
-        merged = bytearray([0xFF]) * 0  # start empty
         merged = bytearray(b"\xFF" * length)
         for attempt in range(max(1, attempts)):
             try:
@@ -588,20 +599,13 @@ class CD3217Analyzer:
             if read is None:
                 time.sleep(self.REG_FAIL_RETRY_DELAY)
                 continue
-            for i, b in enumerate(read.raw_bytes[:length]):
-                if merged[i] == 0xFF and b != 0xFF:
-                    merged[i] = b
+            merged = bytearray(merge_ff_reads(
+                [bytes(merged), read.raw_bytes[:length]]))
             if 0xFF not in merged:
                 break
             time.sleep(self.REG_FAIL_RETRY_DELAY)
         raw_int = int.from_bytes(bytes(merged), "little")
-        decoded = ""
-        if offset == 0x00:
-            decoded = decode_vid(raw_int)
-        elif offset == 0x03:
-            decoded = decode_mode_reg(raw_int)
-        elif offset == 0x04:
-            decoded = decode_type_reg(raw_int)
+        decoded = decode_register_value(offset, bytes(merged), raw_int)
         reg_def = REGISTERS.get(offset)
         return RegisterRead(
             offset=offset,

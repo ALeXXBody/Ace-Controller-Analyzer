@@ -34,6 +34,7 @@ from typing import Dict, List, Optional
 
 from .adapters import I2CAdapter
 from .otp import OTPDump, diff_dumps
+from .utils import merge_ff_reads
 from . import debuglog
 
 # The standard window ends at 0x7C (32 x 4-byte regs). The extended probe
@@ -56,7 +57,10 @@ def read_register_safe(adapter: I2CAdapter, address: int, offset: int,
 
     Returns None when every attempt NACKs. Returns the merged bytes when
     the chip answered (possibly all-FF — the caller distinguishes).
+    A fully clean read returns immediately; only a truncated read (0xFF
+    tail) triggers the extra merge re-reads.
     """
+    attempts: List[bytes] = []
     for attempt in range(1 + READ_RETRIES):
         if attempt:
             time.sleep(RETRY_DELAY)
@@ -66,21 +70,21 @@ def read_register_safe(adapter: I2CAdapter, address: int, offset: int,
             data = None
         if data is None:
             continue
-        data = bytearray(data)
-        if 0xFF in data:
-            for _ in range(3):
-                time.sleep(READ_SPACING)
-                try:
-                    again = adapter.read_bytes(address, offset, width)
-                except Exception:
-                    continue
-                for i, byte in enumerate(again):
-                    if data[i] == 0xFF and byte != 0xFF:
-                        data[i] = byte
-                if 0xFF not in data:
-                    break
-        return bytes(data)
-    return None
+        attempts.append(data)
+        if 0xFF not in data:
+            return bytes(data)
+        for _ in range(3):
+            time.sleep(READ_SPACING)
+            try:
+                again = adapter.read_bytes(address, offset, width)
+            except Exception:
+                continue
+            attempts.append(again)
+            if 0xFF not in merge_ff_reads(attempts):
+                return merge_ff_reads(attempts)
+    if not attempts:
+        return None
+    return merge_ff_reads(attempts)
 
 
 @dataclass

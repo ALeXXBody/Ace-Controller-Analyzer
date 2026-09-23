@@ -21,6 +21,7 @@ from typing import BinaryIO, Dict, List, Optional, Tuple
 from .adapters import I2CAdapter
 from . import debuglog
 from .registers import KNOWN_ACE2_ADDRESSES, REGISTERS, is_ace2_address
+from .utils import merge_ff_reads
 
 
 # Full register space to scan — covers TPS65982/TPS65987D + Apple extensions
@@ -156,23 +157,21 @@ def scan_otp(adapter: I2CAdapter, address: int, label: str = "",
         if data is not None:
             # Truncation repair (protocol-aware): each read response starts
             # with a length-prefix byte, so byte-wise sub-reads are
-            # meaningless. Instead, MERGE repeated reads of the same
-            # chunk — different attempts truncate at different points, and
-            # the per-position union assembles the full content.
-            data = bytearray(data)
+            # meaningless (each one restarts at the prefix). Instead, MERGE
+            # repeated reads of the same chunk — different attempts
+            # truncate at different points, and the per-position union
+            # assembles the full content. Only re-read while a 0xFF (the
+            # truncation fill) remains to merge away.
+            attempts = [data]
             if 0xFF in data:
-                for attempt in range(3):
+                for _ in range(3):
                     time.sleep(read_spacing)
                     try:
-                        again = adapter.read_bytes(address, offset, read_len)
+                        attempts.append(adapter.read_bytes(
+                            address, offset, read_len))
                     except Exception:
                         continue
-                    for i, byte in enumerate(again):
-                        if data[i] == 0xFF and byte != 0xFF:
-                            data[i] = byte
-                    if 0xFF not in data:
-                        break
-            data = bytes(data)
+            data = merge_ff_reads(attempts)
             if set(data) == {0xFF}:
                 dump.read_errors.append(offset)
             else:

@@ -45,3 +45,27 @@ def clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
 
 def unique_sorted(addrs: Iterable[int]) -> List[int]:
     return sorted(set(int(a) for a in addrs))
+
+
+def merge_ff_reads(snapshots: "Iterable[bytes]") -> bytes:
+    """Byte-wise merge of repeated register reads against truncation.
+
+    CD3217 register responses carry a length-prefix byte (§2.7), so
+    byte-wise sub-reads are meaningless; instead, N spaced attempts of
+    the same register truncate at DIFFERENT points. Merging takes the
+    first non-0xFF byte at each position and assembles the complete
+    response. Result length = the longest snapshot's length.
+
+    This is the single implementation the analyzer (merged truncation
+    repair), otp.scan_otp and otp_probe (paced reads) all use.
+    """
+    out = bytearray()
+    for snap in snapshots:
+        if snap is None:
+            continue
+        if len(snap) > len(out):
+            out.extend(b"\xFF" * (len(snap) - len(out)))
+        for i, b in enumerate(snap):
+            if out[i] == 0xFF and b != 0xFF:
+                out[i] = b
+    return bytes(out)
