@@ -319,6 +319,12 @@ class CD3217Analyzer:
                           if a != ACE2_BROADCAST_ADDRESS]
         # Cumulative bus-integrity counters; reset per scan session.
         self.bus_stats = BusStats()
+        # Truncation/slow-clock repair state (per-instance — §4.16):
+        # truncation_seen accumulates over the analyzer's lifetime (the
+        # export's reg_pass_truncated reads it); _slow_clock_engaged is a
+        # per-diagnose_engagement flag restored to 100 kHz by its owner.
+        self.truncation_seen = False
+        self._slow_clock_engaged = False
 
     def reset_bus_stats(self) -> None:
         """Start a fresh bus-integrity accounting window (e.g. per scan)."""
@@ -541,9 +547,10 @@ class CD3217Analyzer:
     SLOW_CLOCK_HZ = 50_000
     CATASTROPHIC_NACK_RATE = 0.30   # >30% failed transactions
     CONSECUTIVE_FAIL_LIMIT = 6      # drop to half clock after this many
-    truncation_seen = False
-    _slow_clock_engaged = False     # set at the PING level; the diagnose
-                                    # owns the restore-to-100k
+    # NOTE: truncation_seen / _slow_clock_engaged are PER-INSTANCE state,
+    # initialized in __init__ (§4.16). Class attributes here seeded every
+    # instance from shared state; the adapter's clock is ALSO shared, so
+    # the invariant is: one analyzer owns the adapter's clock at a time.
 
     @staticmethod
     def _tail_ff_fraction(raw_bytes: bytes) -> float:
