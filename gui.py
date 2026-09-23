@@ -559,9 +559,6 @@ class Application(ctk.CTk):
     def _exit_for_installer(self):
         self._disconnect()
         self.destroy()
-        if action == "setup-launched":
-            self.log("Installer launched — follow the Setup window. "
-                     "The app will be closed and restarted by Setup.", "ok")
 
     def _on_update_failed(self, dlg, err):
         dlg.destroy()
@@ -2104,8 +2101,6 @@ class Application(ctk.CTk):
                      f"({len(debuglog.entries())} lines)", "ok")
         except Exception as e:
             self.log(f"Debug log save failed: {e}", "err")
-        self.log_text = ctk.CTkTextbox(tab, fg_color=C["entry"], font=F["mono_small"])
-        self.log_text.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
     # ─── Helpers ───────────────────────────────────────────────────────────
 
