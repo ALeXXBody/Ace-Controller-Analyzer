@@ -2336,7 +2336,9 @@ class Application(ctk.CTk):
         except Exception:
             pass
         try:
-            self._refresh_board_tab_live(adapter)
+            # UI thread only (§4.9a): direct widget/StringVar calls from a
+            # worker stalled the main thread for 19 s once already.
+            self._ui(self._refresh_board_tab_live, adapter)
         except Exception:
             pass
         # offer a firmware update when the board is outdated
