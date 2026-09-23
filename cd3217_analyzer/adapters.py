@@ -232,15 +232,13 @@ class SMBusAdapter(I2CAdapter):
         return self._bus.read_byte_data(address, register)
 
     def read_bytes(self, address: int, register: int, length: int) -> bytes:
-        # Read byte by byte for reliability with unknown devices
-        data = bytearray()
-        for i in range(length):
-            try:
-                b = self._bus.read_byte_data(address, register + i)
-                data.append(b)
-            except Exception:
-                data.append(0xFF)
-        return bytes(data)
+        # Raise on failure like the other adapters: masking a NACK as 0xFF
+        # data corrupted OTP scans and verdicts (audit: 0xFF is ALSO the
+        # chip's truncation fill — a fabricated 0xFF could never be told
+        # apart from a real one). Callers (scan_otp, read_register) catch
+        # exceptions and treat them as read failures.
+        return bytes(
+            self._bus.read_i2c_block_data(address, register, length))
 
     def write_byte(self, address: int, register: int, value: int) -> bool:
         try:
