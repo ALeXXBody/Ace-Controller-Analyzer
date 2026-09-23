@@ -138,6 +138,20 @@ def load_token() -> Optional[str]:
         return None
 
 
+def _chmod_privileged(path: str) -> None:
+    """Best-effort owner-only permissions on `path`.
+
+    os.fchmod only exists on Unix; Windows ignores POSIX modes (the token
+    stays in the per-user profile dir, which is the user's own ACL), so
+    silently skip there. Re-applies on pre-existing files where the
+    0o600 creation mode never took effect.
+    """
+    try:
+        os.chmod(path, 0o600)
+    except (AttributeError, OSError):
+        pass
+
+
 def store_token(token: str) -> None:
     """Persist the token to a user-local file with owner-only permissions."""
     d = os.path.dirname(token_path())
@@ -145,6 +159,7 @@ def store_token(token: str) -> None:
     fd = os.open(token_path(), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(token.strip())
+    _chmod_privileged(token_path())
 
 
 # ──────────────────────────────────────────────────────────────────────────

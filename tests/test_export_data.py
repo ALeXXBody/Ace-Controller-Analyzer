@@ -68,6 +68,30 @@ class TestSanitizeName(unittest.TestCase):
             sanitize_name("!!!")
 
 
+class TestTokenPermissions(unittest.TestCase):
+    def test_store_token_modes_are_owner_only(self):
+        try:
+            store_token("ghp_perm")
+            path = token_path()
+            mode = os.stat(path).st_mode & 0o777
+            self.assertEqual(mode, 0o600)
+        finally:
+            _remove_token()
+
+    def test_preexisting_loose_file_is_tightened(self):
+        try:
+            path = token_path()
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write("loose")
+            os.chmod(path, 0o644)
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o644)
+            store_token("ghp_tightened")
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        finally:
+            _remove_token()
+
+
 class TestToken(unittest.TestCase):
     def test_store_and_load_roundtrip(self):
         try:
