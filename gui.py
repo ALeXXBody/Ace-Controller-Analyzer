@@ -152,6 +152,8 @@ class Application(ctk.CTk):
         self._ui_queue: "_queue.Queue" = _queue.Queue()
         self._bg_threads: set = set()
         self._busy_since = 0.0
+        # Kept for compatibility; per-run events (_thread_cancel) are the
+        # live cancel mechanism — Cancel reaches every running worker.
         self._cancel_event = threading.Event()
         # Connect generation: bumped on every disconnect; a slow connect
         # finishing AFTER the user disconnected must not resurrect a
@@ -2640,7 +2642,10 @@ class Application(ctk.CTk):
             except Exception as e:
                 self.log(f"Flash failed: {e}", "err")
 
-        threading.Thread(target=worker, daemon=True).start()
+        # Registered as a _run_bg op (not a bare thread): it opens the
+        # same CDC port the I2C ops use — overlapping was a proven frame
+        # race. Also gains busy-counting + cancel + the liveness watchdog.
+        self._run_bg(worker, "Board flash done")
 
     def _disconnect(self, force: bool = False):
         # Disconnect is reachable mid-operation; closing the adapter under
@@ -4420,8 +4425,11 @@ class Application(ctk.CTk):
                 self.log(f"Export error: {e}", "err")
                 ui(lambda: self.export_progress.configure(text=str(e)))
 
-        t = threading.Thread(target=work, daemon=True)
-        t.start()
+        # Registered worker machinery (not a bare daemon thread): the
+        # export reads the adapter/CDC port — it must not overlap a
+        # _run_bg op on the same port, and should be busy-counted.
+        self._run_bg(work, "Export done")
+
     def _save_csv(self):
         if not self.batch_results:
             self.log("No batch data", "warn")
