@@ -106,7 +106,9 @@ def chip_class(addr: int) -> str:
 # The board is only flashed when its FIRMWARE actually changed. Bump this
 # tuple ONLY in a release that modifies firmware_esp32/ sources — every
 # app-only release keeps older board firmware working (protocol-compatible).
-LAST_FIRMWARE_CHANGE = (0, 11, 10)  # v0.11.10: configurable auto-baud
+LAST_FIRMWARE_CHANGE = (0, 12, 13)  # v0.12.13: bridge answers every input
+                                    # (unknown-cmd/malformed error frames),
+                                    # flash write/erase verify WEN+busy
 # window (CMD 0x24 v2). Bump ONLY when firmware_esp32/ changes — the
 # release_bump.py guard enforces this (see docs/IC_FINDINGS.md §4.9).
 # "aca-analyzer"/"aca", web UI title. Bump ONLY when firmware_esp32/
