@@ -55,6 +55,7 @@
 #define SF_CMD_JEDEC_ID       0x9F
 
 #define SF_STATUS_BUSY 0x01
+#define SF_STATUS_WEL  0x02      // write-enable latch: set by WREN
 
 class SpiFlash {
  public:
@@ -69,8 +70,8 @@ class SpiFlash {
   static bool busy();
   static void read(uint32_t addr, uint8_t *buf, size_t n);   // waits idle
   static bool writePage(uint32_t addr, const uint8_t *data, size_t n);  // ≤256
-  static void eraseSector(uint32_t addr);     // issue + return (poll busy)
-  static void eraseChip();                    // issue + return (poll busy)
+  static bool eraseSector(uint32_t addr);     // issue + return (poll busy)
+  static bool eraseChip();                    // issue + return (poll busy)
 };
 
 #endif  // CD3217_SPI_FLASH_H

@@ -94,9 +94,11 @@ void SpiFlash::read(uint32_t addr, uint8_t *buf, size_t n) {
 bool SpiFlash::writePage(uint32_t addr, const uint8_t *data, size_t n) {
   if (n > SF_MAX_WRITE) return false;
   sfWaitIdle(50);
+  if (busy()) return false;               // wedged busy despite timeout
   uint8_t wren[1] = {SF_CMD_WRITE_ENABLE};
   uint8_t wrenR[1];
   xfer(wren, wrenR, 1);
+  if (!(readStatus() & SF_STATUS_WEL)) return false;   // WEN refused
   uint8_t tx[4 + SF_MAX_WRITE];
   tx[0] = SF_CMD_PAGE_PROGRAM;
   tx[1] = (addr >> 16) & 0xFF;
@@ -106,26 +108,32 @@ bool SpiFlash::writePage(uint32_t addr, const uint8_t *data, size_t n) {
   uint8_t rx[4 + SF_MAX_WRITE];
   xfer(tx, rx, 4 + n);
   sfWaitIdle(20);          // page program typ 0.4ms, max 3ms
-  return true;
+  return !busy();          // program actually completed in the window
 }
 
-void SpiFlash::eraseSector(uint32_t addr) {
+bool SpiFlash::eraseSector(uint32_t addr) {
   sfWaitIdle(50);
+  if (busy()) return false;               // chip wedged busy despite timeout
   uint8_t wren[1] = {SF_CMD_WRITE_ENABLE};
   uint8_t wrenR[1];
   xfer(wren, wrenR, 1);
+  if (!(readStatus() & SF_STATUS_WEL)) return false;   // WEN refused (WP held)
   uint8_t tx[4] = {SF_CMD_SECTOR_ERASE,
                    (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, addr & 0xFF};
   uint8_t rx[4];
   xfer(tx, rx, 4);          // returns immediately; caller polls busy
+  return true;
 }
 
-void SpiFlash::eraseChip() {
+bool SpiFlash::eraseChip() {
   sfWaitIdle(50);
+  if (busy()) return false;
   uint8_t wren[1] = {SF_CMD_WRITE_ENABLE};
   uint8_t wrenR[1];
   xfer(wren, wrenR, 1);
+  if (!(readStatus() & SF_STATUS_WEL)) return false;
   uint8_t tx[1] = {SF_CMD_CHIP_ERASE};
   uint8_t rx[1];
   xfer(tx, rx, 1);          // returns immediately; caller polls busy
+  return true;
 }

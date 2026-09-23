@@ -505,12 +505,15 @@ static void apiSpiWrite() {
 }
 
 static void apiSpiErase() {
+  bool ok;
   if (server.hasArg("addr")) {
-    SpiFlash::eraseSector(strtoul(server.arg("addr").c_str(), nullptr, 10));
+    ok = SpiFlash::eraseSector(strtoul(server.arg("addr").c_str(), nullptr, 10));
   } else {
-    SpiFlash::eraseChip();
+    ok = SpiFlash::eraseChip();
   }
-  server.send(200, "application/json", "{\"ok\":true}");
+  server.send(ok ? 200 : 500, "application/json",
+              ok ? "{\"ok\":true}"
+                 : "{\"ok\":false,\"error\":\"erase refused (busy/WP?)\"}");
 }
 
 // ---- UART sniff endpoints ---------------------------------------------

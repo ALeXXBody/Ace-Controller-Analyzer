@@ -110,13 +110,25 @@ void UsbBridge::runScan_() {
 
 void UsbBridge::runRead_(const uint8_t *f, size_t flen) {
   // payload: [addr][reg][len]
-  if (flen < 3) return;
+  // Error statuses: 0x00 ok, 0xFF NACK/short, 0x01 malformed payload,
+  // 0x02 unsupported read length. A host cannot tell a silent no-reply
+  // from a dead bridge — every input gets an answer (audit: silent
+  // clamp + silent return made a truncated read LOOK like valid data).
+  uint8_t resp[1 + 64];
+  if (flen < 3) {
+    resp[0] = 0x01;
+    sendResp_(0x02, resp, 1);
+    return;
+  }
   uint8_t addr = f[0];
   uint8_t reg  = f[1];
   uint8_t rlen = f[2];
 
-  uint8_t resp[1 + 64];
-  if (rlen > 64) rlen = 64;
+  if (rlen > 64) {
+    resp[0] = 0x02;              // unsupported length — do NOT clamp with
+    sendResp_(0x02, resp, 1);    // a success status (the host would misread
+    return;                      // 64 bytes as the full answer)
+  }
 
   Wire.beginTransmission(addr);
   Wire.write(reg);
@@ -143,13 +155,15 @@ void UsbBridge::runRead_(const uint8_t *f, size_t flen) {
 
 void UsbBridge::runWrite_(const uint8_t *f, size_t flen) {
   // payload: [addr][reg][dlen][data...]
-  if (flen < 3) return;
+  uint8_t resp[1];
+  if (flen < 3 || flen < (size_t)(3 + f[2])) {
+    resp[0] = 0x01;              // malformed payload
+    sendResp_(0x03, resp, 1);
+    return;
+  }
   uint8_t addr = f[0];
   uint8_t reg  = f[1];
   uint8_t dlen = f[2];
-  if (flen < (size_t)(3 + dlen)) return;
-
-  uint8_t resp[1];
   Wire.beginTransmission(addr);
   Wire.write(reg);
   for (int i = 0; i < dlen; i++) Wire.write(f[3 + i]);
@@ -460,7 +474,14 @@ void UsbBridge::handleFrame_(const uint8_t *f, size_t flen) {
       sendResp_(0x30, &ok, 1);
       break;
     }
-    default: break;
+    default: {
+      // Unknown command: answer with an error status (0x03) and the same
+      // cmd byte so a waiting host gets a clean "unsupported" instead of
+      // hanging on a silent no-reply.
+      uint8_t r = 0x03;
+      sendResp_(cmd, &r, 1);
+      break;
+    }
   }
 }
 
