@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
 from . import __version__ as APP_VERSION
+from .registers import VALID_ACE2_VIDS, is_ace2_address
 
 GITHUB_REPO = "ALeXXBody/Ace-Controller-Analyzer"
 DATA_BRANCH = "main"          # exports land in samples/ on the default branch
@@ -183,6 +184,10 @@ def collect_bundle(adapter, selected: List[str], name: str,
 
     has_a2k = adapter is not None
     reg_pass_truncated = False   # set by the registers pass; read by OTP
+    # One analyzer per bundle: shared so the report pass can reuse the
+    # registers pass's instance (and its truncation state) instead of
+    # re-scanning everything (§4.18).
+    analyzer = None
 
     if "info" in sel:
         log("Reading device INFO frame...")
@@ -196,7 +201,7 @@ def collect_bundle(adapter, selected: List[str], name: str,
         log("Reading registers...")
         from .analyzer import CD3217Analyzer
         try:
-            analyzer = CD3217Analyzer(adapter)
+            analyzer = analyzer or CD3217Analyzer(adapter)
             regs: Dict[str, dict] = {}
             addrs = list(scan_results or [])
             if not addrs and devices:
@@ -356,12 +361,41 @@ def collect_bundle(adapter, selected: List[str], name: str,
         log("Serialising report...")
         from .analyzer import CD3217Analyzer, DiagnosticReport
         try:
-            analyzer = CD3217Analyzer(adapter)
-            report = analyzer.full_diagnostic()
-            if scan_results:
+            if scan_results is not None and devices is not None:
+                # The registers pass already scanned + diagnosed these
+                # chips (§4.18). full_diagnostic would scan the bus and
+                # re-diagnose every chip again — 2-3x the I2C traffic on a
+                # bus that is marginal to begin with. Reuse what was
+                # collected; only probe UNEXPECTED (non-ACE2) scan hits,
+                # which is full_diagnostic's step 4.
+                report = DiagnosticReport(
+                    timestamp=datetime.now().isoformat(),
+                    adapter_type=type(adapter).__name__,
+                )
                 report.bus_scan_results = list(scan_results)
-            if devices:
-                report.devices = list(devices.values())
+                known_ace = {d.address for d in devices.values()
+                             if hasattr(d, "address")}
+                report.devices = [
+                    d for d in devices.values() if hasattr(d, "address")]
+                analyzer = analyzer or CD3217Analyzer(adapter)
+                for addr in report.bus_scan_results:
+                    if addr in known_ace or is_ace2_address(addr):
+                        continue
+                    vid_read = analyzer.read_register(addr, 0x00, 4)
+                    if vid_read and (vid_read.raw_value & 0xFFFF) \
+                            in VALID_ACE2_VIDS:
+                        result = analyzer.diagnose_device(addr)
+                        result.notes = (
+                            "Found ACE2 device at non-standard address")
+                        report.devices.append(result)
+                report.summary = analyzer._generate_summary(report)
+            else:
+                analyzer = CD3217Analyzer(adapter)
+                report = analyzer.full_diagnostic()
+                if scan_results:
+                    report.bus_scan_results = list(scan_results)
+                if devices:
+                    report.devices = list(devices.values())
             bundle["data"]["report"] = _serialize_report(report)
         except Exception as e:
             bundle["errors"].append(f"report: {e}")

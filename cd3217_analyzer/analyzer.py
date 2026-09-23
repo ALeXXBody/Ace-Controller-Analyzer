@@ -1149,7 +1149,11 @@ class CD3217Analyzer:
         for addr in other_addrs:
             # Try reading VID to see if it's a TI/Apple ACE2 device
             vid_read = self.read_register(addr, 0x00, 4)
-            if vid_read and vid_read.raw_value in VALID_ACE2_VIDS:
+            # LSN-16 mask: marginal buses deliver 0xFF-high-byte reads
+            # (0xFF002804 for Apple 0x2804), so mask before comparing —
+            # every other compare site already masks (§4.18).
+            if vid_read and (vid_read.raw_value & 0xFFFF) \
+                    in VALID_ACE2_VIDS:
                 result = self.diagnose_device(addr)
                 result.notes = "Found ACE2 device at non-standard address"
                 report.devices.append(result)
