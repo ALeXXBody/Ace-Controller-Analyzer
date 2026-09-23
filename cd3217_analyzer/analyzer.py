@@ -1534,12 +1534,13 @@ class CD3217Analyzer:
     def is_retryable_failure(result: Optional["DeviceResult"]) -> bool:
         """True when a batch pass should re-diagnose a chip after a settle.
 
-        Only TRANSPORT failures are worth retrying: a chip that NACKed or
-        returned I2C errors right after the previous chip's read burst very
-        often answers fine seconds later (probe capacitance + bus settle;
-        the user's manual per-chip clicks prove it). Genuine verdicts —
-        WRONG_VID, CHIP_MISMATCH, NO_RESPONSE-only-with-a-real-fault — are
-        NOT retried away.
+        Transport failures (NACK / I2C error / corrupted registers) often
+        resolve after a settle — chip N's burst can garble chip N+1. WRONG_VID
+        is deliberately retryable too (v0.8.4, ledger §3.4): a CD3217-family
+        chip always reports TI/Apple, so an unexpected VID is wire
+        corruption, which the user's "2 faulty in Diagnose All, all good
+        per-chip" case proved. Only a FAIL whose faults are all GENUINE
+        verdicts (CHIP_MISMATCH, NO_RESPONSE-after-settle) is final.
         """
         if result is None:
             return True
