@@ -18,12 +18,17 @@ regression tests:
   merged repairs now decode 0x36/0x3F/0x30. Commit 2a3393e.
 - DONE 5. Export report pass reuses collected data, no double-read (§4.18);
   step-4 VID mask fixed in BOTH paths. Commit 6a8dabe.
-- OPEN (owner to schedule): connect/disconnect races + adapter leaks
-  (gui.py:2450/3849); cancel-event replacement (gui.py:2159);
-  _refresh_board_tab_live from worker thread (gui.py:2344);
-  firmware no-reply + rlen-clamp + writePage:true (bridge.cpp);
-  duplicate validate_bundle identity checks; untested modules
-  (otp incl scan_otp, models) — test_registers.py/test_adapters.py now exist.
+- OPEN (owner to schedule): duplicate validate_bundle identity checks;
+  tests for otp (incl scan_otp) + models modules; firmware 1-byte-per-5ms
+  ingest ceiling + no watchdog (bigger C++ work); plaintext AP password.
+- DONE tier 3 (owner: "please do", §4.20): (G) board-tab worker widget
+  calls marshaled (822d80e); (H) connect-gen guard + disconnect busy-gate
+  + per-run cancel events + connect-failure leak close (b80a991);
+  (I) board-flash/export workers on registered machinery (3181a37);
+  (J) firmware: every input answered, rlen clamp fixed, flash WEN/busy
+  verify (3171871; LAST_FIRMWARE_CHANGE → 0.12.13). Released v0.12.13 —
+  CI green, 20 assets. NOTE: boards in the field pick up fix J via the
+  app's Board-update flow (board fw < 0.12.13 triggers the offer).
 - DONE in tier 2 (commits 97ca39b, e1e052b, 071f061, f76303f, 33e1928,
   b1786d8): SMBus 0xFF-masking → raise; WRONG_VID docstring corrected
   (code was VERIFIED-right, §3.4/§5.2); token chmod unconditional;
