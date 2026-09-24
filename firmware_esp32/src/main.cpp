@@ -26,6 +26,38 @@
 #include "spi_flash.h"
 #include "uart_sniff.h"
 
+#ifdef ARDUINO_ARCH_RP2040
+// §4.22: RP2040 hardware watchdog, fed in loop() and inside the known
+// blocking waits (autobaud, per-address scan).
+#include <hardware/watchdog.h>
+#define FEED_WDT() do { watchdog_update(); } while (0)
+#else
+// §4.22: ESP32 task watchdog on the loop task — version-aware init.
+// The 8 s window + feeds at the blocking sites (autobaud slices 20 ms,
+// scan feeds per address) mean a hung Wire/pulseIn call reboots instead
+// of hanging the bridge forever.
+#include <esp_task_wdt.h>
+#define FEED_WDT() do { esp_task_wdt_reset(); } while (0)
+
+static void setupEspWdt() {
+  // init may return an error if the TWDT is already running (core default
+  // config); in that case reconfigure — the reset() feeds are what matter
+  // (degrade to no-watchdog rather than fail boot).
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  esp_task_wdt_config_t cfg = {};
+  cfg.timeout_ms = 8000;      // ms on IDF5/arduino-core 3.x
+  cfg.idle_core_mask = 0;     // do NOT watch idle tasks
+  cfg.trigger_panic = true;   // reboot on trigger
+  if (esp_task_wdt_init(&cfg) != ESP_OK) {
+    esp_task_wdt_reconfigure(&cfg);
+  }
+#else
+  esp_task_wdt_init(8, true);   // seconds on arduino-core 2.x / IDF4
+#endif
+  esp_task_wdt_add(NULL);       // watch the loop task
+}
+#endif
+
 #ifdef CD3217_HAS_WIFI
 #include <WiFi.h>
 #include <WiFiClient.h>
@@ -52,7 +84,14 @@
 #define AP_SSID "aca-analyzer"
 #endif
 #ifndef AP_PASS
-#define AP_PASS "cd3217analyzer"   // >= 8 chars required by softAP
+#define AP_PASS "cd3217analyzer"   // >= 8 chars required by softAP.
+// SECURITY NOTE (§4.23, OPEN): this default is public (it ships in an
+// open repo) and the softAP serves unauthenticated SPI flash
+// write/erase endpoints to whoever connects. Treat the AP as
+// LECTURE-ONLY network isolation (bench LAN, no other devices).
+// A randomized-per-board or owner-chosen AP_PASS can be baked in via
+// platformio build flags (-DAP_PASS='"...'") without changing any code.
+// A proper token/web-auth design is pending the owner's workflow call.
 #endif
 #define MDNS_HOST "aca"
 
@@ -583,6 +622,9 @@ void setup() {
   // and inside the known blocking waits. A stuck pulseIn or hung Wire call
   // used to hang the bridge forever (replug-only); now it recovers.
   watchdog_enable(8000, true);
+#else
+  // §4.22: ESP32 task watchdog on the loop task, same policy.
+  setupEspWdt();
 #endif
   delay(300);
   Serial.printf("\n[boot] CD3217-Analyzer M1 spike, board=%s\n", CD3217_BOARD);
@@ -653,12 +695,9 @@ void setup() {
 }
 
 void loop() {
-#if defined(ARDUINO_ARCH_RP2040)
-  watchdog_update();   // §4.22: WDT init'd in setup(); recover a hung
-                       // pulseIn/Wire call by rebooting instead of a
-                       // dead bridge. Fed every loop AND inside the
-                       // known blocking waits (autobaud, sfWaitIdle).
-#endif
+  FEED_WDT();   // §4.22: recover a hung pulseIn/Wire call by rebooting
+                // instead of a dead bridge; also fed inside the known
+                // blocking waits (autobaud, per-address scan).
   bridge.poll();                       // USB-CDC bridge (all boards)
   UartSniff::poll();                   // RX-only UART sniffer
 #ifdef CD3217_HAS_WIFI

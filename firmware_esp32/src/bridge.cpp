@@ -9,8 +9,12 @@
 
 #ifdef ARDUINO_ARCH_RP2040
 #include "pico/bootrom.h"      // reset_usb_boot() -> UF2 BOOTSEL mode
+#include <hardware/watchdog.h>
+#define FEED_WDT() do { watchdog_update(); } while (0)
 #else
 #include <Update.h>            // ESP32 OTA self-update
+#include <esp_task_wdt.h>
+#define FEED_WDT() do { esp_task_wdt_reset(); } while (0)
 #endif
 
 // Max SPI full-duplex payload: response = status + rx, must fit 1-byte plen.
@@ -107,11 +111,9 @@ void UsbBridge::runScan_() {
     if (a == 0x6B) continue;   // ACE2 all-call: every chip ACKs it at once —
                                // never a device, and the transaction
                                // garbles the bus for the next target
-#ifdef ARDUINO_ARCH_RP2040
-    watchdog_update();   // a stretched/dead chip can burn up to 1 s here
-                         // (Wire.setTimeout); feed per address so an 8 s
-                         // WDT window can't kill a slow scan (§4.22)
-#endif
+    FEED_WDT();   // §4.22: a stretched/dead chip can burn up to 1 s here
+                  // (Wire.setTimeout) — feed per address so the 8 s WDT
+                  // window can't kill a slow scan
     Wire.beginTransmission(a);
     if (Wire.endTransmission() == 0) found[n++] = (uint8_t)a;
   }
