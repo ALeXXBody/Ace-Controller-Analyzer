@@ -18,9 +18,11 @@ regression tests:
   merged repairs now decode 0x36/0x3F/0x30. Commit 2a3393e.
 - DONE 5. Export report pass reuses collected data, no double-read (§4.18);
   step-4 VID mask fixed in BOTH paths. Commit 6a8dabe.
-- OPEN (owner decision): unauthenticated SPI write/erase over the softAP
-  (default AP_PASS kept for workflow compat; -DAP_PASS overridable;
-  in-code security note + §4.23). Token/web-auth design pends owner.
+- WONTFIX (owner decision 2026-09-24): softAP auth hardening — the app
+  is designed for a safe environment; no extra AP password for now
+  (already -DAP_PASS overridable if ever needed). Ledger §4.23 verdict:
+  accepted, documented risk; revisit token/web-auth only if the tool
+  spreads beyond bench-protected networks.
 - DONE tier 5 (§4.23): ESP32 task watchdog version-aware, FEED_WDT()
   macro unifies all feeds; every CI env compiles (fix N, 4b85c7a).
 - DONE tier 4 (§4.21/§4.22): validate_bundle triplication → ONE shared
