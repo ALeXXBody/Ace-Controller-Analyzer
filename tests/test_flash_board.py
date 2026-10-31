@@ -23,6 +23,23 @@ class TestFlashBoard(unittest.TestCase):
         self.assertIn(boot.rstrip("/") if boot.endswith("/") else boot,
                       [d.rstrip("/") for d in drives])
 
+    def test_find_bootsel_drives_udisks2_mount(self):
+        """Modern distros auto-mount BOOTSEL volumes under
+        /run/media/<user>/<label> (udisks) — the base list must cover it."""
+        with tempfile.TemporaryDirectory() as td:
+            boot = os.path.join(td, "RPI-RP2") + "/"
+            calls = {}
+
+            def fake_glob(pattern):
+                calls[pattern] = True
+                return [boot] if "/run/media/*/*/" in pattern else []
+
+            with patch.object(flash_board.sys, "platform", "linux"), \
+                 patch("glob.glob", side_effect=fake_glob):
+                drives = flash_board.find_bootsel_drives()
+        self.assertTrue(any("RPI-RP2" in d for d in drives),
+                        f"drives={drives}, asked={sorted(calls)}")
+
     def test_flash_pico_uf2_copies_and_verifies(self):
         # Simulate: drive is present, then unmounts after copy (success).
         with tempfile.TemporaryDirectory() as td:

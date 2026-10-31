@@ -50,7 +50,13 @@ def find_bootsel_drives() -> List[str]:
             pass
     else:
         import glob
-        bases = ["/media/*/", "/Volumes/", "/mnt/*/"]
+        bases = [
+            "/media/*/",
+            "/media/*/*/",
+            "/run/media/*/*/",   # udisks2 auto-mount on modern distros
+            "/Volumes/",         # macOS
+            "/mnt/*/",
+        ]
         for base in bases:
             for path in glob.glob(base):
                 name = os.path.basename(path.rstrip("/"))
