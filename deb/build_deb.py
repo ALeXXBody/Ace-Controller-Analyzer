@@ -108,21 +108,12 @@ def build_deb(stg: str, version: str) -> str:
     dest = "dist"
     os.makedirs(dest, exist_ok=True)
     deb = os.path.join(dest, f"aca-analyzer_{version}_amd64.deb")
-    # chown the tree to root:root so dpkg-deb records sane ownership
-    if os.geteuid() == 0:
-        for root, dirs, files in os.walk(stg):
-            for d in dirs:
-                os.chown(os.path.join(root, d), 0, 0)
-            for fn in files:
-                os.chown(os.path.join(root, fn), 0, 0)
-        os.chown(os.path.join(stg, "DEBIAN"), 0, 0)
-    else:
-        # sudoless CI runs as root on GH runners; local gen needs fakeroot
-        command = ["fakeroot", "dpkg-deb", "--build", stg, deb]
-        print(f"non-root build: {' '.join(command)}")
-        subprocess.run(command, check=True)
-        return deb
-    subprocess.run(["dpkg-deb", "--build", stg, deb], check=True)
+    # --root-owner-group: the archive records root:root ownership on every
+    # member regardless of the invoking user (CI runs non-root), replacing
+    # a fakeroot dependency entirely.
+    subprocess.run(
+        ["dpkg-deb", "--build", "--root-owner-group", stg, deb],
+        check=True)
     return deb
 
 

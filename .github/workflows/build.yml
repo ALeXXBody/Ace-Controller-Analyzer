@@ -1,4 +1,4 @@
-name: Build Windows .exe + ESP32 firmware
+name: Build ACA (Windows/Linux/macOS) + ESP32 firmware
 
 on:
   push:
@@ -51,6 +51,7 @@ jobs:
           --hidden-import cd3217_analyzer.report
           --hidden-import cd3217_analyzer.models
           --hidden-import cd3217_analyzer.otp
+          --hidden-import cd3217_analyzer.otp_probe
           --hidden-import cd3217_analyzer.spi_adapter
           --hidden-import cd3217_analyzer.flash
           --hidden-import cd3217_analyzer.flash_board
@@ -103,6 +104,153 @@ jobs:
           files: |
             ACA_Portable.zip
             installer/ACA_Setup.exe
+          generate_release_notes: true
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyinstaller customtkinter smbus2 pyserial pillow
+
+      - name: Stamp app version from tag
+        run: |
+          VER="${GITHUB_REF_NAME:-dev}"
+          VER="${VER#v}"
+          sed -i "s/__version__ = \"[^\"]*\"/__version__ = \"$VER\"/" \
+            cd3217_analyzer/__init__.py
+          echo "App version stamped: $VER"
+          grep -n "__version__" cd3217_analyzer/__init__.py
+
+      - name: Run test suite
+        run: python -m unittest discover -s tests
+
+      - name: Build Linux binary (PyInstaller onedir)
+        run: >
+          pyinstaller
+          --name "ACA"
+          --onedir
+          --windowed
+          --noconfirm
+          --clean
+          --add-data "assets:assets"
+          --collect-all customtkinter
+          --collect-all cd3217_analyzer
+          --hidden-import cd3217_analyzer
+          --hidden-import cd3217_analyzer.registers
+          --hidden-import cd3217_analyzer.analyzer
+          --hidden-import cd3217_analyzer.adapters
+          --hidden-import cd3217_analyzer.report
+          --hidden-import cd3217_analyzer.models
+          --hidden-import cd3217_analyzer.otp
+          --hidden-import cd3217_analyzer.otp_probe
+          --hidden-import cd3217_analyzer.spi_adapter
+          --hidden-import cd3217_analyzer.flash
+          --hidden-import cd3217_analyzer.flash_board
+          --hidden-import cd3217_analyzer.usb_bridge
+          --hidden-import cd3217_analyzer.spi_bridge
+          --hidden-import cd3217_analyzer.updater
+          --hidden-import cd3217_analyzer.cli
+          --hidden-import serial
+          --hidden-import serial.tools
+          --hidden-import serial.tools.list_ports
+          --hidden-import PIL
+          --hidden-import PIL.Image
+          gui.py
+
+      - name: Package portable tar.gz
+        run: tar -C dist -czf ACA_Linux_Portable.tar.gz ACA
+
+      - name: Build .deb package
+        run: |
+          VER="${GITHUB_REF_NAME:-dev}"; VER="${VER#v}"
+          python3 deb/build_deb.py --dist dist/ACA --version "$VER"
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ACA_Linux_Portable.tar.gz
+            dist/*.deb
+          generate_release_notes: true
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyinstaller customtkinter pyserial pillow
+
+      - name: Stamp app version from tag
+        run: |
+          VER="${GITHUB_REF_NAME:-dev}"
+          VER="${VER#v}"
+          sed -i '' "s/__version__ = \"[^\"]*\"/__version__ = \"$VER\"/" \
+            cd3217_analyzer/__init__.py
+          echo "App version stamped: $VER"
+          grep -n "__version__" cd3217_analyzer/__init__.py
+
+      - name: Run test suite
+        run: python -m unittest discover -s tests
+
+      - name: Make .icns icon (sips)
+        run: sips -s format icns assets/icon.png --out assets/icon.icns
+
+      - name: Build macOS .app (PyInstaller onedir)
+        run: >
+          pyinstaller
+          --name "ACA"
+          --onedir
+          --windowed
+          --noconfirm
+          --clean
+          --icon assets/icon.icns
+          --add-data "assets:assets"
+          --collect-all customtkinter
+          --collect-all cd3217_analyzer
+          --hidden-import cd3217_analyzer
+          --hidden-import cd3217_analyzer.registers
+          --hidden-import cd3217_analyzer.analyzer
+          --hidden-import cd3217_analyzer.adapters
+          --hidden-import cd3217_analyzer.report
+          --hidden-import cd3217_analyzer.models
+          --hidden-import cd3217_analyzer.otp
+          --hidden-import cd3217_analyzer.otp_probe
+          --hidden-import cd3217_analyzer.spi_adapter
+          --hidden-import cd3217_analyzer.flash
+          --hidden-import cd3217_analyzer.flash_board
+          --hidden-import cd3217_analyzer.usb_bridge
+          --hidden-import cd3217_analyzer.spi_bridge
+          --hidden-import cd3217_analyzer.updater
+          --hidden-import cd3217_analyzer.cli
+          --hidden-import serial
+          --hidden-import serial.tools
+          --hidden-import serial.tools.list_ports
+          --hidden-import PIL
+          --hidden-import PIL.Image
+          gui.py
+
+      - name: Package .app zip (ditto preserves the bundle layout)
+        run: ditto -c -k --keepParent dist/ACA.app ACA_macOS.zip
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ACA_macOS.zip
           generate_release_notes: true
 
   firmware:
