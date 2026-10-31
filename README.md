@@ -48,33 +48,57 @@ ACA communicates over I²C to read device registers, validate chip health, decod
 
 ## Installation
 
-### Option 1: Download the installer (easiest)
+### Windows
 
-1. Go to **[Releases](https://github.com/ALeXXBody/cd3217-analyzer/releases)** and download `CD3217B12_Analyzer_Setup.exe`
+1. Go to **[Releases](https://github.com/ALeXXBody/Ace-Controller-Analyzer/releases)**
+   and download `ACA_Setup.exe`
 2. Run it — installs to your user Programs folder (no admin prompt), adds a
    Start Menu entry and optional Desktop shortcut, and registers an uninstaller.
 3. Launch **ACA - ACE Controller Analyzer** from the Start Menu. No Python needed.
 
-### Option 2: Portable (no install)
+Or, portable: download `ACA_Portable.zip`, unzip anywhere and run `ACA.exe`
+directly — no install, leaves nothing on the machine.
 
-1. Download `CD3217B12_Portable.zip` from **[Releases](https://github.com/ALeXXBody/cd3217-analyzer/releases)**
-2. Unzip anywhere and run `CD3217B12_Analyzer.exe` directly — no console
-   window, no install, leaves nothing on the machine.
+### Linux (Debian/Ubuntu)
 
-### Option 3: Run from source (first time only)
+1. From **[Releases](https://github.com/ALeXXBody/Ace-Controller-Analyzer/releases)**
+   download `aca-analyzer_<version>_amd64.deb`
+2. `sudo apt install ./aca-analyzer_<version>_amd64.deb` — installs to
+   `/opt/aca-analyzer` with a Applications-menu entry (`ACA Analyzer`) and an
+   `aca-analyzer` wrapper on `PATH` (GUI with no args, `--help` etc. for the CLI).
+3. Serial-port access needs the `dialout` group: once,
+   `sudo usermod -aG dialout $USER`, then log out and in again.
 
-1. Install **Python 3.8+** from https://www.python.org/downloads/
-   - **CHECK THE BOX "Add Python to PATH"** (very important!)
+Also available: `ACA_Linux_Portable.tar.gz` — untar anywhere and run `ACA`.
+(Or run from source: `pip install customtkinter smbus2 pyserial pillow pyftdi`
+then `python3 gui.py`.)
+
+### macOS
+
+1. From **[Releases](https://github.com/ALeXXBody/Ace-Controller-Analyzer/releases)**
+   download `ACA_macOS.zip`.
+2. Unzip and move `ACA.app` where you like (e.g. `/Applications`).
+3. **Gatekeeper**: the build is unsigned, so on first launch macOS blocks it.
+   Right-click `ACA.app` → Open once, or run:
+   `xattr -d com.apple.quarantine /Applications/ACA.app`
+4. macOS builds are Apple-silicon (arm64). On an Intel Mac, run from source.
+
+### Run from source, first time only (any OS)
+
+1. Install Python 3.8+ from https://www.python.org/downloads/
+   - Windows: **CHECK "Add Python to PATH"** (very important!)
 2. Download this repo
-3. Double-click **`setup.bat`** — installs everything + creates Desktop shortcut
-4. From then on, just double-click the Desktop shortcut
+3. `pip install customtkinter smbus2 pyserial pillow pyftdi pyinstaller`
+4. Run: `python gui.py` (Windows users can double-click `setup.bat` instead)
 
-### Option 4: Build the .exe yourself
+### Build the app yourself
 
-Double-click `build.bat`. Takes ~1 minute. Output goes to `dist\CD3217B12_Analyzer\`
-(windowed, no console) plus `CD3217B12_Portable.zip`. With
-[Inno Setup 6](https://jrsoftware.org/isinfo.php) installed you can also
-compile the proper installer: `ISCC.exe installer.iss`.
+- Windows: double-click `build.bat` (~1 minute) — output `dist\ACA\` plus
+  `ACA_Portable.zip`; with [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+  also compile the installer: `ISCC.exe installer.iss`.
+- Linux/macOS: the CI does exactly this — see `.github/workflows/build.yml`
+  (`linux`/`macos` jobs) or replicate locally: `pyinstaller ... gui.py` then
+  `python3 deb/build_deb.py --dist dist/ACA --version X.Y.Z` (Linux).
 
 ## UART Sniffing (ACE2 firmware bus)
 
@@ -103,10 +127,15 @@ The app checks GitHub for new releases automatically at startup (silent) —
 or use the **Check updates** button in the top bar. When a new version is
 found, one click downloads and applies it:
 
-- **Installed**: the new installer runs silently, closes the app, replaces
-  it and restarts it (per-user install, no admin prompt).
-- **Portable**: the app downloads the new package, replaces its own folder
-  and restarts itself.
+- **Windows installed**: the new installer runs silently, closes the app,
+  replaces it and restarts it (per-user install, no admin prompt).
+- **Windows portable**: the app downloads the new package, replaces its own
+  folder and restarts itself.
+- **Linux .deb**: the app downloads the new `.deb`, runs `pkexec dpkg -i`
+  (the desktop password prompt appears — dpkg writes /opt + /usr), and
+  relaunches when done.
+- **Linux portable / macOS .app**: the app replaces its own bundle or folder
+  in place and restarts itself (Posix swapper).
 - **From source**: the releases page opens in your browser.
 
 ### Board firmware
