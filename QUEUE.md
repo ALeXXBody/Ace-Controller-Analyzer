@@ -44,3 +44,15 @@ regression tests:
   uart_autobaud deadline. Ledger §4.19.
 - OBSERVATION: registers bug lived in an untested module — tests for
   adapters/otp/models worth adding when touching them.
+### 14. [DONE] macOS + Linux support for the app (owner request, 2026-10-31)
+Decisions: FULL update flow on all 3 OSes; .deb for Linux; unsigned macOS
+with the documented Gatekeeper workaround. 6 commits (§4.24):
+1. normalize_port platform-aware (25149dc; committed against a red suite
+   once — os import was missing — fixed + amended immediately)
+2. BOOTSEL discovery + /run/media (173e43a)
+3. updater: deb mode + POSIX swap.sh + macOS .app swap (487b9db)
+4. deb/build_deb.py FHS staging + dpkg-deb --root-owner-group (9f4fdd2)
+5. CI linux + macos jobs; 3-platform releases (364f834)
+6. README per-OS install/update docs (cb627c4)
+Released v0.12.16 — CI green, 23 assets (Win + Linux + macOS + firmware).
+Note: macOS = Apple-silicon only; Intel Macs run from source (README).
