@@ -105,12 +105,26 @@ class TestScanForBoards(unittest.TestCase):
 
 
 class TestPortExists(unittest.TestCase):
-    def test_present(self):
+    def test_present_windows_semantics(self):
+        """Windows path: bare digits / case variants normalize to COMx.
+        Patched os.name so the Windows mapping is tested deterministically
+        on every build host (this suite also runs on Linux)."""
         with patch.object(ub, "_comports",
-                          return_value=[FakePort("COM8")]):
+                          return_value=[FakePort("COM8")]), \
+             patch.object(ub.os, "name", "nt"):
             self.assertTrue(ub.port_exists("COM8"))
             self.assertTrue(ub.port_exists("com8"))   # normalized
             self.assertTrue(ub.port_exists("8"))      # -> COM8
+
+    def test_present_posix_semantics(self):
+        """POSIX path: real device names match as typed; Windows-style
+        input passes through unchanged (and correctly won't match a
+        Linux device list)."""
+        with patch.object(ub, "_comports",
+                          return_value=[FakePort("/dev/ttyACM0")]), \
+             patch.object(ub.os, "name", "posix"):
+            self.assertTrue(ub.port_exists("/dev/ttyACM0"))
+            self.assertFalse(ub.port_exists("COM8"))
 
     def test_absent(self):
         with patch.object(ub, "_comports",

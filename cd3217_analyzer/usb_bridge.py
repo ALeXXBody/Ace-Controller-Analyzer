@@ -13,6 +13,7 @@ Requires: pyserial
 Install:  pip install pyserial
 """
 
+import os
 import struct
 import sys
 import threading
@@ -544,19 +545,34 @@ def _verify_ck(body: bytes, plen: int):
 def normalize_port(port: str) -> str:
     """Return a real serial port name from user input.
 
-    Accepts a bare COM number ("8" or "COM8") and passes real paths through
-    unchanged. On non-Windows systems a bare number is interpreted as a
-    CD-ROM/board index the same way.
+    Windows: accepts a bare COM number ("8", "com8" -> "COM8") and passes
+    real paths through unchanged.
+    Linux/macOS: device names are real paths (/dev/ttyUSB0, /dev/ttyACM0,
+    /dev/cu.usbmodem...), so anything with a separator passes through. A
+    WINDOWS-style bare "COM8" string is translated to its index as a
+    LOGICAL fallback ONLY where it cannot be a real device: the GUI port
+    picker always lists actual OS device names, so practically users paste
+    or pick real paths.
+
+    The old behaviour mapped bare digits to COMx even on Linux/macOS, which
+    NEVER exists there (a device file named literally "COM8" is not what
+    pyserial opens); now the platform decides.
     """
     p = (port or "").strip()
     if not p:
         return p
-    # "COM8", "com8" -> "COM8"; bare "8" -> "COM8"
-    if p.upper().startswith("COM") and p[3:].isdigit():
-        n = str(int(p[3:]))
-        return ("COM" + n) if n else ""
-    if p.isdigit():
-        return "COM" + str(int(p))
+    if os.name == "nt":
+        # "COM8", "com8" -> "COM8"; bare "8" -> "COM8"
+        if p.upper().startswith("COM") and p[3:].isdigit():
+            n = str(int(p[3:]))
+            return ("COM" + n) if n else ""
+        if p.isdigit():
+            return "COM" + str(int(p))
+        return p
+    # POSIX: real device paths pass through untouched. Anything else
+    # (bare digits, "COM8") is returned as-is — it will fail with a
+    # clear "device not found" error rather than silently resolving to
+    # a Windows-style name that cannot exist here.
     return p
 
 

@@ -294,13 +294,17 @@ class TestUsbBridgeAdapter(unittest.TestCase):
 
 
 class TestNormalizePort(unittest.TestCase):
-    def test_bare_number(self):
-        self.assertEqual(normalize_port("8"), "COM8")
-        self.assertEqual(normalize_port("26"), "COM26")
-
-    def test_com_variants(self):
-        self.assertEqual(normalize_port("COM8"), "COM8")
-        self.assertEqual(normalize_port("com8"), "COM8")
+    def test_bare_number_windows_semantics(self):
+        # Windows mapping — patch os.name so this is deterministic on any
+        # build host (the suite also runs on Linux, where bare digits
+        # now pass through unchanged, see the POSIX test below).
+        from unittest.mock import patch
+        import os as _os
+        with patch.object(_os, "name", "nt"):
+            self.assertEqual(normalize_port("8"), "COM8")
+            self.assertEqual(normalize_port("26"), "COM26")
+            self.assertEqual(normalize_port("COM8"), "COM8")
+            self.assertEqual(normalize_port("com8"), "COM8")
 
     def test_real_paths_pass_through(self):
         self.assertEqual(normalize_port("/dev/ttyACM0"), "/dev/ttyACM0")
@@ -309,6 +313,26 @@ class TestNormalizePort(unittest.TestCase):
         self.assertEqual(normalize_port(""), "")
         self.assertEqual(normalize_port("   "), "")
         self.assertEqual(normalize_port("COM"), "COM")
+
+    def test_posix_bare_digits_and_com_pass_through(self):
+        """§4.24 fix: on POSIX a bare '8' or 'COM8' used to map to a
+        Windows-style 'COM8' name that cannot open (a device file called
+        literally 'COM8' is not a real Linux/mac port). Now preserved as
+        the user typed them — the clear 'device not found' error tells
+        the owner what happened instead of a wrong-name redirect."""
+        from unittest.mock import patch
+
+        class _FakeModule:
+            name = "posix"
+
+        import os as _os
+        with patch.object(_os, "name", "posix"):
+            self.assertEqual(normalize_port("8"), "8")
+            self.assertEqual(normalize_port("COM8"), "COM8")
+            self.assertEqual(normalize_port("/dev/ttyUSB1"),
+                             "/dev/ttyUSB1")
+            self.assertEqual(normalize_port("/dev/cu.usbmodem01"),
+                             "/dev/cu.usbmodem01")
 
 
 if __name__ == "__main__":
