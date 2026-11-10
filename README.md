@@ -602,10 +602,15 @@ Go to the **OTP Scanner** tab:
 
 ## Support
 
-If this tool helps you with board repair, consider buying me a coffee:
+<div align="center">
 
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/alexxbody)
+### ☕ [Buy Me A Coffee — ALeXXBody](https://buymeacoffee.com/alexxbody)
 
+*All support goes into hardware parts and tokens for building more free tools for the community.*
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-alexxbody-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/alexxbody)
+
+</div>
 ## License
 
 MIT
